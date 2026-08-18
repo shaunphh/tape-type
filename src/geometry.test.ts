@@ -71,4 +71,13 @@ describe('shape geometry', () => {
     expect(shape.viewBox.width).toBeGreaterThan(0)
     expect(shape.viewBox.height).toBeGreaterThan(0)
   })
+
+  it('supports over-cling that reaches into the measured glyph bounds', () => {
+    const layout = layouts[2]
+    const standard = buildShape({ ...base, perLine: true, hugStrength: 1, seed: 92831 }, layout.labels, layout.widths)
+    const cropped = buildShape({ ...base, perLine: true, hugStrength: 1.16, seed: 92831 }, layout.labels, layout.widths)
+    expect(cropped.viewBox.width).toBeLessThan(standard.viewBox.width)
+    expect(cropped.viewBox.height).toBeLessThan(standard.viewBox.height)
+    expect(cropped.strips?.every((strip) => !hasSelfIntersection(strip.points))).toBe(true)
+  })
 })

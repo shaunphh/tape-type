@@ -37,9 +37,14 @@ await send('Runtime.enable')
 await send('Page.enable')
 if (mobile) {
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true })
-  await send('Page.reload', { ignoreCache: true })
+} else {
+  await send('Emulation.clearDeviceMetricsOverride')
 }
+await send('Page.reload', { ignoreCache: true })
 await wait(800)
+await evaluate(`localStorage.removeItem('tape-type-settings-v6')`)
+await send('Page.reload', { ignoreCache: true })
+await wait(500)
 
 const metrics = await evaluate(`(() => {
   const selectors = ['.workspace','.preview-column','.preview-stage','.variation-bar','.export-bar','.artwork']
@@ -68,6 +73,20 @@ const brandChecks = await evaluate(`(async () => {
   const fontSize = () => Number(svg().querySelector('text')?.getAttribute('font-size'))
   const lineCount = () => svg().querySelectorAll('text').length
   const status = () => document.querySelector('.fit-status')
+  const setRange = async (label, value) => {
+    const field = [...document.querySelectorAll('.range-field')].find(node => node.querySelector('.field-heading span')?.textContent === label)
+    const input = field.querySelector('input')
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, String(value))
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    await wait()
+  }
+  const stripPadding = () => {
+    const groups = [...svg().querySelectorAll('g[transform^="translate"] > g[transform^="rotate"]')]
+    const paths = groups.slice(0, lineCount())
+    const texts = groups.slice(lineCount())
+    return paths.map((group, index) => group.querySelector('path').getBBox().width - texts[index].querySelector('text').getBBox().width)
+  }
 
   const initial = {
     viewBox: svg().getAttribute('viewBox'),
@@ -81,6 +100,8 @@ const brandChecks = await evaluate(`(async () => {
     fontSize: fontSize(),
     lineCount: lineCount(),
     fitError: status().classList.contains('error'),
+    cling: document.querySelector('.composition-ranges .range-field output')?.textContent,
+    padding: stripPadding(),
   }
 
   await setHeadline('A short Dublin headline')
@@ -101,26 +122,15 @@ const brandChecks = await evaluate(`(async () => {
   const autoToggle = document.querySelector('.auto-size-toggle input')
   autoToggle.click()
   await wait()
-  const sizeField = [...document.querySelectorAll('.range-field')].find(field => field.querySelector('.field-heading span')?.textContent === 'Cover size')
-  const sizeInput = sizeField.querySelector('input')
-  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(sizeInput, '80')
-  sizeInput.dispatchEvent(new Event('input', { bubbles: true }))
-  sizeInput.dispatchEvent(new Event('change', { bubbles: true }))
-  await wait()
+  await setRange('Cover size', 80)
   const manualSize = fontSize()
   autoToggle.click()
   await wait()
+  await setRange('Tape cling', 1.16)
+  const overCling = { value: document.querySelector('.composition-ranges .range-field output')?.textContent, padding: stripPadding() }
+  await setRange('Tape cling', 1.08)
 
-  const stripPairs = [...svg().querySelectorAll('g[transform^="translate"] > g[transform^="rotate"]')]
-  const pathGroups = stripPairs.slice(0, lineCount())
-  const textGroups = stripPairs.slice(lineCount())
-  const horizontalPadding = pathGroups.map((group, index) => {
-    const pathBox = group.querySelector('path').getBBox()
-    const textBox = textGroups[index].querySelector('text').getBBox()
-    return pathBox.width - textBox.width
-  })
-
-  return { initial, shortSize, longSize, overflow, series, manualSize, horizontalPadding }
+  return { initial, shortSize, longSize, overflow, series, manualSize, overCling }
 })()`)
 
 const beforeSeed = await evaluate(`Number(document.querySelector('.seed-control input').value)`)

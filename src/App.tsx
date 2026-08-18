@@ -21,7 +21,7 @@ import type {
   TextAlign,
 } from './types'
 
-const STORAGE_KEY = 'tape-type-settings-v5'
+const STORAGE_KEY = 'tape-type-settings-v6'
 const ARTBOARD_WIDTH = 1080
 const ARTBOARD_HEIGHT = 1350
 const SAFE_MARGIN = 80
@@ -69,7 +69,7 @@ const defaults: GeneratorSettings = {
   verticalPadding: 6,
   irregularity: 46,
   angleSize: 26,
-  hugStrength: 1,
+  hugStrength: 1.08,
   joinStyle: 'angled',
   preferredEdge: 'auto',
   mode: 'cling',
@@ -505,7 +505,7 @@ function App() {
               <button className={settings.perLine ? 'active' : ''} onClick={() => update('perLine', true)}>Separate strips</button>
             </div>
             <div className="range-stack composition-ranges">
-              <RangeField label="Tape cling" value={settings.hugStrength} min={0.72} max={1} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => update('hugStrength', value)} />
+              <RangeField label="Tape cling" value={settings.hugStrength} min={0.82} max={1.16} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => update('hugStrength', value)} />
               <RangeField label="Line gap" value={settings.lineGap} min={-8} max={20} suffix="px" onChange={(value) => update('lineGap', value)} />
               <RangeField label="Rotation variance" value={settings.rotationVariance} min={0} max={2} step={0.1} disabled={!settings.perLine} format={(value) => `${value.toFixed(1)}°`} onChange={(value) => update('rotationVariance', value)} />
             </div>

@@ -403,7 +403,7 @@ function buildSeparateShape(
         if (naturalSide === 'right') right += structuralDepth * 0.34
         else left -= structuralDepth * 0.34
       } else if (personality.lineTreatment === 'tuck') {
-        const tuck = Math.min(horizontalPadding * 0.35, structuralDepth * 0.16)
+        const tuck = Math.min(Math.max(0, horizontalPadding) * 0.35, structuralDepth * 0.16)
         if (naturalSide === 'right') right -= tuck
         else left += tuck
       }
@@ -426,7 +426,7 @@ function buildSeparateShape(
         const candidates = requested.length ? requested : fallback
         if (candidates.length) {
           const edge = closestEdgeToLine(candidates, personality.edge, (top + bottom) / 2, naturalSide === 'right' ? right : left)
-          const padding = edge.side === 'left' || edge.side === 'right' ? horizontalPadding : verticalPadding
+          const padding = Math.max(1, edge.side === 'left' || edge.side === 'right' ? horizontalPadding : verticalPadding)
           const depth = personality.primary === 'bite' || personality.primary === 'notch'
             ? Math.min(padding * 0.42, structuralDepth * 0.28)
             : structuralDepth * 0.62
@@ -493,10 +493,11 @@ export function buildShape(
   const personality = getPersonality(settings, widths, random)
   const energyBase = { clean: 28, tape: 46, cling: 40, rough: 60 }[settings.mode]
   const energy = energyBase + (random() - 0.5) * 8
-  const cling = Math.max(0.72, Math.min(1, settings.hugStrength))
-  const looseness = 1 - cling
-  const horizontalPadding = Math.max(6, settings.fontSize * 0.085) * (1 + looseness * 1.8)
-  const verticalPadding = Math.max(3, settings.fontSize * 0.045) * (1 + looseness * 1.3)
+  const cling = Math.max(0.82, Math.min(1.16, settings.hugStrength))
+  const looseness = Math.max(0, 1 - cling)
+  const overCling = Math.max(0, cling - 1) / 0.16
+  const horizontalPadding = Math.max(6, settings.fontSize * 0.085) * (1 + looseness * 1.8) * (1 - overCling * 1.18)
+  const verticalPadding = Math.max(3, settings.fontSize * 0.045) * (1 + looseness * 1.3) * (1 - overCling * 1.1)
   const ascent = fontBounds?.ascent ?? settings.fontSize * 0.76
   const descent = fontBounds?.descent ?? settings.fontSize * 0.14
   const glyphHeight = ascent + descent
@@ -509,7 +510,7 @@ export function buildShape(
     return verticalPadding + glyphHeight + index * lineHeightPx + (lineHeightPx - glyphHeight) / 2
   })
   const modeHug = { clean: -0.035, tape: -0.012, cling: 0, rough: -0.008 }[settings.mode]
-  const hug = Math.max(0.68, Math.min(1, cling + modeHug))
+  const hug = Math.max(0.78, Math.min(1, cling + modeHug))
   const effectiveWidths = widths.map((width) => maxMeasured - (maxMeasured - width) * hug)
   const lefts: number[] = []
   const rights: number[] = []
@@ -556,7 +557,7 @@ export function buildShape(
   const treatmentSide = personality.edge === 'left' || personality.edge === 'right'
     ? personality.edge
     : settings.align === 'right' ? 'left' : 'right'
-  const inwardLimit = horizontalPadding * 0.42
+  const inwardLimit = Math.max(0, horizontalPadding) * 0.42
   if (personality.lineTreatment === 'extend') {
     if (treatmentSide === 'right') rights[target] += structuralDepth * 0.42
     else lefts[target] -= structuralDepth * 0.42
@@ -576,7 +577,7 @@ export function buildShape(
     return personality.joinTreatment
   })
   const joinDepth = Math.min(lineHeightPx * 0.22, 4 + energy * 0.075)
-  const basePoints = makeBasePolygon(lefts, rights, top, bottom, boundaries, joins, joinDepth, horizontalPadding)
+  const basePoints = makeBasePolygon(lefts, rights, top, bottom, boundaries, joins, joinDepth, Math.max(0, horizontalPadding))
   const leanedPoints = addVerticalEdgeLeans(basePoints, random, energy)
   let points = hasSelfIntersection(leanedPoints) ? basePoints : leanedPoints
 
@@ -592,7 +593,7 @@ export function buildShape(
     if (!hasSelfIntersection(clipped)) points = clipped
   } else if (candidates.length) {
     const edge = closestEdgeToLine(candidates, personality.edge, targetCenterY, targetX)
-    const insetAxisPadding = edge.side === 'left' || edge.side === 'right' ? horizontalPadding : verticalPadding
+    const insetAxisPadding = Math.max(1, edge.side === 'left' || edge.side === 'right' ? horizontalPadding : verticalPadding)
     const safeDepth = personality.primary === 'bite' || personality.primary === 'notch'
       ? Math.min(structuralDepth * 0.3, insetAxisPadding * 0.46)
       : structuralDepth * (personality.primary === 'step' ? 0.62 : 0.82)
@@ -615,7 +616,7 @@ export function buildShape(
       const secondaryCandidates = eligibleEdges(points, secondarySide, 22)
       if (secondaryCandidates.length) {
         const edge = closestEdgeToLine(secondaryCandidates, secondarySide, boundaries[personality.focalJoin] ?? targetCenterY, targetX)
-        const padding = edge.side === 'left' || edge.side === 'right' ? horizontalPadding : verticalPadding
+        const padding = Math.max(1, edge.side === 'left' || edge.side === 'right' ? horizontalPadding : verticalPadding)
         const mutated = mutateEdge(points, edge, personality.secondary, Math.min(padding * 0.3, structuralDepth * 0.16), random)
         if (!hasSelfIntersection(mutated)) points = mutated
       }

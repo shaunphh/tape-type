@@ -28,13 +28,6 @@ export function nextSeed() {
   return Math.floor(Math.random() * 4294967295) || 1
 }
 
-export function coverSizeFromCharacters(text: string) {
-  const characterCount = text.replace(/\s+/g, ' ').trim().length
-  if (characterCount <= 30) return 90
-  if (characterCount >= 60) return 72
-  return Math.round(90 - ((characterCount - 30) / 30) * 18)
-}
-
 export function wrapText(
   text: string,
   maxWidth: number,
@@ -375,25 +368,22 @@ function buildSeparateShape(
   horizontalPadding: number,
   verticalPadding: number,
   energy: number,
-  ascent: number,
-  descent: number,
 ): ShapeResult {
   const strips: ShapeStrip[] = []
   const stripLines: TextLine[] = []
   const rotatedPoints: Point[] = []
   const structuralDepth = settings.fontSize * (0.16 + energy / 560)
-  const stripHeight = ascent + descent + verticalPadding * 2
+  const stripHeight = settings.fontSize * 0.9 + verticalPadding * 2
   const stripStep = stripHeight + settings.lineGap
 
   lines.forEach((line, index) => {
     const stripLine = {
       ...line,
-      baseline: index * stripStep + verticalPadding + ascent,
+      baseline: index * stripStep + verticalPadding + settings.fontSize * 0.81,
     }
     stripLines.push(stripLine)
-    const inkX = line.inkX ?? line.x
-    let left = inkX - horizontalPadding
-    let right = inkX + line.width + horizontalPadding
+    let left = line.x - horizontalPadding
+    let right = line.x + line.width + horizontalPadding
     const top = index * stripStep
     const bottom = top + stripHeight
     const naturalSide = settings.align === 'right' ? 'left' : 'right'
@@ -482,31 +472,22 @@ function buildSeparateShape(
   }
 }
 
-export function buildShape(
-  settings: GeneratorSettings,
-  labels: string[],
-  widths: number[],
-  originOffsets: number[] = [],
-  fontBounds?: { ascent: number; descent: number },
-): ShapeResult {
+export function buildShape(settings: GeneratorSettings, labels: string[], widths: number[]): ShapeResult {
   const random = mulberry32(settings.seed)
   const personality = getPersonality(settings, widths, random)
   const energyBase = { clean: 28, tape: 46, cling: 40, rough: 60 }[settings.mode]
   const energy = energyBase + (random() - 0.5) * 8
   const cling = Math.max(0.72, Math.min(1, settings.hugStrength))
   const looseness = 1 - cling
-  const horizontalPadding = Math.max(6, settings.fontSize * 0.085) * (1 + looseness * 1.8)
-  const verticalPadding = Math.max(3, settings.fontSize * 0.045) * (1 + looseness * 1.3)
-  const ascent = fontBounds?.ascent ?? settings.fontSize * 0.76
-  const descent = fontBounds?.descent ?? settings.fontSize * 0.14
-  const glyphHeight = ascent + descent
+  const horizontalPadding = Math.max(8, settings.fontSize * (settings.font === 'Barlow' ? 0.145 : 0.13)) * (1 + looseness * 2.2)
+  const verticalPadding = Math.max(4, settings.fontSize * (settings.font === 'Barlow' ? 0.082 : 0.072)) * (1 + looseness * 1.5)
   const maxMeasured = Math.max(...widths, 1)
-  const lineHeightPx = Math.max(glyphHeight * 0.86, glyphHeight + settings.lineGap)
-  const textHeight = glyphHeight + (labels.length - 1) * lineHeightPx
+  const lineHeightPx = Math.max(settings.fontSize * 0.78, settings.fontSize + settings.lineGap)
+  const textHeight = settings.fontSize + (labels.length - 1) * lineHeightPx
   const top = 0
   const bottom = textHeight + verticalPadding * 2
   const boundaries = labels.slice(1).map((_, index) => {
-    return verticalPadding + glyphHeight + index * lineHeightPx + (lineHeightPx - glyphHeight) / 2
+    return verticalPadding + settings.fontSize + index * lineHeightPx + (lineHeightPx - settings.fontSize) / 2
   })
   const modeHug = { clean: -0.035, tape: -0.012, cling: 0, rough: -0.008 }[settings.mode]
   const hug = Math.max(0.68, Math.min(1, cling + modeHug))
@@ -531,9 +512,8 @@ export function buildShape(
     lines.push({
       text: labels[index],
       width: measuredWidth,
-      x: contentX + (originOffsets[index] ?? 0),
-      inkX: contentX,
-      baseline: verticalPadding + ascent + index * lineHeightPx,
+      x: contentX,
+      baseline: verticalPadding + settings.fontSize * 0.81 + index * lineHeightPx,
     })
   })
 
@@ -546,8 +526,6 @@ export function buildShape(
       horizontalPadding,
       verticalPadding,
       energy,
-      ascent,
-      descent,
     )
   }
 

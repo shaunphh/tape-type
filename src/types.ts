@@ -1,6 +1,5 @@
 export type ShapeMode = 'clean' | 'tape' | 'cling' | 'rough'
 export type TextAlign = 'left' | 'center' | 'right'
-export type CoverFormat = 'regular' | 'series'
 export type EdgePreference = 'auto' | 'left' | 'right' | 'top' | 'bottom'
 export type JoinStyle = 'step' | 'angled'
 export type FontChoice = 'Barlow Condensed' | 'Barlow Semi Condensed' | 'Barlow'
@@ -8,8 +7,6 @@ export type FontChoice = 'Barlow Condensed' | 'Barlow Semi Condensed' | 'Barlow'
 export interface GeneratorSettings {
   headline: string
   uppercase: boolean
-  coverFormat: CoverFormat
-  autoSize: boolean
   font: FontChoice
   weight: number
   fontSize: number
@@ -43,7 +40,6 @@ export interface TextLine {
   text: string
   width: number
   x: number
-  inkX?: number
   baseline: number
 }
 

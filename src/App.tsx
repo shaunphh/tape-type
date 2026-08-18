@@ -13,18 +13,23 @@ import {
   Unlock,
   Upload,
 } from 'lucide-react'
-import { buildShape, nextSeed, wrapText } from './geometry'
+import { buildShape, coverSizeFromCharacters, nextSeed, wrapText } from './geometry'
 import type {
-  FontChoice,
   GeneratorSettings,
   ShapeMode,
   ShapeResult,
   TextAlign,
 } from './types'
 
-const STORAGE_KEY = 'tape-type-settings-v4'
+const STORAGE_KEY = 'tape-type-settings-v5'
+const ARTBOARD_WIDTH = 1080
+const ARTBOARD_HEIGHT = 1350
+const SAFE_MARGIN = 80
+const TEXT_AREA_WIDTH = ARTBOARD_WIDTH - SAFE_MARGIN * 2
+type PreviewBackground = 'transparent' | 'charcoal' | 'yellow' | 'photo'
 
 const samples = [
+  'What’s New in Dublin',
   'Dublin Gets a New Night Market',
   'A Massive Night Market Is Coming to Smithfield This Weekend',
   'How to Make the Most of a Weekend Visit to Dublin',
@@ -48,11 +53,13 @@ const colorPresets = [
 const defaults: GeneratorSettings = {
   headline: 'How to Make the Most of a Weekend Visit to Dublin',
   uppercase: false,
-  font: 'Barlow Condensed',
-  weight: 800,
-  fontSize: 76,
+  coverFormat: 'regular',
+  autoSize: true,
+  font: 'Barlow',
+  weight: 700,
+  fontSize: 90,
   lineHeight: 0.88,
-  maxWidth: 570,
+  maxWidth: TEXT_AREA_WIDTH,
   align: 'left',
   autoWrap: true,
   perLine: true,
@@ -90,17 +97,49 @@ function useTextLayout(settings: GeneratorSettings) {
   return useMemo(() => {
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
-    if (!context) return { labels: [' '], widths: [1] }
-    context.font = `${settings.weight} ${settings.fontSize}px "${settings.font}"`
-    const measure = (value: string) => context.measureText(value).width
-    const headline = settings.uppercase ? settings.headline.toLocaleUpperCase() : settings.headline
-    const labels = wrapText(headline, settings.maxWidth, measure, settings.autoWrap)
-    return { labels, widths: labels.map(measure) }
-  }, [settings.headline, settings.uppercase, settings.maxWidth, settings.autoWrap, settings.font, settings.weight, settings.fontSize, fontReady])
+    if (!context) return { labels: [' '], widths: [1], originOffsets: [0], ascent: 68, descent: 14, fontSize: 90, characterCount: 0, maxLines: 4, overflow: false, caseWarning: false }
+
+    const headline = settings.headline.replace(/\r/g, '')
+    const characterCount = headline.replace(/\s+/g, ' ').trim().length
+    const letters = headline.match(/\p{L}/gu)?.join('') ?? ''
+    const caseWarning = letters.length > 1 && letters === letters.toLocaleUpperCase() && letters !== letters.toLocaleLowerCase()
+    const maxLines = settings.coverFormat === 'series' ? 2 : 4
+    const measureAtSize = (fontSize: number) => {
+      context.font = `700 ${fontSize}px "Barlow"`
+      context.textAlign = 'start'
+      const getMetrics = (value: string) => context.measureText(value)
+      const getInkWidth = (value: string) => {
+        const metrics = getMetrics(value)
+        return Math.max(1, metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight || metrics.width)
+      }
+      const labels = wrapText(headline, TEXT_AREA_WIDTH, getInkWidth, settings.autoWrap)
+      const metrics = labels.map(getMetrics)
+      const reference = getMetrics('Hgj')
+      return {
+        labels,
+        widths: metrics.map((metric) => Math.max(1, metric.actualBoundingBoxLeft + metric.actualBoundingBoxRight || metric.width)),
+        originOffsets: metrics.map((metric) => metric.actualBoundingBoxLeft),
+        ascent: Math.max(reference.actualBoundingBoxAscent || fontSize * 0.72, ...metrics.map((metric) => metric.actualBoundingBoxAscent || 0)),
+        descent: Math.max(reference.actualBoundingBoxDescent || fontSize * 0.16, ...metrics.map((metric) => metric.actualBoundingBoxDescent || 0)),
+      }
+    }
+
+    let fontSize = settings.coverFormat === 'series'
+      ? 172
+      : settings.autoSize ? coverSizeFromCharacters(headline) : Math.max(72, Math.min(90, Math.round(settings.fontSize)))
+    let measured = measureAtSize(fontSize)
+    if (settings.coverFormat === 'regular' && settings.autoSize) {
+      while (fontSize > 72 && (measured.labels.length > maxLines || Math.max(...measured.widths) > TEXT_AREA_WIDTH)) {
+        fontSize -= 1
+        measured = measureAtSize(fontSize)
+      }
+    }
+    const overflow = measured.labels.length > maxLines || Math.max(...measured.widths) > TEXT_AREA_WIDTH
+    return { ...measured, fontSize, characterCount, maxLines, overflow, caseWarning }
+  }, [settings.headline, settings.autoWrap, settings.coverFormat, settings.autoSize, settings.fontSize, fontReady])
 }
 
-function svgMarkup(settings: GeneratorSettings, shape: ShapeResult, shapeOnly = false) {
-  const { viewBox } = shape
+function tapeMarkup(settings: GeneratorSettings, shape: ShapeResult, shapeOnly = false) {
   const textElement = (line: ShapeResult['lines'][number]) => {
       const content = line.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       return `<text x="${line.x}" y="${line.baseline}" font-family="${settings.font}, sans-serif" font-size="${settings.fontSize}" font-weight="${settings.weight}" fill="${settings.textColor}">${content}</text>`
@@ -114,7 +153,56 @@ function svgMarkup(settings: GeneratorSettings, shape: ShapeResult, shapeOnly = 
     const text = shapeOnly ? '' : shape.lines.map(textElement).join('')
     content = `<path d="${shape.path}" fill="${settings.shapeColor}"/>${text}`
   }
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}" width="${viewBox.width}" height="${viewBox.height}">${content}</svg>`
+  return content
+}
+
+function getPlacement(shape: ShapeResult, position: { x: number; y: number }) {
+  const desiredCenterX = ARTBOARD_WIDTH * position.x / 100
+  const desiredCenterY = ARTBOARD_HEIGHT * position.y / 100
+  let x = desiredCenterX - (shape.viewBox.x + shape.viewBox.width / 2)
+  let y = desiredCenterY - (shape.viewBox.y + shape.viewBox.height / 2)
+  const textLeft = Math.min(...shape.lines.map((line) => line.inkX ?? line.x))
+  const textRight = Math.max(...shape.lines.map((line) => (line.inkX ?? line.x) + line.width))
+  const minimumTextX = SAFE_MARGIN - textLeft
+  const maximumTextX = ARTBOARD_WIDTH - SAFE_MARGIN - textRight
+  x = minimumTextX <= maximumTextX
+    ? Math.max(minimumTextX, Math.min(maximumTextX, x))
+    : ARTBOARD_WIDTH / 2 - (textLeft + textRight) / 2
+  const shapeMargin = 48
+  if (shape.viewBox.height <= ARTBOARD_HEIGHT - shapeMargin * 2) {
+    y = Math.max(shapeMargin - shape.viewBox.y, Math.min(ARTBOARD_HEIGHT - shapeMargin - shape.viewBox.y - shape.viewBox.height, y))
+  }
+  return { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }
+}
+
+function escapeAttribute(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+}
+
+function svgMarkup(
+  settings: GeneratorSettings,
+  shape: ShapeResult,
+  options: {
+    artboard?: boolean
+    shapeOnly?: boolean
+    background?: PreviewBackground
+    photo?: string | null
+    position?: { x: number; y: number }
+  } = {},
+) {
+  const { artboard = true, shapeOnly = false, background = 'transparent', photo = null, position = { x: 50, y: 50 } } = options
+  if (!artboard) {
+    const { viewBox } = shape
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}" width="${viewBox.width}" height="${viewBox.height}">${tapeMarkup(settings, shape, shapeOnly)}</svg>`
+  }
+  let backgroundMarkup = ''
+  if (background === 'charcoal') backgroundMarkup = `<rect width="1080" height="1350" fill="#242424"/>`
+  if (background === 'yellow') backgroundMarkup = `<rect width="1080" height="1350" fill="#FFF418"/>`
+  if (background === 'photo' && photo) {
+    backgroundMarkup = `<image href="${escapeAttribute(photo)}" width="1080" height="1350" preserveAspectRatio="xMidYMid slice"/><rect width="1080" height="1350" fill="#000" opacity=".12"/>`
+  }
+  const placement = getPlacement(shape, position)
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350" width="1080" height="1350">${backgroundMarkup}<g transform="translate(${placement.x} ${placement.y})">${tapeMarkup(settings, shape, shapeOnly)}</g></svg>`
 }
 
 function downloadBlob(content: BlobPart, type: string, filename: string) {
@@ -177,14 +265,28 @@ function App() {
   const [history, setHistory] = useState<number[]>([settings.seed])
   const [historyIndex, setHistoryIndex] = useState(0)
   const [copied, setCopied] = useState<'svg' | 'seed' | null>(null)
-  const [previewBackground, setPreviewBackground] = useState<'charcoal' | 'yellow' | 'photo'>('charcoal')
+  const [previewBackground, setPreviewBackground] = useState<PreviewBackground>('charcoal')
   const [photo, setPhoto] = useState<string | null>(null)
   const [position, setPosition] = useState({ x: 50, y: 50 })
   const [sampleOpen, setSampleOpen] = useState(false)
   const previewRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ pointerX: number; pointerY: number; x: number; y: number } | null>(null)
   const layout = useTextLayout(settings)
-  const shape = useMemo(() => buildShape(settings, layout.labels, layout.widths), [settings, layout])
+  const brandSettings = useMemo<GeneratorSettings>(() => ({
+    ...settings,
+    uppercase: false,
+    font: 'Barlow',
+    weight: 700,
+    fontSize: layout.fontSize,
+    maxWidth: TEXT_AREA_WIDTH,
+  }), [settings, layout.fontSize])
+  const shape = useMemo(() => buildShape(
+    brandSettings,
+    layout.labels,
+    layout.widths,
+    layout.originOffsets,
+    { ascent: layout.ascent, descent: layout.descent },
+  ), [brandSettings, layout])
 
   const update = useCallback(<K extends keyof GeneratorSettings>(key: K, value: GeneratorSettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }))
@@ -222,30 +324,59 @@ function App() {
   }
 
   const copy = async (kind: 'svg' | 'seed') => {
-    const value = kind === 'svg' ? svgMarkup(settings, shape) : String(settings.seed)
+    const value = kind === 'svg'
+      ? svgMarkup(brandSettings, shape, { background: previewBackground, photo, position })
+      : String(settings.seed)
     await navigator.clipboard.writeText(value)
     setCopied(kind)
     setTimeout(() => setCopied(null), 1400)
   }
 
-  const downloadSvg = (shapeOnly = false) => {
-    downloadBlob(svgMarkup(settings, shape, shapeOnly), 'image/svg+xml', shapeOnly ? 'tape-shape.svg' : 'tape-headline.svg')
+  const downloadSvg = (scope: 'artboard' | 'cutout' | 'shape' = 'artboard') => {
+    const markup = svgMarkup(brandSettings, shape, {
+      artboard: scope === 'artboard',
+      shapeOnly: scope === 'shape',
+      background: previewBackground,
+      photo,
+      position,
+    })
+    const filename = scope === 'artboard' ? 'tape-type-instagram.svg' : scope === 'shape' ? 'tape-shape.svg' : 'tape-cutout.svg'
+    downloadBlob(markup, 'image/svg+xml', filename)
   }
 
-  const downloadPng = () => {
-    const targetSize = 2400
-    const scale = Math.min(4, targetSize / Math.max(shape.viewBox.width, shape.viewBox.height))
+  const downloadPng = async (scale: 1 | 2 | 3) => {
     const canvas = document.createElement('canvas')
-    canvas.width = Math.ceil(shape.viewBox.width * scale)
-    canvas.height = Math.ceil(shape.viewBox.height * scale)
+    canvas.width = ARTBOARD_WIDTH * scale
+    canvas.height = ARTBOARD_HEIGHT * scale
     const context = canvas.getContext('2d')
     if (!context) return
     context.scale(scale, scale)
-    context.translate(-shape.viewBox.x, -shape.viewBox.y)
-    context.font = `${settings.weight} ${settings.fontSize}px "${settings.font}"`
+    if (previewBackground === 'charcoal') {
+      context.fillStyle = '#242424'
+      context.fillRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT)
+    } else if (previewBackground === 'yellow') {
+      context.fillStyle = '#FFF418'
+      context.fillRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT)
+    } else if (previewBackground === 'photo' && photo) {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const nextImage = new Image()
+        nextImage.onload = () => resolve(nextImage)
+        nextImage.onerror = reject
+        nextImage.src = photo
+      })
+      const imageScale = Math.max(ARTBOARD_WIDTH / image.naturalWidth, ARTBOARD_HEIGHT / image.naturalHeight)
+      const width = image.naturalWidth * imageScale
+      const height = image.naturalHeight * imageScale
+      context.drawImage(image, (ARTBOARD_WIDTH - width) / 2, (ARTBOARD_HEIGHT - height) / 2, width, height)
+      context.fillStyle = 'rgba(0,0,0,.12)'
+      context.fillRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT)
+    }
+    const placement = getPlacement(shape, position)
+    context.translate(placement.x, placement.y)
+    context.font = `${brandSettings.weight} ${brandSettings.fontSize}px "${brandSettings.font}"`
     context.textBaseline = 'alphabetic'
     if (shape.strips?.length) {
-      context.fillStyle = settings.shapeColor
+      context.fillStyle = brandSettings.shapeColor
       shape.strips.forEach((strip) => {
         context.save()
         context.translate(strip.centerX, strip.centerY)
@@ -254,7 +385,7 @@ function App() {
         context.fill(new Path2D(strip.path))
         context.restore()
       })
-      context.fillStyle = settings.textColor
+      context.fillStyle = brandSettings.textColor
       shape.strips.forEach((strip) => {
         context.save()
         context.translate(strip.centerX, strip.centerY)
@@ -264,13 +395,13 @@ function App() {
         context.restore()
       })
     } else {
-      context.fillStyle = settings.shapeColor
+      context.fillStyle = brandSettings.shapeColor
       context.fill(new Path2D(shape.path))
-      context.fillStyle = settings.textColor
+      context.fillStyle = brandSettings.textColor
       shape.lines.forEach((line) => context.fillText(line.text, line.x, line.baseline))
     }
     canvas.toBlob((blob) => {
-      if (blob) downloadBlob(blob, 'image/png', 'tape-headline.png')
+      if (blob) downloadBlob(blob, 'image/png', `tape-type-instagram-${scale}x.png`)
     }, 'image/png')
   }
 
@@ -286,7 +417,6 @@ function App() {
   }
 
   const startDrag = (event: React.PointerEvent) => {
-    if (previewBackground !== 'photo') return
     event.currentTarget.setPointerCapture(event.pointerId)
     dragRef.current = { pointerX: event.clientX, pointerY: event.clientY, ...position }
   }
@@ -301,6 +431,8 @@ function App() {
       y: Math.max(10, Math.min(90, start.y + (event.clientY - start.pointerY) / bounds.height * 100)),
     })
   }
+
+  const placement = getPlacement(shape, position)
 
   return (
     <div className="app-shell">
@@ -347,15 +479,22 @@ function App() {
             />
             <div className="quick-toggles">
               <label className="toggle-row">
-                <span>All caps</span>
-                <input type="checkbox" checked={settings.uppercase} onChange={(event) => update('uppercase', event.target.checked)} />
-                <span className="switch" />
-              </label>
-              <label className="toggle-row">
                 <span>Auto wrap</span>
                 <input type="checkbox" checked={settings.autoWrap} onChange={(event) => update('autoWrap', event.target.checked)} />
                 <span className="switch" />
               </label>
+            </div>
+          </section>
+
+          <section className="control-section brand-format-section">
+            <h2>Brand format</h2>
+            <div className="piece-toggle" aria-label="Cover format">
+              <button className={settings.coverFormat === 'regular' ? 'active' : ''} onClick={() => update('coverFormat', 'regular')}>Cover headline</button>
+              <button className={settings.coverFormat === 'series' ? 'active' : ''} onClick={() => update('coverFormat', 'series')}>Series cover</button>
+            </div>
+            <div className={`fit-status ${layout.overflow ? 'error' : layout.caseWarning ? 'warning' : ''}`}>
+              <div><strong>{layout.fontSize}px</strong><span>{layout.labels.length} / {layout.maxLines} lines</span><span>{layout.characterCount} chars</span></div>
+              <p>{layout.overflow ? 'Headline needs editing — it cannot fit within the approved type range.' : layout.caseWarning ? 'Use sentence case rather than all caps.' : settings.coverFormat === 'series' ? 'Reserved 172px recurring-series scale.' : 'Fits the approved 72–90px cover flex zone.'}</p>
             </div>
           </section>
 
@@ -389,21 +528,25 @@ function App() {
             </div>
           </section>
 
-          <section className="control-section compact-grid typography-grid">
-            <h2>Type</h2>
-            <SelectField label="Typeface" value={settings.font} onChange={(value) => update('font', value as FontChoice)}>
-              <option>Barlow Condensed</option><option>Barlow Semi Condensed</option><option>Barlow</option>
-            </SelectField>
+          <section className="control-section compact-grid typography-grid brand-type-section">
+            <h2>Brand typography</h2>
+            <div className="brand-lock"><Lock size={14} /><span><strong>Barlow Bold</strong><small>700 · sentence case · 920px text area</small></span></div>
             <SelectField label="Alignment" value={settings.align} onChange={(value) => update('align', value as TextAlign)}>
               <option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option>
             </SelectField>
-            <div className="weight-control">
-              <RangeField label="Weight" value={settings.weight} min={400} max={800} step={100} onChange={(value) => update('weight', value)} />
-            </div>
-            <div className="width-control">
-              <RangeField label="Headline width" value={settings.maxWidth} min={260} max={900} suffix="px" onChange={(value) => update('maxWidth', value)} />
-            </div>
-            <p className="automatic-note"><Sparkles size={13} /> Cut depth and edge logic are handled automatically</p>
+            {settings.coverFormat === 'regular' && (
+              <>
+                <label className="toggle-row auto-size-toggle">
+                  <span>Auto size</span>
+                  <input type="checkbox" checked={settings.autoSize} onChange={(event) => update('autoSize', event.target.checked)} />
+                  <span className="switch" />
+                </label>
+                <div className="size-control">
+                  <RangeField label="Cover size" value={settings.autoSize ? layout.fontSize : settings.fontSize} min={72} max={90} suffix="px" disabled={settings.autoSize} onChange={(value) => update('fontSize', value)} />
+                </div>
+              </>
+            )}
+            <p className="automatic-note"><Sparkles size={13} /> Size, fit and cut depth stay inside the brand system</p>
           </section>
 
           <section className="control-section">
@@ -437,6 +580,7 @@ function App() {
         <section className="preview-column">
           <div className="preview-toolbar">
             <div className="background-switcher" aria-label="Preview background">
+              <button className={previewBackground === 'transparent' ? 'active' : ''} onClick={() => setPreviewBackground('transparent')}>Clear</button>
               <button className={previewBackground === 'charcoal' ? 'active' : ''} onClick={() => setPreviewBackground('charcoal')}>Dark</button>
               <button className={previewBackground === 'yellow' ? 'active' : ''} onClick={() => setPreviewBackground('yellow')}>Yellow</button>
               <label className={previewBackground === 'photo' ? 'active upload-button' : 'upload-button'}>
@@ -444,7 +588,7 @@ function App() {
                 {photo ? <ImageIcon size={14} /> : <Upload size={14} />} Photo
               </label>
             </div>
-            <p>{previewBackground === 'photo' ? 'Drag the artwork to position it' : 'Live vector preview'}</p>
+            <p>1080 × 1350 · drag treatment to position</p>
           </div>
 
           <div
@@ -456,8 +600,7 @@ function App() {
               <label className="photo-empty"><Upload size={24} /><span>Choose a photo</span><small>Preview only—nothing leaves your browser</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
             )}
             <div
-              className={`artwork ${previewBackground === 'photo' ? 'draggable' : ''}`}
-              style={previewBackground === 'photo' ? { left: `${position.x}%`, top: `${position.y}%` } : undefined}
+              className="artwork draggable"
               onPointerDown={startDrag}
               onPointerMove={drag}
               onPointerUp={() => { dragRef.current = null }}
@@ -465,48 +608,51 @@ function App() {
               <svg
                 role="img"
                 aria-label={`Generated tape background: ${shape.personality}`}
-                viewBox={`${shape.viewBox.x} ${shape.viewBox.y} ${shape.viewBox.width} ${shape.viewBox.height}`}
+                viewBox={`0 0 ${ARTBOARD_WIDTH} ${ARTBOARD_HEIGHT}`}
               >
-                {shape.strips?.length ? (
-                  <>
-                    {shape.strips.map((strip, index) => (
-                      <g key={`strip-bg-${index}`} transform={`rotate(${strip.angle} ${strip.centerX} ${strip.centerY})`}>
-                        <path d={strip.path} fill={settings.shapeColor} />
-                      </g>
-                    ))}
-                    {shape.strips.map((strip, index) => (
-                      <g key={`strip-text-${index}`} transform={`rotate(${strip.angle} ${strip.centerX} ${strip.centerY})`}>
+                <rect className="safe-guide" x={SAFE_MARGIN} y={SAFE_MARGIN} width={TEXT_AREA_WIDTH} height={ARTBOARD_HEIGHT - SAFE_MARGIN * 2} />
+                <g transform={`translate(${placement.x} ${placement.y})`}>
+                  {shape.strips?.length ? (
+                    <>
+                      {shape.strips.map((strip, index) => (
+                        <g key={`strip-bg-${index}`} transform={`rotate(${strip.angle} ${strip.centerX} ${strip.centerY})`}>
+                          <path d={strip.path} fill={brandSettings.shapeColor} />
+                        </g>
+                      ))}
+                      {shape.strips.map((strip, index) => (
+                        <g key={`strip-text-${index}`} transform={`rotate(${strip.angle} ${strip.centerX} ${strip.centerY})`}>
+                          <text
+                            x={strip.line.x}
+                            y={strip.line.baseline}
+                            fill={brandSettings.textColor}
+                            fontFamily={brandSettings.font}
+                            fontWeight={brandSettings.weight}
+                            fontSize={brandSettings.fontSize}
+                          >{strip.line.text}</text>
+                        </g>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      <path d={shape.path} fill={brandSettings.shapeColor} />
+                      {shape.lines.map((line, index) => (
                         <text
-                          x={strip.line.x}
-                          y={strip.line.baseline}
-                          fill={settings.textColor}
-                          fontFamily={settings.font}
-                          fontWeight={settings.weight}
-                          fontSize={settings.fontSize}
-                        >{strip.line.text}</text>
-                      </g>
-                    ))}
-                  </>
-                ) : (
-                  <>
-                    <path d={shape.path} fill={settings.shapeColor} />
-                    {shape.lines.map((line, index) => (
-                      <text
-                        key={`${line.text}-${index}`}
-                        x={line.x}
-                        y={line.baseline}
-                        fill={settings.textColor}
-                        fontFamily={settings.font}
-                        fontWeight={settings.weight}
-                        fontSize={settings.fontSize}
-                      >{line.text}</text>
-                    ))}
-                  </>
-                )}
+                          key={`${line.text}-${index}`}
+                          x={line.x}
+                          y={line.baseline}
+                          fill={brandSettings.textColor}
+                          fontFamily={brandSettings.font}
+                          fontWeight={brandSettings.weight}
+                          fontSize={brandSettings.fontSize}
+                        >{line.text}</text>
+                      ))}
+                    </>
+                  )}
+                </g>
               </svg>
             </div>
-            <span className="stage-coordinate top-left">A / 01</span>
-            <span className="stage-coordinate bottom-right">{shape.personality.toUpperCase()}</span>
+            <span className="stage-coordinate top-left">1080 × 1350 / 4:5</span>
+            <span className="stage-coordinate bottom-right">{layout.fontSize}px · {layout.labels.length} lines · {shape.personality.toUpperCase()}</span>
           </div>
 
           <div className="variation-bar">
@@ -534,9 +680,11 @@ function App() {
             </div>
             <div className="export-actions">
               <button onClick={() => copy('svg')}>{copied === 'svg' ? <Check size={16} /> : <Clipboard size={16} />}{copied === 'svg' ? 'Copied' : 'Copy SVG'}</button>
-              <button onClick={() => downloadSvg(true)}><Download size={16} /> Shape only</button>
-              <button onClick={downloadPng}><Download size={16} /> PNG</button>
-              <button className="primary" onClick={() => downloadSvg(false)}><Download size={16} /> Download SVG</button>
+              <button onClick={() => downloadSvg('cutout')}><Download size={16} /> Cutout SVG</button>
+              <button onClick={() => downloadPng(1)}><Download size={16} /> PNG 1×</button>
+              <button className="png-fallback" onClick={() => downloadPng(2)}><Download size={16} /> PNG 2×</button>
+              <button onClick={() => downloadPng(3)}><Download size={16} /> PNG 3×</button>
+              <button className="primary" onClick={() => downloadSvg('artboard')}><Download size={16} /> Full SVG</button>
             </div>
           </div>
         </section>

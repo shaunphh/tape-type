@@ -1,6 +1,6 @@
 # Tape Type
 
-A small browser-based tool for creating controlled cut-paper and tape shapes that hug headline text. Geometry is generated from the measured width of every line, then altered with one or two deterministic acute cuts, points, bites, or tails.
+A browser-based brand utility for creating controlled cut-paper and tape treatments on a production-size 1080×1350 Instagram artboard.
 
 ## Run locally
 
@@ -45,9 +45,11 @@ The regular `npm run build` output can also be deployed to Vercel or another sta
 
 ## How the shapes work
 
-- Text is measured in the browser using the selected Barlow typeface.
-- The focused type choices are Barlow, Barlow Semi Condensed, and Barlow Condensed.
-- Each line produces a tightly padded band based on its actual text width.
+- Regular cover headlines use the approved continuous 72–90px flex zone. The initial size follows headline character count, then the browser measures and wraps the actual text within a 920px area.
+- Barlow Bold at weight 700 is locked for cover artwork. All-caps input is flagged for sentence-case editing.
+- Headlines can use at most four lines. If a headline still exceeds four lines at 72px, the UI asks for an edit rather than shrinking off-scale.
+- Series covers are an explicit separate format at the reserved 172px scale and allow at most two lines.
+- Every line uses Canvas `actualBoundingBox*` glyph measurements, producing substantially tighter tape bounds than advance-width or generic line-box calculations.
 - The seed evaluates longest/shortest lines, abrupt length changes, and the final line to choose a structurally useful intervention point.
 - Bands join as one continuous square, angled, stepped, or tucked SVG silhouette.
 - A deterministic seed chooses from an approved grammar: clipped corner, torn extension, shallow bite, short tab, or stepped protrusion.
@@ -56,25 +58,29 @@ The regular `npm run build` output can also be deployed to Vercel or another sta
 
 ## Focused controls
 
-- All caps and automatic/manual wrapping
+- Regular or recurring-series cover format
+- Automatic brand sizing or a manual integer size constrained to 72–90px
+- Automatic wrapping or deliberate manual line breaks
 - Connected silhouette or one editable tape strip per line
 - Tape cling and line gap
 - Restrained per-line rotation variance from 0–2°
-- Barlow, Barlow Semi Condensed, and Barlow Condensed
-- Weight slider from 400–800, alignment, headline width, cut style, colour presets, and independent text colour
+- Alignment, cut style, colour presets, and independent text colour
+- Drag-to-position artwork within the 1080×1350 artboard and visible 80px safe-area guide
 
 Separate-strip exports keep each background path and its text grouped with the same rotation. Backgrounds render before all text layers so tucked or overlapping strips remain legible.
 
 The cut grammar includes clipped corners, angled whole-edge ends, shallow bites, stepped notches, torn extensions, short tabs, and protrusions. Each style selects from a restrained subset rather than adding arbitrary jagged points.
 - Randomisation never invents arbitrary noisy points.
 
-The most recent controls are saved in `localStorage`. Uploaded photos are preview-only and stay in the browser.
+The most recent controls are saved in `localStorage`. Uploaded photos stay in the browser and can be included in full-artboard SVG and PNG exports.
 
 ## Export
 
-- Full editable SVG with live text
-- Shape-only SVG
-- SVG markup copied to the clipboard for Figma
-- High-resolution transparent PNG
+- Full 1080×1350 editable SVG with live text (the primary export)
+- Tightly cropped cutout SVG
+- Full-artboard SVG markup copied to the clipboard for Figma
+- 1080×1350 PNG at 1×
+- 2160×2700 PNG at 2×
+- 3240×4050 PNG at 3×
 
-SVG text remains editable and references Barlow/Barlow Condensed by font family. Install the fonts on the destination machine for an exact match.
+SVG text remains editable and references Barlow by font family. Install Barlow on the destination machine for an exact match; use the 2× or 3× PNG fallback when a receiving app cannot preserve the SVG font.

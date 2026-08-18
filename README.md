@@ -63,7 +63,6 @@ The regular `npm run build` output can also be deployed to Vercel or another sta
 - Automatic wrapping or deliberate manual line breaks
 - Connected silhouette or one editable tape strip per line
 - Tape cling and line gap
-- Tape cling runs from a close fit through 100% contact to a restrained 116% over-cling that crops slightly into the glyph bounds. The default is a near-touching 108%.
 - Restrained per-line rotation variance from 0–2°
 - Alignment, cut style, colour presets, and independent text colour
 - Drag-to-position artwork within the 1080×1350 artboard and visible 80px safe-area guide

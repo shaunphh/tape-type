@@ -649,16 +649,8 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
   background-size: 28px 28px;
   background-position: 0 0, 0 14px, 14px -14px, -14px 0;
 }
-.preview-stage.charcoal {
-  background-color: #242424;
-  background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
-.preview-stage.yellow {
-  background-color: #ffe900;
-  background-image: linear-gradient(rgba(0,0,0,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,.035) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
+.preview-stage.charcoal { background-color: #242424; }
+.preview-stage.yellow { background-color: #ffe900; }
 .preview-stage.photo { background-size: cover; background-position: center; }
 .preview-stage::after {
   content: '';
@@ -684,9 +676,12 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
   width: 100%;
   transform: none;
   cursor: grab;
-  touch-action: none;
+  /* Phones can still scroll the page vertically over the preview; the Position buttons set height. */
+  touch-action: pan-y pinch-zoom;
+  outline: none;
 }
 .artwork.draggable:active { cursor: grabbing; }
+.artwork.draggable:focus-visible { box-shadow: inset 0 0 0 3px var(--yellow); }
 .safe-guide { fill: none; stroke: rgba(255,255,255,.18); stroke-width: 2; stroke-dasharray: 10 10; pointer-events: none; }
 .yellow .safe-guide, .transparent .safe-guide { stroke: rgba(0,0,0,.16); }
 
@@ -825,3 +820,24 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+
+.notice {
+  width: min(100%, 610px);
+  margin: 0 auto 10px;
+  padding: 10px 12px;
+  color: #8f1f16;
+  background: #f6ded9;
+  border-left: 3px solid #c83a2d;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+/* Keyboard users need to see where they are; hidden checkboxes show focus on their switch. */
+button:focus-visible,
+select:focus-visible,
+.upload-button:has(input:focus-visible),
+input[type='range']:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.toggle-row input:focus-visible + .switch { outline: 2px solid var(--ink); outline-offset: 2px; }

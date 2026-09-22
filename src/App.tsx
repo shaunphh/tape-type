@@ -13,64 +13,54 @@ import {
   Unlock,
   Upload,
 } from 'lucide-react'
+import {
+  BACKGROUND_FILLS,
+  FONT_FAMILY,
+  FONT_WEIGHT,
+  buildLayers,
+  drawLayers,
+  fontShorthand,
+  getPlacement,
+  stripControlCharacters,
+  svgMarkup,
+  tones,
+  type Layer,
+  type Position,
+  type PreviewBackground,
+} from './artwork'
+import { embeddedFontCss, preloadEmbeddedFonts } from './fonts'
 import { buildShape, coverSizeFromCharacters, nextSeed, wrapText } from './geometry'
+import {
+  ARTBOARD_HEIGHT,
+  ARTBOARD_WIDTH,
+  SAFE_MARGIN,
+  TEXT_AREA_WIDTH,
+  columnWidth,
+  columns,
+  loadSettings,
+  saveSettings,
+  stylePresets,
+} from './settings'
 import { displayText } from './text'
 import type {
-  ColumnWidth,
   CoverStyle,
   EyebrowMetrics,
   GeneratorSettings,
   ShapeMode,
-  ShapeResult,
-  TapeTone,
   TextAlign,
 } from './types'
-
-const STORAGE_KEY = 'tape-type-settings-v7'
-const ARTBOARD_WIDTH = 1080
-const ARTBOARD_HEIGHT = 1350
-const SAFE_MARGIN = 80
-const TEXT_AREA_WIDTH = ARTBOARD_WIDTH - SAFE_MARGIN * 2
-const FONT_FAMILY = 'Barlow'
-const FONT_WEIGHT = 700
-type PreviewBackground = 'transparent' | 'charcoal' | 'yellow' | 'photo'
-type Position = { x: number; y: number }
-
-// Sampled from the published Alternative Dublin covers.
-const BRAND = { yellow: '#FFE900', light: '#F1F1F1', dark: '#111111', white: '#FFFFFF' }
-
-const tones: { value: TapeTone; label: string; tape: string | null; text: string }[] = [
-  { value: 'light', label: 'Light', tape: BRAND.light, text: BRAND.dark },
-  { value: 'dark', label: 'Dark', tape: BRAND.dark, text: BRAND.white },
-  { value: 'yellow', label: 'Yellow', tape: BRAND.yellow, text: BRAND.dark },
-  { value: 'none', label: 'None', tape: null, text: BRAND.white },
-]
 
 const styles: { value: CoverStyle; label: string; description: string }[] = [
   { value: 'headline', label: 'Headline', description: 'Title Case · block or strips' },
   { value: 'feature', label: 'Feature', description: 'All caps · torn strips' },
 ]
 
-// Choosing a style resets the treatment to its house look; everything stays adjustable afterwards.
-const stylePresets: Record<CoverStyle, Partial<GeneratorSettings>> = {
-  headline: { perLine: false, tone: 'light', align: 'left', mode: 'clean', column: 'narrow', hugStrength: 1, rotationVariance: 0, lineGap: 2 },
-  feature: { perLine: true, tone: 'light', align: 'center', mode: 'torn', column: 'wide', hugStrength: 1, rotationVariance: 0.6, lineGap: 8 },
-}
-
 const eyebrowSuggestions = ['Breaking', 'News', 'Exclusive', 'The Big Read']
 
-// Published headline blocks mostly sit in a column about half the cover wide; features run wider.
-const columns: { value: ColumnWidth; label: string; width: number }[] = [
-  { value: 'narrow', label: 'Narrow', width: 620 },
-  { value: 'medium', label: 'Medium', width: 760 },
-  { value: 'wide', label: 'Wide', width: TEXT_AREA_WIDTH },
-]
-const columnWidth = (column: ColumnWidth) => columns.find((entry) => entry.value === column)?.width ?? TEXT_AREA_WIDTH
-
 const positions: { label: string; y: number }[] = [
-  { label: 'Top', y: 18 },
+  { label: 'Top', y: 0 },
   { label: 'Middle', y: 50 },
-  { label: 'Bottom', y: 82 },
+  { label: 'Bottom', y: 100 },
 ]
 
 const samples = [
@@ -90,76 +80,10 @@ const modes: { value: ShapeMode; label: string; description: string }[] = [
   { value: 'rough', label: 'Rough cut', description: 'Sharper transitions' },
 ]
 
-const defaults: GeneratorSettings = {
-  headline: 'How to make the most of a weekend visit to Dublin',
-  style: 'headline',
-  titleCase: true,
-  tone: 'light',
-  eyebrowEnabled: true,
-  eyebrow: 'Breaking',
-  coverFormat: 'regular',
-  column: 'narrow',
-  autoSize: true,
-  fontSize: 90,
-  align: 'left',
-  autoWrap: true,
-  perLine: false,
-  rotationVariance: 0,
-  lineGap: 2,
-  hugStrength: 1,
-  preferredEdge: 'auto',
-  mode: 'clean',
-  seed: 18473562,
-  seedLocked: false,
-}
-
-function oneOf<T>(value: unknown, allowed: readonly T[], fallback: T): T {
-  return allowed.includes(value as T) ? value as T : fallback
-}
-
-function numberIn(value: unknown, min: number, max: number, fallback: number) {
-  return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback
-}
-
-/** Stored settings are untrusted: older builds and hand edits can leave out-of-range or unknown values. */
-function sanitizeSettings(stored: Record<string, unknown>): GeneratorSettings {
-  const text = (value: unknown, fallback: string) => typeof value === 'string' ? value : fallback
-  const flag = (value: unknown, fallback: boolean) => typeof value === 'boolean' ? value : fallback
-  return {
-    headline: text(stored.headline, defaults.headline),
-    style: oneOf(stored.style, ['headline', 'feature'] as const, defaults.style),
-    titleCase: flag(stored.titleCase, defaults.titleCase),
-    tone: oneOf(stored.tone, ['light', 'dark', 'yellow', 'none'] as const, defaults.tone),
-    eyebrowEnabled: flag(stored.eyebrowEnabled, defaults.eyebrowEnabled),
-    eyebrow: text(stored.eyebrow, defaults.eyebrow),
-    coverFormat: oneOf(stored.coverFormat, ['regular', 'series'] as const, defaults.coverFormat),
-    column: oneOf(stored.column, ['narrow', 'medium', 'wide'] as const, defaults.column),
-    autoSize: flag(stored.autoSize, defaults.autoSize),
-    fontSize: Math.round(numberIn(stored.fontSize, 72, 90, defaults.fontSize)),
-    align: oneOf(stored.align, ['left', 'center', 'right'] as const, defaults.align),
-    autoWrap: flag(stored.autoWrap, defaults.autoWrap),
-    perLine: flag(stored.perLine, defaults.perLine),
-    rotationVariance: numberIn(stored.rotationVariance, 0, 2, defaults.rotationVariance),
-    lineGap: numberIn(stored.lineGap, -8, 20, defaults.lineGap),
-    hugStrength: numberIn(stored.hugStrength, 0.82, 1.16, defaults.hugStrength),
-    preferredEdge: oneOf(stored.preferredEdge, ['auto', 'left', 'right', 'top', 'bottom'] as const, defaults.preferredEdge),
-    mode: oneOf(stored.mode, ['clean', 'tape', 'cling', 'rough', 'torn'] as const, defaults.mode),
-    seed: Math.max(1, Math.floor(numberIn(stored.seed, 1, 4294967295, defaults.seed))),
-    seedLocked: flag(stored.seedLocked, defaults.seedLocked),
-  }
-}
-
-function loadSettings(): GeneratorSettings {
-  try {
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null')
-    return stored && typeof stored === 'object' ? sanitizeSettings(stored) : defaults
-  } catch {
-    return defaults
-  }
-}
-
-const fontShorthand = (size: number) => `${FONT_WEIGHT} ${size}px "${FONT_FAMILY}"`
+// Large enough for a 3× export without upscaling, small enough to keep SVGs and the clipboard manageable.
+const PHOTO_MAX_EDGE = 4050
 const eyebrowSizeFor = (fontSize: number) => Math.round(Math.min(56, Math.max(30, fontSize * 0.46)))
+const anchorX = (align: TextAlign) => align === 'left' ? 0 : align === 'center' ? 50 : 100
 
 /** Bumps whenever a web font finishes loading, so measurements taken against a fallback get redone. */
 function useFontVersion() {
@@ -176,9 +100,9 @@ function useFontVersion() {
 function useTextLayout(settings: GeneratorSettings) {
   const fontVersion = useFontVersion()
   const caps = settings.style === 'feature'
-  const headline = useMemo(() => displayText(settings.headline.replace(/\r/g, ''), settings.style, settings.titleCase)
+  const headline = useMemo(() => displayText(stripControlCharacters(settings.headline.replace(/\r/g, '')), settings.style, settings.titleCase)
     .split('\n').map((line) => line.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n'), [settings.headline, settings.style, settings.titleCase])
-  const eyebrowText = settings.eyebrowEnabled ? settings.eyebrow.replace(/\s+/g, ' ').trim().toLocaleUpperCase() : ''
+  const eyebrowText = settings.eyebrowEnabled ? stripControlCharacters(settings.eyebrow).replace(/\s+/g, ' ').trim().toLocaleUpperCase() : ''
 
   // Ask for exactly the faces/subsets this text needs (e.g. latin-ext for "ő"); loadingdone triggers a re-measure.
   useEffect(() => {
@@ -194,7 +118,7 @@ function useTextLayout(settings: GeneratorSettings) {
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
     if (!context) {
-      return { labels: [headline || ' '], widths: [1], originOffsets: [0], ascent: 68, descent: 14, fontSize: 90, characterCount, maxLines, overflow: false, caseWarning, eyebrow: undefined, fontVersion }
+      return { labels: [headline || ' '], widths: [1], originOffsets: [0], ascent: 68, descent: 14, fontSize: 90, characterCount, maxLines, overflow: false, empty: !headline, caseWarning, eyebrow: undefined, fontVersion }
     }
 
     const measureAtSize = (fontSize: number) => {
@@ -225,7 +149,7 @@ function useTextLayout(settings: GeneratorSettings) {
         measured = measureAtSize(fontSize)
       }
     }
-    const overflow = measured.labels.length > maxLines || Math.max(...measured.widths) > measureWidth
+    const overflow = Boolean(headline) && (measured.labels.length > maxLines || Math.max(...measured.widths) > measureWidth)
 
     let eyebrow: EyebrowMetrics | undefined
     if (eyebrowText) {
@@ -242,110 +166,8 @@ function useTextLayout(settings: GeneratorSettings) {
         descent: Math.max(0, metric.actualBoundingBoxDescent || 0),
       }
     }
-    return { ...measured, fontSize, characterCount, maxLines, overflow, caseWarning, eyebrow, fontVersion }
+    return { ...measured, fontSize, characterCount, maxLines, overflow, empty: !headline, caseWarning, eyebrow, fontVersion }
   }, [headline, eyebrowText, caps, settings.headline, settings.autoWrap, settings.coverFormat, settings.column, settings.autoSize, settings.fontSize, fontVersion])
-}
-
-/** One drawing list feeds the live preview, the SVG exports and the PNG exports, so they cannot drift apart. */
-type Layer =
-  | { kind: 'path'; d: string; fill: string; angle: number; cx: number; cy: number }
-  | { kind: 'text'; text: string; x: number; y: number; size: number; fill: string; angle: number; cx: number; cy: number }
-
-function buildLayers(shape: ShapeResult, settings: GeneratorSettings, fontSize: number): Layer[] {
-  const tone = tones.find((entry) => entry.value === settings.tone) ?? tones[0]
-  const layers: Layer[] = []
-  const texts: Layer[] = []
-  const pieces = shape.strips?.length
-    ? shape.strips.map((strip) => ({ path: strip.path, line: strip.line, angle: strip.angle, cx: strip.centerX, cy: strip.centerY }))
-    : shape.lines.map((line, index) => ({ path: index === 0 ? shape.path : '', line, angle: 0, cx: 0, cy: 0 }))
-
-  for (const piece of pieces) {
-    if (tone.tape && piece.path) layers.push({ kind: 'path', d: piece.path, fill: tone.tape, angle: piece.angle, cx: piece.cx, cy: piece.cy })
-    texts.push({ kind: 'text', text: piece.line.text, x: piece.line.x, y: piece.line.baseline, size: fontSize, fill: tone.text, angle: piece.angle, cx: piece.cx, cy: piece.cy })
-  }
-  if (shape.eyebrow) {
-    const { eyebrow } = shape
-    // On a yellow headline the label flips to white so it still reads as a separate tag.
-    const fill = settings.tone === 'yellow' ? BRAND.white : BRAND.yellow
-    layers.push({ kind: 'path', d: eyebrow.path, fill, angle: eyebrow.angle, cx: eyebrow.centerX, cy: eyebrow.centerY })
-    texts.push({ kind: 'text', text: eyebrow.text, x: eyebrow.x, y: eyebrow.baseline, size: eyebrow.fontSize, fill: BRAND.dark, angle: eyebrow.angle, cx: eyebrow.centerX, cy: eyebrow.centerY })
-  }
-  return [...layers, ...texts]
-}
-
-const escapeText = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-const escapeAttribute = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
-
-function layersToSvg(layers: Layer[]) {
-  return layers.map((layer) => {
-    const transform = layer.angle ? ` transform="rotate(${layer.angle} ${layer.cx} ${layer.cy})"` : ''
-    if (layer.kind === 'path') return `<path d="${layer.d}" fill="${layer.fill}"${transform}/>`
-    return `<text x="${layer.x}" y="${layer.y}" font-family="${FONT_FAMILY}, sans-serif" font-size="${layer.size}" font-weight="${FONT_WEIGHT}" fill="${layer.fill}"${transform}>${escapeText(layer.text)}</text>`
-  }).join('')
-}
-
-function drawLayers(context: CanvasRenderingContext2D, layers: Layer[]) {
-  for (const layer of layers) {
-    context.save()
-    if (layer.angle) {
-      context.translate(layer.cx, layer.cy)
-      context.rotate(layer.angle * Math.PI / 180)
-      context.translate(-layer.cx, -layer.cy)
-    }
-    context.fillStyle = layer.fill
-    if (layer.kind === 'path') {
-      context.fill(new Path2D(layer.d))
-    } else {
-      context.font = fontShorthand(layer.size)
-      context.textAlign = 'start'
-      context.textBaseline = 'alphabetic'
-      context.fillText(layer.text, layer.x, layer.y)
-    }
-    context.restore()
-  }
-}
-
-function getPlacement(shape: ShapeResult, position: Position) {
-  const desiredCenterX = ARTBOARD_WIDTH * position.x / 100
-  const desiredCenterY = ARTBOARD_HEIGHT * position.y / 100
-  let x = desiredCenterX - (shape.viewBox.x + shape.viewBox.width / 2)
-  let y = desiredCenterY - (shape.viewBox.y + shape.viewBox.height / 2)
-  const inkSpans = shape.lines.map((line) => [line.inkX ?? line.x, (line.inkX ?? line.x) + line.width])
-  if (shape.eyebrow) inkSpans.push([shape.eyebrow.box.x, shape.eyebrow.box.x + shape.eyebrow.box.width])
-  const textLeft = Math.min(...inkSpans.map(([left]) => left))
-  const textRight = Math.max(...inkSpans.map(([, right]) => right))
-  const minimumTextX = SAFE_MARGIN - textLeft
-  const maximumTextX = ARTBOARD_WIDTH - SAFE_MARGIN - textRight
-  x = minimumTextX <= maximumTextX
-    ? Math.max(minimumTextX, Math.min(maximumTextX, x))
-    : ARTBOARD_WIDTH / 2 - (textLeft + textRight) / 2
-  const shapeMargin = 48
-  if (shape.viewBox.height <= ARTBOARD_HEIGHT - shapeMargin * 2) {
-    y = Math.max(shapeMargin - shape.viewBox.y, Math.min(ARTBOARD_HEIGHT - shapeMargin - shape.viewBox.y - shape.viewBox.height, y))
-  }
-  return { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }
-}
-
-function svgMarkup(
-  layers: Layer[],
-  shape: ShapeResult,
-  options: { artboard?: boolean; background?: PreviewBackground; photo?: string | null; position?: Position } = {},
-) {
-  const { artboard = true, background = 'transparent', photo = null, position = { x: 50, y: 50 } } = options
-  if (!artboard) {
-    const { viewBox } = shape
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}" width="${viewBox.width}" height="${viewBox.height}">${layersToSvg(layers)}</svg>`
-  }
-  let backgroundMarkup = ''
-  if (background === 'charcoal') backgroundMarkup = `<rect width="1080" height="1350" fill="#242424"/>`
-  if (background === 'yellow') backgroundMarkup = `<rect width="1080" height="1350" fill="${BRAND.yellow}"/>`
-  if (background === 'photo' && photo) {
-    const href = escapeAttribute(photo)
-    // xlink:href as well as href: Illustrator and older SVG tools only read the xlink form.
-    backgroundMarkup = `<image href="${href}" xlink:href="${href}" width="1080" height="1350" preserveAspectRatio="xMidYMid slice"/><rect width="1080" height="1350" fill="#000" opacity=".12"/>`
-  }
-  const placement = getPlacement(shape, position)
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1080 1350" width="1080" height="1350">${backgroundMarkup}<g transform="translate(${placement.x} ${placement.y})">${layersToSvg(layers)}</g></svg>`
 }
 
 function downloadBlob(content: BlobPart, type: string, filename: string) {
@@ -354,7 +176,47 @@ function downloadBlob(content: BlobPart, type: string, filename: string) {
   anchor.href = url
   anchor.download = filename
   anchor.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1500)
+  // Phones can take a while to hand the file over; revoking too soon cancels the download.
+  setTimeout(() => URL.revokeObjectURL(url), 30000)
+}
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('unreadable'))
+    image.src = src
+  })
+}
+
+/**
+ * Decodes, downsizes and re-encodes an uploaded photo as sRGB JPEG, so the preview, PNG and SVG
+ * all use the same pixels and SVG exports stay a sensible size.
+ */
+async function preparePhoto(file: File) {
+  const source = URL.createObjectURL(file)
+  try {
+    const image = await loadImage(source)
+    const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(image.naturalWidth, image.naturalHeight))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('unreadable')
+    context.drawImage(image, 0, 0, canvas.width, canvas.height)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.9))
+    canvas.width = 0
+    canvas.height = 0
+    if (!blob) throw new Error('unreadable')
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(blob)
+    })
+  } finally {
+    URL.revokeObjectURL(source)
+  }
 }
 
 function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = false, format, onChange }: {
@@ -369,11 +231,14 @@ function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = 
   onChange: (value: number) => void
 }) {
   const progress = ((value - min) / (max - min)) * 100
+  const shown = format ? format(value) : `${Math.round(value * 100) / 100}${suffix}`
   return (
     <label className="range-field">
-      <span className="field-heading"><span>{label}</span><output>{format ? format(value) : `${Math.round(value * 100) / 100}${suffix}`}</output></span>
+      <span className="field-heading"><span>{label}</span><output>{shown}</output></span>
       <input
         type="range"
+        aria-label={label}
+        aria-valuetext={shown}
         min={min}
         max={max}
         step={step}
@@ -403,14 +268,12 @@ function SelectField({ label, value, children, onChange }: {
   )
 }
 
-const anchorX = (align: TextAlign) => align === 'left' ? 0 : align === 'center' ? 50 : 100
-
 function App() {
   const [settings, setSettings] = useState<GeneratorSettings>(loadSettings)
   const [history, setHistory] = useState<number[]>([settings.seed])
   const [historyIndex, setHistoryIndex] = useState(0)
   const [copied, setCopied] = useState<'svg' | 'seed' | null>(null)
-  const [exportMessage, setExportMessage] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [previewBackground, setPreviewBackground] = useState<PreviewBackground>('charcoal')
   const [photo, setPhoto] = useState<string | null>(null)
@@ -418,6 +281,7 @@ function App() {
   const [sampleOpen, setSampleOpen] = useState(false)
   const previewRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ pointerX: number; pointerY: number; x: number; y: number } | null>(null)
+  const noticeTimer = useRef<number | undefined>(undefined)
   const layout = useTextLayout(settings)
   const layoutSettings = useMemo<GeneratorSettings>(() => ({ ...settings, fontSize: layout.fontSize }), [settings, layout.fontSize])
   const shape = useMemo(() => buildShape(
@@ -429,6 +293,10 @@ function App() {
     { eyebrow: layout.eyebrow, tapeless: settings.tone === 'none' },
   ), [layoutSettings, layout, settings.tone])
   const layers = useMemo(() => buildLayers(shape, settings, layout.fontSize), [shape, settings, layout.fontSize])
+  const exportBlocked = layout.overflow || layout.empty
+
+  useEffect(() => { preloadEmbeddedFonts() }, [])
+  useEffect(() => { saveSettings(settings) }, [settings])
 
   const update = useCallback(<K extends keyof GeneratorSettings>(key: K, value: GeneratorSettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }))
@@ -444,13 +312,10 @@ function App() {
     setPosition((current) => ({ ...current, x: anchorX(align) }))
   }
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-    } catch {
-      // Private mode or full storage: the tool still works, it just won't remember settings.
-    }
-  }, [settings])
+  const setAutoSize = (autoSize: boolean) => {
+    // Turning auto size off keeps the size you were looking at instead of jumping to an old one.
+    setSettings((current) => ({ ...current, autoSize, fontSize: autoSize ? current.fontSize : layout.fontSize }))
+  }
 
   const setVariation = useCallback((seed: number, addHistory = true) => {
     update('seed', seed)
@@ -480,56 +345,51 @@ function App() {
   }
 
   const flash = (message: string) => {
-    setExportMessage(message)
-    setTimeout(() => setExportMessage(null), 4000)
+    setNotice(message)
+    window.clearTimeout(noticeTimer.current)
+    noticeTimer.current = window.setTimeout(() => setNotice(null), 6000)
+  }
+
+  const exportSvg = (artboard: boolean) => {
+    const text = layers.map((layer) => layer.kind === 'text' ? layer.text : '').join(' ')
+    return svgMarkup(layers, shape, { artboard, background: previewBackground, photo, position, fontCss: embeddedFontCss(text) })
   }
 
   const copy = async (kind: 'svg' | 'seed') => {
-    const value = kind === 'svg'
-      ? svgMarkup(layers, shape, { background: previewBackground, photo, position })
-      : String(settings.seed)
     try {
-      await navigator.clipboard.writeText(value)
+      await navigator.clipboard.writeText(kind === 'svg' ? exportSvg(true) : String(settings.seed))
       setCopied(kind)
       setTimeout(() => setCopied(null), 1400)
     } catch {
-      flash('Copy was blocked by the browser. Use Full SVG to download instead.')
+      flash('The browser blocked copying. Use Full SVG to download the file instead.')
     }
   }
 
-  const downloadSvg = (scope: 'artboard' | 'cutout') => {
-    const markup = svgMarkup(layers, shape, { artboard: scope === 'artboard', background: previewBackground, photo, position })
-    downloadBlob(markup, 'image/svg+xml', scope === 'artboard' ? 'tape-type-instagram.svg' : 'tape-cutout.svg')
+  const downloadSvg = (artboard: boolean) => {
+    downloadBlob(exportSvg(artboard), 'image/svg+xml', artboard ? 'tape-type-instagram.svg' : 'tape-cutout.svg')
   }
 
   const downloadPng = async (scale: 1 | 2 | 3) => {
     if (exporting) return
     setExporting(true)
     // Snapshot everything now, so edits made while the export runs cannot mix into this file.
-    const snapshot = { layers, shape, position, previewBackground, photo }
+    const snapshot: { layers: Layer[]; shape: typeof shape; position: Position; background: PreviewBackground; photo: string | null } = { layers, shape, position, background: previewBackground, photo }
+    const canvas = document.createElement('canvas')
     try {
       const sizes = [...new Set(snapshot.layers.flatMap((layer) => layer.kind === 'text' ? [layer.size] : []))]
       const allText = snapshot.layers.map((layer) => layer.kind === 'text' ? layer.text : '').join(' ')
       await Promise.all(sizes.map((size) => document.fonts.load(fontShorthand(size), allText)))
-      const canvas = document.createElement('canvas')
       canvas.width = ARTBOARD_WIDTH * scale
       canvas.height = ARTBOARD_HEIGHT * scale
       const context = canvas.getContext('2d')
-      if (!context) throw new Error('Canvas unavailable')
+      if (!context) throw new Error('this device could not create the image')
       context.scale(scale, scale)
-      if (snapshot.previewBackground === 'charcoal') {
-        context.fillStyle = '#242424'
+      const fill = BACKGROUND_FILLS[snapshot.background]
+      if (fill) {
+        context.fillStyle = fill
         context.fillRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT)
-      } else if (snapshot.previewBackground === 'yellow') {
-        context.fillStyle = BRAND.yellow
-        context.fillRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT)
-      } else if (snapshot.previewBackground === 'photo' && snapshot.photo) {
-        const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-          const nextImage = new Image()
-          nextImage.onload = () => resolve(nextImage)
-          nextImage.onerror = () => reject(new Error('Photo could not be read'))
-          nextImage.src = snapshot.photo as string
-        })
+      } else if (snapshot.background === 'photo' && snapshot.photo) {
+        const image = await loadImage(snapshot.photo)
         const imageScale = Math.max(ARTBOARD_WIDTH / image.naturalWidth, ARTBOARD_HEIGHT / image.naturalHeight)
         const width = image.naturalWidth * imageScale
         const height = image.naturalHeight * imageScale
@@ -541,25 +401,36 @@ function App() {
       context.translate(placement.x, placement.y)
       drawLayers(context, snapshot.layers)
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-      if (!blob) throw new Error('This device could not create the image')
+      if (!blob) throw new Error('this device could not create an image that large')
       downloadBlob(blob, 'image/png', `tape-type-instagram-${scale}x.png`)
     } catch (error) {
-      flash(`PNG export failed: ${error instanceof Error ? error.message : 'unknown error'}. Try a smaller size.`)
+      flash(`PNG export failed: ${error instanceof Error ? error.message : 'unknown error'}.${scale > 1 ? ' Try a smaller size.' : ''}`)
     } finally {
+      // Release the (up to 50 MB) bitmap straight away; phones run out of canvas memory quickly.
+      canvas.width = 0
+      canvas.height = 0
       setExporting(false)
     }
   }
 
-  const choosePhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const choosePhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      setPhoto(String(reader.result))
+    try {
+      setPhoto(await preparePhoto(file))
+      setPreviewBackground('photo')
+    } catch {
+      flash('That photo couldn’t be opened in this browser. HEIC photos need converting to JPEG first.')
+    }
+  }
+
+  const clickPhoto = (event: React.MouseEvent) => {
+    // With a photo already loaded, the first click switches back to it; the next one replaces it.
+    if (photo && previewBackground !== 'photo') {
+      event.preventDefault()
       setPreviewBackground('photo')
     }
-    reader.readAsDataURL(file)
   }
 
   const startDrag = (event: React.PointerEvent) => {
@@ -578,9 +449,22 @@ function App() {
     })
   }
 
+  const nudge = (event: React.KeyboardEvent) => {
+    const step = event.shiftKey ? 10 : 2
+    const moves: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }
+    const move = moves[event.key]
+    if (!move) return
+    event.preventDefault()
+    setPosition((current) => ({
+      x: Math.max(0, Math.min(100, current.x + move[0])),
+      y: Math.max(0, Math.min(100, current.y + move[1])),
+    }))
+  }
+
   const placement = getPlacement(shape, position)
   const isFeature = settings.style === 'feature'
   const locked = settings.seedLocked
+  const blockedReason = layout.empty ? 'Type a headline to export.' : 'Edit the headline so it fits before exporting.'
 
   return (
     <div className="app-shell">
@@ -607,7 +491,7 @@ function App() {
             <div className="section-label-row">
               <h2>Headline</h2>
               <div className="sample-picker">
-                <button className="text-button" onClick={() => setSampleOpen((open) => !open)}>Try a sample <ChevronDown size={14} /></button>
+                <button className="text-button" aria-expanded={sampleOpen} onClick={() => setSampleOpen((open) => !open)}>Try a sample <ChevronDown size={14} /></button>
                 {sampleOpen && (
                   <div className="sample-menu">
                     {samples.map((sample, index) => (
@@ -643,15 +527,15 @@ function App() {
 
           <section className="control-section brand-format-section">
             <h2>Style</h2>
-            <div className="style-toggle" aria-label="Cover style">
+            <div className="style-toggle" role="group" aria-label="Cover style">
               {styles.map((style) => (
-                <button key={style.value} className={settings.style === style.value ? 'active' : ''} onClick={() => chooseStyle(style.value)}>
+                <button key={style.value} aria-pressed={settings.style === style.value} className={settings.style === style.value ? 'active' : ''} onClick={() => chooseStyle(style.value)}>
                   <strong className={style.value === 'feature' ? 'caps' : ''}>{style.label}</strong>
                   <small>{style.description}</small>
                 </button>
               ))}
             </div>
-            <div className={`fit-status ${layout.overflow ? 'error' : layout.caseWarning ? 'warning' : ''}`}>
+            <div className={`fit-status ${layout.overflow ? 'error' : layout.caseWarning ? 'warning' : ''}`} role="status">
               <div><strong>{layout.fontSize}px</strong><span>{layout.labels.length} / {layout.maxLines} lines</span><span>{layout.characterCount} chars</span></div>
               <p>{layout.overflow ? 'Headline needs editing — it cannot fit within the approved type range.' : layout.caseWarning ? 'All caps is for Feature covers. Switch style, or retype the headline in title case.' : settings.coverFormat === 'series' ? 'Reserved 172px recurring-series scale.' : 'Fits the approved 72–90px cover flex zone.'}</p>
             </div>
@@ -677,9 +561,10 @@ function App() {
                   onChange={(event) => update('eyebrow', event.target.value)}
                 />
                 <div className="chip-row">
-                  {eyebrowSuggestions.map((suggestion) => (
-                    <button key={suggestion} className={settings.eyebrow.toLocaleLowerCase() === suggestion.toLocaleLowerCase() ? 'active' : ''} onClick={() => update('eyebrow', suggestion)}>{suggestion}</button>
-                  ))}
+                  {eyebrowSuggestions.map((suggestion) => {
+                    const active = settings.eyebrow.trim().toLocaleLowerCase() === suggestion.toLocaleLowerCase()
+                    return <button key={suggestion} aria-pressed={active} className={active ? 'active' : ''} onClick={() => update('eyebrow', suggestion)}>{suggestion}</button>
+                  })}
                 </div>
               </>
             )}
@@ -687,9 +572,9 @@ function App() {
 
           <section className="control-section composition-section">
             <h2>Tape</h2>
-            <div className="piece-toggle" aria-label="Tape piece mode">
-              <button className={!settings.perLine ? 'active' : ''} onClick={() => update('perLine', false)}>Block</button>
-              <button className={settings.perLine ? 'active' : ''} onClick={() => update('perLine', true)}>Strips</button>
+            <div className="piece-toggle" role="group" aria-label="Tape pieces">
+              <button aria-pressed={!settings.perLine} className={!settings.perLine ? 'active' : ''} onClick={() => update('perLine', false)}>Block</button>
+              <button aria-pressed={settings.perLine} className={settings.perLine ? 'active' : ''} onClick={() => update('perLine', true)}>Strips</button>
             </div>
             <div className="tone-row" role="radiogroup" aria-label="Tape colour">
               {tones.map((tone) => (
@@ -700,7 +585,7 @@ function App() {
                   className={settings.tone === tone.value ? 'active' : ''}
                   onClick={() => update('tone', tone.value)}
                 >
-                  <i className={`tone-swatch ${tone.value}`} style={tone.tape ? { background: tone.tape, color: tone.text } : undefined}>Aa</i>
+                  <i className={`tone-swatch ${tone.value}`} aria-hidden="true" style={tone.tape ? { background: tone.tape, color: tone.text } : undefined}>Aa</i>
                   <span>{tone.label}</span>
                 </button>
               ))}
@@ -714,14 +599,15 @@ function App() {
 
           <section className="control-section">
             <h2>Cut style</h2>
-            <div className="mode-grid">
+            <div className="mode-grid" role="group" aria-label="Cut style">
               {modes.map((mode) => (
                 <button
                   key={mode.value}
+                  aria-pressed={settings.mode === mode.value}
                   className={settings.mode === mode.value ? 'active' : ''}
                   onClick={() => update('mode', mode.value)}
                 >
-                  <span className={`mode-icon ${mode.value}`}><i /><i /><i /></span>
+                  <span className={`mode-icon ${mode.value}`} aria-hidden="true"><i /><i /><i /></span>
                   <strong>{mode.label}</strong>
                   <small>{mode.description}</small>
                 </button>
@@ -731,35 +617,35 @@ function App() {
 
           <section className="control-section compact-grid typography-grid brand-type-section">
             <h2>Layout</h2>
-            <div className="brand-lock"><Lock size={14} /><span><strong>Barlow Bold</strong><small>700 · {isFeature ? 'ALL CAPS' : settings.titleCase ? 'Title Case' : 'as typed'} · {settings.coverFormat === 'series' ? TEXT_AREA_WIDTH : columnWidth(settings.column)}px column</small></span></div>
+            <div className="brand-lock"><Lock size={14} aria-hidden="true" /><span><strong>Barlow Bold</strong><small>700 · {isFeature ? 'ALL CAPS' : settings.titleCase ? 'Title Case' : 'as typed'} · {settings.coverFormat === 'series' ? TEXT_AREA_WIDTH : columnWidth(settings.column)}px column</small></span></div>
             <SelectField label="Alignment" value={settings.align} onChange={(value) => chooseAlign(value as TextAlign)}>
               <option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option>
             </SelectField>
             <div className="position-field">
               <span>Position</span>
-              <div className="piece-toggle compact" aria-label="Vertical position">
+              <div className="piece-toggle compact" role="group" aria-label="Vertical position">
                 {positions.map((entry) => (
-                  <button key={entry.label} className={Math.abs(position.y - entry.y) < 1 ? 'active' : ''} onClick={() => setPosition({ x: anchorX(settings.align), y: entry.y })}>{entry.label}</button>
+                  <button key={entry.label} aria-pressed={position.y === entry.y} className={position.y === entry.y ? 'active' : ''} onClick={() => setPosition({ x: anchorX(settings.align), y: entry.y })}>{entry.label}</button>
                 ))}
               </div>
             </div>
             <div className="position-field column-field">
               <span>Column</span>
-              <div className="piece-toggle compact" aria-label="Column width">
+              <div className="piece-toggle compact" role="group" aria-label="Column width">
                 {columns.map((entry) => (
-                  <button key={entry.value} className={settings.column === entry.value ? 'active' : ''} disabled={settings.coverFormat === 'series'} onClick={() => update('column', entry.value)}>{entry.label}</button>
+                  <button key={entry.value} aria-pressed={settings.column === entry.value} className={settings.column === entry.value ? 'active' : ''} disabled={settings.coverFormat === 'series'} onClick={() => update('column', entry.value)}>{entry.label}</button>
                 ))}
               </div>
             </div>
-            <div className="piece-toggle format-toggle" aria-label="Cover format">
-              <button className={settings.coverFormat === 'regular' ? 'active' : ''} onClick={() => update('coverFormat', 'regular')}>Regular cover</button>
-              <button className={settings.coverFormat === 'series' ? 'active' : ''} onClick={() => update('coverFormat', 'series')}>Series cover</button>
+            <div className="piece-toggle format-toggle" role="group" aria-label="Cover format">
+              <button aria-pressed={settings.coverFormat === 'regular'} className={settings.coverFormat === 'regular' ? 'active' : ''} onClick={() => update('coverFormat', 'regular')}>Regular cover</button>
+              <button aria-pressed={settings.coverFormat === 'series'} className={settings.coverFormat === 'series' ? 'active' : ''} onClick={() => update('coverFormat', 'series')}>Series cover</button>
             </div>
             {settings.coverFormat === 'regular' && (
               <>
                 <label className="toggle-row auto-size-toggle">
                   <span>Auto size</span>
-                  <input type="checkbox" checked={settings.autoSize} onChange={(event) => update('autoSize', event.target.checked)} />
+                  <input type="checkbox" checked={settings.autoSize} onChange={(event) => setAutoSize(event.target.checked)} />
                   <span className="switch" />
                 </label>
                 <div className="size-control">
@@ -767,23 +653,25 @@ function App() {
                 </div>
               </>
             )}
-            <p className="automatic-note"><Sparkles size={13} /> Size, fit and cut depth stay inside the brand system</p>
+            <p className="automatic-note"><Sparkles size={13} aria-hidden="true" /> Size, fit and cut depth stay inside the brand system</p>
           </section>
         </aside>
 
         <section className="preview-column">
           <div className="preview-toolbar">
-            <div className="background-switcher" aria-label="Preview background">
-              <button className={previewBackground === 'transparent' ? 'active' : ''} onClick={() => setPreviewBackground('transparent')}>Clear</button>
-              <button className={previewBackground === 'charcoal' ? 'active' : ''} onClick={() => setPreviewBackground('charcoal')}>Dark</button>
-              <button className={previewBackground === 'yellow' ? 'active' : ''} onClick={() => setPreviewBackground('yellow')}>Yellow</button>
-              <label className={previewBackground === 'photo' ? 'active upload-button' : 'upload-button'}>
+            <div className="background-switcher" role="group" aria-label="Preview background">
+              <button aria-pressed={previewBackground === 'transparent'} className={previewBackground === 'transparent' ? 'active' : ''} onClick={() => setPreviewBackground('transparent')}>Clear</button>
+              <button aria-pressed={previewBackground === 'charcoal'} className={previewBackground === 'charcoal' ? 'active' : ''} onClick={() => setPreviewBackground('charcoal')}>Dark</button>
+              <button aria-pressed={previewBackground === 'yellow'} className={previewBackground === 'yellow' ? 'active' : ''} onClick={() => setPreviewBackground('yellow')}>Yellow</button>
+              <label className={previewBackground === 'photo' ? 'active upload-button' : 'upload-button'} onClick={clickPhoto} title={photo ? 'Click again to replace the photo' : 'Choose a photo'}>
                 <input type="file" accept="image/*" onChange={choosePhoto} />
-                {photo ? <ImageIcon size={14} /> : <Upload size={14} />} Photo
+                {photo ? <ImageIcon size={14} aria-hidden="true" /> : <Upload size={14} aria-hidden="true" />} Photo
               </label>
             </div>
-            <p>1080 × 1350 · drag treatment to position</p>
+            <p>1080 × 1350 · drag or use arrow keys to position</p>
           </div>
+
+          {notice && <p className="notice" role="alert">{notice}</p>}
 
           <div
             ref={previewRef}
@@ -791,14 +679,18 @@ function App() {
             style={photo && previewBackground === 'photo' ? { backgroundImage: `linear-gradient(rgba(0,0,0,.12),rgba(0,0,0,.12)), url(${photo})` } : undefined}
           >
             {previewBackground === 'photo' && !photo && (
-              <label className="photo-empty"><Upload size={24} /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
+              <label className="photo-empty"><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
             )}
             <div
               className="artwork draggable"
+              tabIndex={0}
+              role="application"
+              aria-label="Artwork position. Drag, or use the arrow keys (Shift for bigger steps)."
               onPointerDown={startDrag}
               onPointerMove={drag}
               onPointerUp={() => { dragRef.current = null }}
               onPointerCancel={() => { dragRef.current = null }}
+              onKeyDown={nudge}
             >
               <svg
                 role="img"
@@ -823,7 +715,7 @@ function App() {
           <div className="variation-bar">
             <div className="variation-controls">
               <button className="icon-button" aria-label="Previous variation" disabled={locked || historyIndex === 0} onClick={previous}><ArrowLeft size={18} /></button>
-              <button className="randomise-button" disabled={locked} onClick={randomise}><Sparkles size={17} /> Randomise cut</button>
+              <button className="randomise-button" disabled={locked} onClick={randomise}><Sparkles size={17} aria-hidden="true" /> Randomise cut</button>
               <button className="icon-button" aria-label="Next variation" disabled={locked} onClick={next}><ArrowRight size={18} /></button>
             </div>
             <div className="seed-control">
@@ -844,15 +736,15 @@ function App() {
             <div>
               <p className="eyebrow">Ready for layout</p>
               <strong>Export clean, editable artwork</strong>
-              {exportMessage && <p className="export-message" role="status">{exportMessage}</p>}
+              {exportBlocked && <p className="export-message">{blockedReason}</p>}
             </div>
             <div className="export-actions">
-              <button onClick={() => copy('svg')}>{copied === 'svg' ? <Check size={16} /> : <Clipboard size={16} />}{copied === 'svg' ? 'Copied' : 'Copy SVG'}</button>
-              <button onClick={() => downloadSvg('cutout')}><Download size={16} /> Cutout SVG</button>
-              <button disabled={exporting} onClick={() => downloadPng(1)}><Download size={16} /> PNG 1×</button>
-              <button className="png-fallback" disabled={exporting} onClick={() => downloadPng(2)}><Download size={16} /> PNG 2×</button>
-              <button disabled={exporting} onClick={() => downloadPng(3)}><Download size={16} /> PNG 3×</button>
-              <button className="primary" onClick={() => downloadSvg('artboard')}><Download size={16} /> Full SVG</button>
+              <button disabled={exportBlocked} onClick={() => copy('svg')}>{copied === 'svg' ? <Check size={16} /> : <Clipboard size={16} />}{copied === 'svg' ? 'Copied' : 'Copy SVG'}</button>
+              <button disabled={exportBlocked} onClick={() => downloadSvg(false)}><Download size={16} aria-hidden="true" /> Cutout SVG</button>
+              <button disabled={exportBlocked || exporting} onClick={() => downloadPng(1)}><Download size={16} aria-hidden="true" /> PNG 1×</button>
+              <button className="png-fallback" disabled={exportBlocked || exporting} onClick={() => downloadPng(2)}><Download size={16} aria-hidden="true" /> PNG 2×</button>
+              <button disabled={exportBlocked || exporting} onClick={() => downloadPng(3)}><Download size={16} aria-hidden="true" /> PNG 3×</button>
+              <button className="primary" disabled={exportBlocked} onClick={() => downloadSvg(true)}><Download size={16} aria-hidden="true" /> Full SVG</button>
             </div>
           </div>
         </section>

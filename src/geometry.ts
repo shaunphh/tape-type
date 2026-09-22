@@ -339,11 +339,12 @@ function pushJoin(
   depth: number,
   padding: number,
 ) {
+  const joint: Point[] = []
   if (treatment === 'angled') {
-    points.push({ x: fromX, y: y - direction * depth / 2 }, { x: toX, y: y + direction * depth / 2 })
+    joint.push({ x: fromX, y: y - direction * depth / 2 }, { x: toX, y: y + direction * depth / 2 })
   } else if (treatment === 'stepped') {
     const middle = fromX + (toX - fromX) * 0.58
-    points.push(
+    joint.push(
       { x: fromX, y: y - direction * depth * 0.55 },
       { x: middle, y: y - direction * depth * 0.55 },
       { x: middle, y: y + direction * depth * 0.22 },
@@ -352,14 +353,20 @@ function pushJoin(
   } else if (treatment === 'tucked') {
     const inset = Math.min(padding * 0.32, 5)
     const tuckedX = outward === 1 ? Math.min(fromX, toX) - inset : Math.max(fromX, toX) + inset
-    points.push(
+    joint.push(
       { x: fromX, y: y - direction * depth * 0.48 },
       { x: tuckedX, y },
       { x: toX, y: y + direction * depth * 0.48 },
     )
   } else {
-    points.push({ x: fromX, y }, { x: toX, y })
+    joint.push({ x: fromX, y }, { x: toX, y })
   }
+  // Glyphs of whichever line reaches further run right over the step, so the join may only
+  // bend into the empty side: below a longer upper line, above a longer lower line.
+  // (On both edges the upper line is the longer one exactly when fromX > toX.)
+  const offsets = joint.map((point) => point.y - y)
+  const shift = fromX > toX ? -Math.min(0, ...offsets) : -Math.max(0, ...offsets)
+  points.push(...joint.map((point) => ({ x: point.x, y: point.y + shift })))
 }
 
 function makeBasePolygon(
@@ -602,10 +609,16 @@ export function buildShape(
   fontBounds?: { ascent: number; descent: number },
   options: ShapeOptions = {},
 ): ShapeResult {
-  const shape = buildTapeShape(settings, labels, widths, originOffsets, fontBounds)
+  const tapeShape = buildTapeShape(settings, labels, widths, originOffsets, fontBounds)
+  const ascent = fontBounds?.ascent ?? settings.fontSize * 0.76
+  const descent = fontBounds?.descent ?? settings.fontSize * 0.14
+  const lastLine = tapeShape.lines[tapeShape.lines.length - 1]
+  const inkBounds = lastLine
+    ? { top: tapeShape.lines[0].baseline - ascent, bottom: lastLine.baseline + descent }
+    : { top: tapeShape.viewBox.y, bottom: tapeShape.viewBox.y + tapeShape.viewBox.height }
+  const shape = { ...tapeShape, inkBounds }
   if (!options.eyebrow?.text.trim() || !shape.lines.length) return shape
 
-  const ascent = fontBounds?.ascent ?? settings.fontSize * 0.76
   const firstLine = shape.lines[0]
   const firstPoints = shape.strips?.[0]?.points ?? shape.points
   const tapeTop = Math.min(...firstPoints.map((point) => point.y))
@@ -616,7 +629,12 @@ export function buildShape(
     ? { left: inkLeft, right: inkLeft + firstLine.width, top: firstLine.baseline - ascent, gap: settings.fontSize * 0.22, overhang: 0 }
     : { left: Math.min(...topEdge), right: Math.max(...topEdge), top: tapeTop, gap: -1, overhang: 1 }
   const eyebrow = placeEyebrow(options.eyebrow, anchor, settings, mulberry32((settings.seed ^ 0x9e3779b9) >>> 0))
-  return { ...shape, eyebrow, viewBox: unionViewBox(shape.viewBox, rotatedCorners(eyebrow), 7) }
+  return {
+    ...shape,
+    eyebrow,
+    inkBounds: { top: Math.min(inkBounds.top, eyebrow.box.y), bottom: inkBounds.bottom },
+    viewBox: unionViewBox(shape.viewBox, rotatedCorners(eyebrow), 7),
+  }
 }
 
 function placeEyebrow(

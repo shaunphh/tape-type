@@ -80,6 +80,8 @@ export interface ShapeResult {
   strips?: ShapeStrip[]
   lines: TextLine[]
   eyebrow?: EyebrowShape
+  /** Vertical extent of the text ink (and eyebrow label), used to keep it inside the safe area. */
+  inkBounds?: { top: number; bottom: number }
   viewBox: { x: number; y: number; width: number; height: number }
   personality: string
 }

@@ -44,6 +44,8 @@ export interface HeadlineLayout {
   fontSize: number
   weight: number
   characterCount: number
+  /** Lines the writer typed (paragraphs), which wrapping can split but never join. */
+  paragraphs: number
   maxLines: number
   measureWidth: number
   overflow: OverflowReason | null
@@ -94,7 +96,18 @@ export function layoutHeadline(input: LayoutInput, measure: Measure): HeadlineLa
   }
 
   // Balancing only moves breaks (never adds lines), so it runs once, at the chosen size.
-  const labels = wrapAt(fontSize, true)
+  let labels = wrapAt(fontSize, true)
+  // When a minor word would still have to open a line, a few pixels smaller usually gives a clean break.
+  if (avoidStart && input.autoSize && !series && labels.slice(1).some(startsLowercase)) {
+    for (let smaller = fontSize - 1; smaller >= Math.max(MIN_SIZE, fontSize - 8); smaller -= 1) {
+      const candidate = wrapAt(smaller, true)
+      if (candidate.length <= labels.length && fits(candidate, smaller) && !candidate.slice(1).some(startsLowercase)) {
+        fontSize = smaller
+        labels = candidate
+        break
+      }
+    }
+  }
   const metrics = labels.map((label) => measure(label, fontSize, weight))
   // Capitals have no descenders, so feature strips are balanced on cap height rather than on "g/j".
   const reference = measure(caps ? 'H' : 'Hgj', fontSize, weight)
@@ -133,6 +146,7 @@ export function layoutHeadline(input: LayoutInput, measure: Measure): HeadlineLa
     fontSize,
     weight,
     characterCount,
+    paragraphs: text ? text.split('\n').length : 0,
     maxLines,
     measureWidth,
     overflow,

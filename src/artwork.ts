@@ -102,10 +102,10 @@ export function placementRange(shape: ShapeResult) {
   const axis = (low: number, high: number, size: number) => {
     const minimum = SAFE_MARGIN - low
     const maximum = size - SAFE_MARGIN - high
-    if (minimum <= maximum) return { minimum, maximum }
-    // Lettering bigger than the safe area can't move: centre it.
+    if (minimum <= maximum) return { minimum, maximum, excess: 0 }
+    // Lettering bigger than the safe area can't move: centre it, and report by how much it overflows.
     const centred = (size - low - high) / 2
-    return { minimum: centred, maximum: centred }
+    return { minimum: centred, maximum: centred, excess: minimum - maximum }
   }
   return { x: axis(ink.left, ink.right, ARTBOARD_WIDTH), y: axis(ink.top, ink.bottom, ARTBOARD_HEIGHT) }
 }

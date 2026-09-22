@@ -634,7 +634,8 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
   height: 100%;
   user-select: none;
 }
-.artwork svg { display: block; width: 100%; height: 100%; overflow: hidden; }
+/* The artwork div handles every pointer event, so touch capture never starts on an SVG child. */
+.artwork svg { display: block; width: 100%; height: 100%; overflow: hidden; pointer-events: none; }
 .artwork.draggable {
   position: absolute;
   inset: 0;

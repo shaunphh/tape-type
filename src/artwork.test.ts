@@ -50,6 +50,14 @@ describe('placement', () => {
     }
   })
 
+  it('reports how far lettering bigger than the safe area overflows it', () => {
+    const fits = buildShape({ ...settings, fontSize: 80 }, labels, widths, [], bounds)
+    expect(placementRange(fits).x.excess).toBe(0)
+    const wide = buildShape({ ...settings, fontSize: 80 }, ['A very long line indeed'], [960], [], bounds)
+    expect(placementRange(wide).x.excess).toBeCloseTo(960 - 920, 5)
+    expect(getPlacement(wide, { x: 0, y: 50 }).x).toBe(getPlacement(wide, { x: 100, y: 50 }).x)
+  })
+
   it('lets the tape and tag reach into the margin while the lettering sits on the safe line', () => {
     const shape = buildShape({ ...settings, fontSize: 80 }, labels, widths, [], bounds, { eyebrow })
     const { x } = getPlacement(shape, { x: 0, y: 50 })

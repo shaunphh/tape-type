@@ -514,6 +514,37 @@ function tornStrip(left: number, right: number, top: number, bottom: number, fon
   return hasSelfIntersection(withSliver) ? points : withSliver
 }
 
+/** Points spread over each line's ink. A cut may never uncover a point the tape covered before it. */
+function inkSamples(lines: TextLine[], ascent: number, descent: number) {
+  const samples: Point[] = []
+  for (const line of lines) {
+    if (!line.text.trim()) continue
+    const left = (line.inkX ?? line.x) + 0.5
+    const right = (line.inkX ?? line.x) + line.width - 0.5
+    // Half a pixel inside the tops of the capitals and the ends of the descenders, where a cut bites first.
+    for (const y of [line.baseline - ascent + 0.5, line.baseline - ascent * 0.5, line.baseline + Math.max(0, descent - 0.5)]) {
+      for (let x = left; x < right; x += 3) samples.push({ x, y })
+      samples.push({ x: right, y })
+    }
+  }
+  return samples
+}
+
+function insidePolygon(point: Point, polygon: Point[]) {
+  let inside = false
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const a = polygon[i]
+    const b = polygon[j]
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) inside = !inside
+  }
+  return inside
+}
+
+/** A cut is kept only if it doesn't cross itself and still covers every letter the tape covered before it. */
+function acceptsCut(before: Point[], after: Point[], samples: Point[]) {
+  return !hasSelfIntersection(after) && samples.every((sample) => !insidePolygon(sample, before) || insidePolygon(sample, after))
+}
+
 interface Padding {
   /** Padding at each end of a line, including a headline's longer run-out after the last word. */
   left: number
@@ -598,13 +629,16 @@ function buildSeparateShape(
       { x: left + leanLeft, y: bottom },
     ]
 
+    const samples = inkSamples([stripLine], ascent, descent)
     if (plain) {
       // A clean rectangle, like the published headline strips.
     } else if (settings.mode === 'torn') {
-      points = tornStrip(left, right, top, bottom, settings.fontSize, random)
+      const torn = tornStrip(left, right, top, bottom, settings.fontSize, random)
+      if (acceptsCut(points, torn, samples)) points = torn
     } else if (index === personality.targetLine) {
       if (personality.primary === 'clip') {
-        points = clipCorner(points, personality.edge, { x: naturalSide === 'right' ? right : left, y: (top + bottom) / 2 }, Math.min(10, 4 + structuralDepth * 0.22))
+        const clipped = clipCorner(points, personality.edge, { x: naturalSide === 'right' ? right : left, y: (top + bottom) / 2 }, Math.min(10, 4 + structuralDepth * 0.22))
+        if (acceptsCut(points, clipped, samples)) points = clipped
       } else {
         const requested = eligibleEdges(points, personality.edge, 18)
         const fallback = eligibleEdges(points, naturalSide, 18)
@@ -621,13 +655,13 @@ function buildSeparateShape(
           const mutated = personality.primary === 'slant'
             ? slantEdge(points, edge, structuralDepth, random)
             : mutateEdge(points, edge, personality.primary, depth, random, centerBias)
-          if (!hasSelfIntersection(mutated)) points = mutated
+          if (acceptsCut(points, mutated, samples)) points = mutated
         }
       }
     } else if (random() < 0.34) {
       const side: Edge['side'] = naturalSide === 'right' ? 'right' : 'left'
       const clipped = clipCorner(points, side, { x: naturalSide === 'right' ? right : left, y: random() < 0.5 ? top : bottom }, 3 + random() * 3)
-      if (!hasSelfIntersection(clipped)) points = clipped
+      if (acceptsCut(points, clipped, samples)) points = clipped
     }
 
     const xs = points.map((point) => point.x)
@@ -717,7 +751,12 @@ export function buildShape(
       cy: firstStrip?.centerY ?? 0,
     }
     : { ...shape.anchor, gap: -1, overhang: 1 }
-  const eyebrow = placeEyebrow(options.eyebrow, anchor, settings, mulberry32((settings.seed ^ 0x9e3779b9) >>> 0))
+  const textLines = shape.lines.filter((line) => line.text.trim())
+  const headlineInk = {
+    left: Math.min(...textLines.map((line) => line.inkX ?? line.x)),
+    right: Math.max(...textLines.map((line) => (line.inkX ?? line.x) + line.width)),
+  }
+  const eyebrow = placeEyebrow(options.eyebrow, anchor, headlineInk, settings, mulberry32((settings.seed ^ 0x9e3779b9) >>> 0))
   // The label's lettering joins the safe-area check; its tag may overhang the margin like the tape does.
   const padX = eyebrow.fontSize * EYEBROW_PADDING.x
   const padTop = eyebrow.fontSize * EYEBROW_PADDING.top
@@ -740,6 +779,7 @@ export function buildShape(
 function placeEyebrow(
   metrics: EyebrowMetrics,
   anchor: { left: number; right: number; top: number; gap: number; overhang: number; angle: number; cx: number; cy: number },
+  lettering: { left: number; right: number },
   settings: GeneratorSettings,
   random: () => number,
 ): EyebrowShape {
@@ -753,6 +793,10 @@ function placeEyebrow(
   let x = anchor.left - overhang
   if (settings.align === 'center') x = (anchor.left + anchor.right - width) / 2
   if (settings.align === 'right') x = anchor.right - width + overhang
+  // The tag may overhang the tape, but its lettering never starts outside the headline's own
+  // lettering (feature tape is roomier than the tag's padding), so it can't widen the cover.
+  if (settings.align === 'left') x = Math.max(x, lettering.left - padX)
+  if (settings.align === 'right') x = Math.min(x, lettering.right - width + padX)
   // A negative gap sinks the tag 1px into the tape, so no hairline of photo shows between them.
   const y = anchor.top - anchor.gap - height
   const points = [
@@ -909,14 +953,16 @@ function buildTapeShape(
     if (index !== personality.focalJoin || difference < 10) return baseJoin
     return personality.joinTreatment
   })
+  // A step keeps at least a pixel clear of the letters it runs past.
   const clearances = boundaries.map((y, index) => ({
-    below: Math.max(y, lines[index].baseline + descent),
-    above: Math.min(y, lines[index + 1].baseline - ascent),
+    below: Math.max(y, lines[index].baseline + descent + 1),
+    above: Math.min(y, lines[index + 1].baseline - ascent - 1),
   }))
   const joinDepth = Math.min(lineHeightPx * 0.22, 4 + energy * 0.075)
   const basePoints = makeBasePolygon(lefts, rights, top, bottom, boundaries, joins, joinDepth, Math.max(0, horizontalPadding), clearances)
+  const samples = inkSamples(lines, ascent, descent)
   const leanedPoints = addVerticalEdgeLeans(basePoints, random, energy)
-  let points = hasSelfIntersection(leanedPoints) ? basePoints : leanedPoints
+  let points = acceptsCut(basePoints, leanedPoints, samples) ? leanedPoints : basePoints
 
   const targetCenterY = verticalPadding + settings.fontSize / 2 + target * lineHeightPx
   const targetX = treatmentSide === 'right' ? rights[target] : lefts[target]
@@ -927,7 +973,7 @@ function buildTapeShape(
 
   if (personality.primary === 'clip') {
     const clipped = clipCorner(points, personality.edge, { x: targetX, y: targetCenterY }, Math.min(13, 5 + structuralDepth * 0.28))
-    if (!hasSelfIntersection(clipped)) points = clipped
+    if (acceptsCut(points, clipped, samples)) points = clipped
   } else if (candidates.length) {
     const edge = closestEdgeToLine(candidates, personality.edge, targetCenterY, targetX)
     const insetAxisPadding = Math.max(1, edge.side === 'left' || edge.side === 'right' ? horizontalPadding : verticalPadding)
@@ -940,7 +986,7 @@ function buildTapeShape(
     const mutated = personality.primary === 'slant'
       ? slantEdge(points, edge, structuralDepth, random)
       : mutateEdge(points, edge, personality.primary, safeDepth, random, centerBias)
-    if (!hasSelfIntersection(mutated)) points = mutated
+    if (acceptsCut(points, mutated, samples)) points = mutated
   }
 
   if (personality.secondary) {
@@ -948,14 +994,14 @@ function buildTapeShape(
     const secondarySide = opposite[personality.edge]
     if (personality.secondary === 'clip') {
       const clipped = clipCorner(points, secondarySide, { x: targetX, y: boundaries[personality.focalJoin] ?? targetCenterY }, 5 + structuralDepth * 0.14)
-      if (!hasSelfIntersection(clipped)) points = clipped
+      if (acceptsCut(points, clipped, samples)) points = clipped
     } else {
       const secondaryCandidates = eligibleEdges(points, secondarySide, 22)
       if (secondaryCandidates.length) {
         const edge = closestEdgeToLine(secondaryCandidates, secondarySide, boundaries[personality.focalJoin] ?? targetCenterY, targetX)
         const edgePadding = Math.max(1, edge.side === 'left' || edge.side === 'right' ? horizontalPadding : verticalPadding)
         const mutated = mutateEdge(points, edge, personality.secondary, Math.min(edgePadding * 0.3, structuralDepth * 0.16), random)
-        if (!hasSelfIntersection(mutated)) points = mutated
+        if (acceptsCut(points, mutated, samples)) points = mutated
       }
     }
   }

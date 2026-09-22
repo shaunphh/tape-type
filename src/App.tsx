@@ -31,7 +31,7 @@ import {
 } from './artwork'
 import { embeddedFontCss, embeddedFontCssNow, preloadEmbeddedFonts } from './fonts'
 import { buildShape, nextSeed } from './geometry'
-import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type Measure, type OverflowReason } from './layout'
+import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type HeadlineLayout, type Measure } from './layout'
 import { measureInk } from './metrics'
 import {
   ARTBOARD_HEIGHT,
@@ -146,16 +146,24 @@ function useTextLayout(settings: GeneratorSettings, fontVersion: number) {
   }, [context, text, eyebrow, settings.style, settings.titleCase, settings.coverFormat, settings.column, settings.autoSize, settings.fontSize, settings.autoWrap, settings.headline, fontVersion])
 }
 
-function overflowMessage(reason: OverflowReason, settings: GeneratorSettings) {
-  if (reason === 'eyebrow') return 'The eyebrow is too long to fit on the cover. Shorten it.'
-  if (settings.coverFormat === 'series') return 'Series covers fit two lines at most. Shorten the headline.'
-  const lead = reason === 'lines' ? 'The headline runs past six lines.' : 'A line is wider than the column.'
-  const fixes = [
-    settings.column !== 'wide' && 'a wider column',
-    reason === 'width' && !settings.autoWrap && 'Auto wrap',
-    !settings.autoSize && 'Auto size',
-  ].filter(Boolean) as string[]
-  return fixes.length ? `${lead} Try ${fixes.join(' or ')}, or shorten it.` : `${lead} Shorten it.`
+function overflowMessage(layout: HeadlineLayout, settings: GeneratorSettings) {
+  const series = settings.coverFormat === 'series'
+  const offer = (lead: string, fixes: (string | false)[]) => {
+    const options = fixes.filter(Boolean)
+    return options.length ? `${lead} Try ${options.join(' or ')}, or shorten it.` : `${lead} Shorten it.`
+  }
+  if (layout.overflow === 'eyebrow') return 'The eyebrow is too long to fit on the cover. Shorten it.'
+  if (layout.overflow === 'lines') {
+    // Wrapping can split a typed line but never join two, so only the writer can fix too many.
+    if (layout.paragraphs > layout.maxLines) return `The headline has more than ${layout.maxLines === 2 ? 'two' : 'six'} typed lines. Remove some line breaks.`
+    if (series) return 'Series covers fit two lines at most. Shorten the headline.'
+    return offer('The headline runs past six lines.', [settings.column !== 'wide' && 'a wider column', !settings.autoSize && 'Auto size'])
+  }
+  if (series) return settings.autoWrap ? 'A word is too wide for a series cover. Shorten it.' : 'A typed line is too wide for a series cover. Turn on Auto wrap, or shorten it.'
+  return offer(
+    settings.autoWrap ? 'A word is wider than the column.' : 'A typed line is wider than the column.',
+    [settings.column !== 'wide' && 'a wider column', !settings.autoWrap && 'Auto wrap', !settings.autoSize && 'Auto size'],
+  )
 }
 
 function downloadBlob(content: BlobPart, type: string, filename: string) {
@@ -312,7 +320,14 @@ function App() {
     [shape, settings.tone, previewBackground, layout.weight, layout.fontSize],
   )
   const runs = useMemo(() => textRuns(layers), [layers])
-  const blockedReason = layout.empty ? 'Type a headline to export.' : layout.overflow ? overflowMessage(layout.overflow, settings) : null
+  const range = useMemo(() => placementRange(shape), [shape])
+  // Rotation or a wide eyebrow can make the lettering bigger than the safe area even when every line fits its column.
+  const lettersTooBig = range.x.excess > 4 || range.y.excess > 4
+  const blockedReason = layout.empty
+    ? 'Type a headline to export.'
+    : layout.overflow
+      ? overflowMessage(layout, settings)
+      : lettersTooBig ? 'The lettering is bigger than the safe area. Try a narrower column, less rotation or a shorter eyebrow.' : null
   const exportDisabled = Boolean(blockedReason) || fonts.loading
 
   useEffect(() => { preloadEmbeddedFonts(runs) }, [runs])
@@ -489,10 +504,7 @@ function App() {
     }
   }
 
-  const spans = () => {
-    const range = placementRange(shape)
-    return { x: range.x.maximum - range.x.minimum, y: range.y.maximum - range.y.minimum }
-  }
+  const spans = () => ({ x: range.x.maximum - range.x.minimum, y: range.y.maximum - range.y.minimum })
   // A move of `delta` artboard pixels, as a share of the range the artwork can travel.
   const percentOf = (delta: number, span: number) => (span > 1 ? delta / span * 100 : 0)
 
@@ -561,8 +573,10 @@ function App() {
   const locked = settings.seedLocked
   const noTape = settings.tone === 'none'
   const plain = settings.mode === 'plain'
-  const variationOff = locked || noTape || plain
-  const variationNote = noTape ? 'No tape, so there is no cut to vary' : plain ? 'Plain tape has no cut to vary' : undefined
+  // The seed also turns rotated strips, so Randomise stays useful then even with no cut to vary.
+  const rotates = settings.perLine && settings.rotationVariance > 0
+  const variationOff = locked || ((noTape || plain) && !rotates)
+  const variationNote = locked || rotates ? undefined : noTape ? 'No tape, so there is no cut to vary' : plain ? 'Plain tape has no cut to vary' : undefined
   const clash = settings.tone === 'yellow' && previewBackground === 'yellow'
     ? 'Yellow tape disappears on the Yellow background.'
     : settings.tone === 'dark' && previewBackground === 'charcoal'
@@ -808,7 +822,9 @@ function App() {
               onPointerMove={drag}
               onPointerUp={endDrag}
               onPointerCancel={cancelDrag}
-              onLostPointerCapture={endDrag}
+              // Only the artwork's own capture ending stops a drag: on touch, the SVG element under the
+              // finger holds capture first and hands it over when the drag starts.
+              onLostPointerCapture={(event) => { if (event.target === event.currentTarget) endDrag() }}
               onKeyDown={nudge}
             >
               <svg

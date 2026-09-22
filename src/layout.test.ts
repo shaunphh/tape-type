@@ -92,4 +92,42 @@ describe('headline layout', () => {
     expect(layoutHeadline(input({ autoSize: false, fontSize: 60 }), measure).fontSize).toBe(72)
     expect(layoutHeadline(input({ autoSize: false, fontSize: 84 }), measure).fontSize).toBe(84)
   })
+
+  it('counts the lines the writer typed', () => {
+    expect(layoutHeadline(input({ text: 'One\nTwo\nThree' }), measure).paragraphs).toBe(3)
+    expect(layoutHeadline(input({ text: '' }), measure).paragraphs).toBe(0)
+    const typed = layoutHeadline(input({ text: 'A\nB\nC\nD\nE\nF\nG', autoWrap: false }), measure)
+    expect(typed.overflow).toBe('lines')
+    expect(typed.paragraphs).toBeGreaterThan(typed.maxLines)
+  })
+
+  it('never keeps a lowercase line opener when a size up to 8px smaller would avoid it', () => {
+    const lowercaseStart = (labels: string[]) => labels.slice(1).some((line) => /^[a-z]/.test(line))
+    const headlines = [
+      'Ten of the Best Pints of Guinness in Dublin',
+      'The Best Things to Do in Dublin This Weekend',
+      'A Protest in Dublin Is Planned for Tomorrow',
+      'How to Make the Most of a Weekend Visit to Dublin',
+      'Dublin’s Last Late-Night Bus Could Be About to Change',
+      'A Massive Night Market Is Coming to Smithfield This Weekend',
+      'Where to Eat and Drink in Dublin on a Budget',
+    ]
+    let cleanedUp = 0
+    for (const text of headlines) {
+      for (const column of ['narrow', 'medium', 'wide'] as const) {
+        const auto = layoutHeadline(input({ text, column }), measure)
+        if (!lowercaseStart(auto.labels)) {
+          cleanedUp += 1
+          continue
+        }
+        // It kept one, so no nearby smaller size may offer a clean break that still fits.
+        for (let size = Math.max(72, auto.fontSize - 8); size < auto.fontSize; size += 1) {
+          const manual = layoutHeadline(input({ text, column, autoSize: false, fontSize: size }), measure)
+          const cleanFit = !manual.overflow && manual.labels.length <= auto.labels.length && !lowercaseStart(manual.labels)
+          expect(cleanFit, `${column} ${size}px: ${manual.labels.join(' / ')}`).toBe(false)
+        }
+      }
+    }
+    expect(cleanedUp).toBeGreaterThan(headlines.length)
+  })
 })

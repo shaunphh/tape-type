@@ -220,4 +220,54 @@ describe('shape geometry', () => {
       }
     }
   })
+
+  it('never lets a cut uncover a letter, for any cut, style or layout (at 100% cling or looser)', () => {
+    const inside = (point: { x: number; y: number }, polygon: { x: number; y: number }[]) => {
+      let hit = false
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+        const a = polygon[i]
+        const b = polygon[j]
+        if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) hit = !hit
+      }
+      return hit
+    }
+    const bounds = { ascent: 55, descent: 16 }
+    for (const style of ['headline', 'feature'] as const) {
+      for (const mode of ['clean', 'tape', 'cling', 'rough', 'torn'] as const) {
+        for (const perLine of [false, true]) {
+          for (const layout of layouts) {
+            for (let seed = 1; seed <= 16; seed += 1) {
+              const shape = buildShape({ ...base, style, mode, perLine, align: seed % 3 === 0 ? 'center' : seed % 3 === 1 ? 'left' : 'right', seed }, layout.labels, layout.widths, [], bounds)
+              shape.lines.forEach((line, index) => {
+                const polygon = shape.strips ? shape.strips[index].points : shape.points
+                const left = (line.inkX ?? line.x) + 1.5
+                for (const y of [line.baseline - bounds.ascent * 0.92, line.baseline - bounds.ascent * 0.5, line.baseline + bounds.descent * 0.85]) {
+                  for (let x = left; x < left + line.width - 3; x += 7) {
+                    expect(inside({ x, y }, polygon), `${style} ${mode} ${perLine ? 'strips' : 'block'} seed ${seed} line ${index} at ${Math.round(x)},${Math.round(y)}`).toBe(true)
+                  }
+                }
+              })
+            }
+          }
+        }
+      }
+    }
+  }, 30000)
+
+  it('keeps the eyebrow lettering inside the headline lettering on left and right aligned covers', () => {
+    const eyebrow = { text: 'NEWS', fontSize: 40, width: 100, originOffset: -2, capHeight: 28 }
+    for (const style of ['headline', 'feature'] as const) {
+      for (const align of ['left', 'right'] as const) {
+        for (const layout of layouts) {
+          const shape = buildShape({ ...base, style, align, perLine: true, mode: style === 'feature' ? 'torn' : 'plain', seed: 9 }, layout.labels, layout.widths, [], undefined, { eyebrow })
+          const inkLeft = Math.min(...shape.lines.map((line) => line.inkX ?? 0))
+          const inkRight = Math.max(...shape.lines.map((line) => (line.inkX ?? 0) + line.width))
+          const { box } = shape.eyebrow!
+          const padX = 40 * 0.45
+          if (align === 'left') expect(box.x + padX).toBeGreaterThanOrEqual(inkLeft - 0.01)
+          else expect(box.x + box.width - padX).toBeLessThanOrEqual(inkRight + 0.01)
+        }
+      }
+    }
+  })
 })

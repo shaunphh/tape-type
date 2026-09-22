@@ -45,13 +45,34 @@ describe('shape geometry', () => {
     const measure = (text: string) => text.length * 10
     const text = 'YAMAMORI IZAKAYA HAS HELD ITS FINAL CLUB NIGHT'
     const greedy = wrapText(text, 200, measure, true)
-    const balanced = wrapText(text, 200, measure, true, true)
+    const balanced = wrapText(text, 200, measure, true, { balance: true })
     expect(greedy).toEqual(['YAMAMORI IZAKAYA HAS', 'HELD ITS FINAL CLUB', 'NIGHT'])
     expect(balanced).toHaveLength(greedy.length)
     expect(Math.max(...balanced.map((line) => line.length)) - Math.min(...balanced.map((line) => line.length))).toBeLessThanOrEqual(4)
     expect(balanced.join(' ')).toBe(text)
-    expect(wrapText('HOW TO MAKE THE MOST OF A WEEKEND VISIT TO DUBLIN', 130, measure, true, true))
+    expect(wrapText('HOW TO MAKE THE MOST OF A WEEKEND VISIT TO DUBLIN', 130, measure, true, { balance: true }))
       .not.toContain('WEEKEND')
+  })
+
+  it('moves minor words to the end of a line when asked, instead of opening the next one', () => {
+    const measure = (text: string) => text.length * 10
+    const text = 'How to Make the Most of a Weekend Visit to Dublin'
+    const lowercaseStart = (word: string) => /^[a-z]/.test(word)
+    for (const width of [150, 180, 200, 240, 260]) {
+      const plainBalance = wrapText(text, width, measure, true, { balance: true })
+      const lines = wrapText(text, width, measure, true, { balance: true, avoidStart: lowercaseStart })
+      expect(lines).toHaveLength(plainBalance.length)
+      expect(lines.join(' ')).toBe(text)
+      expect(lines.slice(1).filter((line) => lowercaseStart(line)), `width ${width}: ${lines.join(' / ')}`).toEqual([])
+    }
+  })
+
+  it('balances a long pasted headline quickly (the search stops at the column edge)', () => {
+    let calls = 0
+    const measure = (text: string) => { calls += 1; return text.length * 10 }
+    const text = Array.from({ length: 160 }, (_, index) => `word${index}`).join(' ')
+    wrapText(text, 600, measure, true, { balance: true })
+    expect(calls).toBeLessThan(160 * 12)
   })
 
   it('maps cover character counts into the approved 72–90px range', () => {
@@ -108,15 +129,58 @@ describe('shape geometry', () => {
 
   it('gives feature strips roomier padding than headline strips', () => {
     const layout = layouts[1]
-    const headline = buildShape({ ...base, perLine: true, mode: 'clean', seed: 7 }, layout.labels, layout.widths)
-    const feature = buildShape({ ...base, style: 'feature', perLine: true, mode: 'clean', seed: 7 }, layout.labels, layout.widths)
-    expect(feature.viewBox.width).toBeGreaterThan(headline.viewBox.width + 10)
-    expect(feature.viewBox.height).toBeGreaterThan(headline.viewBox.height)
+    const headline = buildShape({ ...base, perLine: true, mode: 'plain', seed: 7 }, layout.labels, layout.widths)
+    const feature = buildShape({ ...base, style: 'feature', perLine: true, mode: 'plain', seed: 7 }, layout.labels, layout.widths)
+    const leftPad = (shape: typeof headline) => (shape.strips![0].line.inkX ?? 0) - Math.min(...shape.strips![0].points.map((point) => point.x))
+    const stripHeight = (shape: typeof headline) => Math.max(...shape.strips![0].points.map((point) => point.y)) - Math.min(...shape.strips![0].points.map((point) => point.y))
+    expect(leftPad(feature)).toBeGreaterThan(leftPad(headline) * 2)
+    expect(stripHeight(feature)).toBeGreaterThan(stripHeight(headline))
+  })
+
+  it('makes a plain block one rectangle as wide as the longest line, with a longer run-out after the text', () => {
+    const layout = layouts[1]
+    for (const align of ['left', 'center', 'right'] as const) {
+      const shape = buildShape({ ...base, mode: 'plain', align, seed: 3 }, layout.labels, layout.widths)
+      expect(shape.points).toHaveLength(4)
+      const xs = shape.points.map((point) => point.x)
+      const lead = Math.min(...shape.lines.map((line) => line.inkX ?? 0)) - Math.min(...xs)
+      const trail = Math.max(...xs) - Math.max(...shape.lines.map((line) => (line.inkX ?? 0) + line.width))
+      if (align === 'left') expect(trail).toBeGreaterThan(lead + 76 * 0.2)
+      if (align === 'right') expect(lead).toBeGreaterThan(trail + 76 * 0.2)
+      if (align === 'center') expect(Math.abs(lead - trail)).toBeLessThan(0.01)
+    }
+  })
+
+  it('stacks headline strips flush at block pitch, but keeps gaps between feature strips', () => {
+    const layout = layouts[2]
+    const tops = (shape: ReturnType<typeof buildShape>) => shape.strips!.map((strip) => ({
+      top: Math.min(...strip.points.map((point) => point.y)),
+      bottom: Math.max(...strip.points.map((point) => point.y)),
+    }))
+    const headline = tops(buildShape({ ...base, perLine: true, mode: 'plain', seed: 2 }, layout.labels, layout.widths))
+    const block = buildShape({ ...base, perLine: false, mode: 'plain', seed: 2 }, layout.labels, layout.widths)
+    const strips = buildShape({ ...base, perLine: true, mode: 'plain', seed: 2 }, layout.labels, layout.widths)
+    headline.slice(1).forEach((strip, index) => expect(strip.top).toBeLessThan(headline[index].bottom))
+    strips.lines.forEach((line, index) => expect(line.baseline).toBeCloseTo(block.lines[index].baseline, 5))
+    const feature = tops(buildShape({ ...base, style: 'feature', perLine: true, mode: 'torn', lineGap: 12, seed: 2 }, layout.labels, layout.widths))
+    feature.slice(1).forEach((strip, index) => expect(strip.top - feature[index].bottom).toBeGreaterThan(8))
+  })
+
+  it('keeps a chosen cut when rotation or alignment changes', () => {
+    const layout = layouts[3]
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const still = buildShape({ ...base, perLine: true, mode: 'rough', seed }, layout.labels, layout.widths)
+      const turned = buildShape({ ...base, perLine: true, mode: 'rough', rotationVariance: 1.2, seed }, layout.labels, layout.widths)
+      still.strips!.forEach((strip, index) => expect(turned.strips![index].path).toBe(strip.path))
+      const left = buildShape({ ...base, mode: 'cling', align: 'left', seed }, layout.labels, layout.widths)
+      const centred = buildShape({ ...base, mode: 'cling', align: 'center', seed }, layout.labels, layout.widths)
+      expect(centred.personality.split(' · ').slice(0, 2)).toEqual(left.personality.split(' · ').slice(0, 2))
+    }
   })
 
   it('seats the eyebrow on top of the first line and inside the view box', () => {
     const layout = layouts[2]
-    const eyebrow = { text: 'BREAKING', fontSize: 36, width: 160, originOffset: -2, capHeight: 25, descent: 0 }
+    const eyebrow = { text: 'BREAKING', fontSize: 36, width: 160, originOffset: -2, capHeight: 25 }
     for (const perLine of [false, true]) {
       for (const align of ['left', 'center', 'right'] as const) {
         const plain = buildShape({ ...base, perLine, align, seed: 5 }, layout.labels, layout.widths)
@@ -125,15 +189,35 @@ describe('shape geometry', () => {
         expect(shape.path).toBe(plain.path)
         expect(box.y + box.height).toBeGreaterThanOrEqual(-0.5)
         expect(box.y + box.height).toBeLessThanOrEqual(1.5)
-        expect(box.width).toBeCloseTo(160 + 36 * 0.6, 1)
+        expect(box.width).toBeCloseTo(160 + 36 * 0.9, 1)
         expect(shape.viewBox.y).toBeLessThan(box.y)
         expect(shape.viewBox.x).toBeLessThanOrEqual(box.x)
         expect(shape.viewBox.x + shape.viewBox.width).toBeGreaterThanOrEqual(box.x + box.width)
-        expect(shape.eyebrow!.baseline).toBeCloseTo(box.y + 36 * 0.2 + 25, 1)
+        expect(shape.eyebrow!.baseline).toBeCloseTo(box.y + 36 * 0.4 + 25, 1)
       }
     }
     const tapeless = buildShape({ ...base, seed: 5 }, layout.labels, layout.widths, [], undefined, { eyebrow, tapeless: true })
     expect(tapeless.eyebrow!.box.x).toBeCloseTo(tapeless.lines[0].inkX ?? 0, 5)
-    expect(tapeless.eyebrow!.box.y + tapeless.eyebrow!.box.height).toBeLessThan(0)
+    expect(tapeless.eyebrow!.box.y + tapeless.eyebrow!.box.height).toBeLessThan(-76 * 0.4)
+  })
+
+  it('seats the eyebrow on the first line itself, never on a tab or raised corner, and turns it with its strip', () => {
+    const eyebrow = { text: 'NEWS', fontSize: 40, width: 100, originOffset: -2, capHeight: 28 }
+    for (const layout of layouts) {
+      for (const mode of ['clean', 'tape', 'cling', 'rough'] as const) {
+        for (let seed = 1; seed <= 60; seed += 1) {
+          for (const perLine of [false, true]) {
+            const shape = buildShape({ ...base, mode, perLine, rotationVariance: perLine ? 1 : 0, seed }, layout.labels, layout.widths, [], undefined, { eyebrow })
+            const { anchor } = shape
+            const box = shape.eyebrow!.box
+            // Left aligned: the tag's left edge sits just past the tape's own left edge (a small overhang only).
+            expect(box.x, `${mode} ${perLine} ${seed}`).toBeLessThanOrEqual(anchor!.left + 0.01)
+            expect(box.x, `${mode} ${perLine} ${seed}`).toBeGreaterThan(anchor!.left - 40 * 0.15)
+            expect(box.y + box.height).toBeCloseTo(anchor!.top + 1, 1)
+            expect(shape.eyebrow!.angle).toBe(perLine ? shape.strips![0].angle : 0)
+          }
+        }
+      }
+    }
   })
 })

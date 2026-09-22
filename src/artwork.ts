@@ -1,9 +1,9 @@
 import { ARTBOARD_HEIGHT, ARTBOARD_WIDTH, SAFE_MARGIN } from './settings'
-import type { GeneratorSettings, ShapeResult, TapeTone } from './types'
+import { cleanText } from './text'
+import type { ShapeResult, TapeTone } from './types'
 
 export const FONT_FAMILY = 'Barlow'
-export const FONT_WEIGHT = 700
-export const fontShorthand = (size: number) => `${FONT_WEIGHT} ${size}px "${FONT_FAMILY}"`
+export const fontShorthand = (size: number, weight: number) => `${weight} ${size}px "${FONT_FAMILY}"`
 
 // Sampled from the published Alternative Dublin covers.
 export const BRAND = { yellow: '#FFE900', light: '#F1F1F1', dark: '#111111', white: '#FFFFFF' }
@@ -17,18 +17,22 @@ export const tones: { value: TapeTone; label: string; tape: string | null; text:
 
 export type PreviewBackground = 'transparent' | 'charcoal' | 'yellow' | 'photo'
 export type Position = { x: number; y: number }
-export const BACKGROUND_FILLS: Partial<Record<PreviewBackground, string>> = { charcoal: '#242424', yellow: BRAND.yellow }
+export const BACKGROUND_FILLS: Partial<Record<PreviewBackground, string>> = { charcoal: BRAND.dark, yellow: BRAND.yellow }
 
 /** One drawing list feeds the live preview, the SVG exports and the PNG exports, so they cannot drift apart. */
 export type Layer =
   | { kind: 'path'; d: string; fill: string; angle: number; cx: number; cy: number }
-  | { kind: 'text'; text: string; x: number; y: number; size: number; fill: string; angle: number; cx: number; cy: number }
+  | { kind: 'text'; text: string; x: number; y: number; size: number; weight: number; fill: string; angle: number; cx: number; cy: number }
 
-/** Control characters are invisible in the preview but make SVG exports invalid XML. */
-export const stripControlCharacters = (value: string) => value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, '')
+export interface LayerOptions {
+  tone: TapeTone
+  background: PreviewBackground
+  /** Weight of the headline lettering (the eyebrow is always Bold). */
+  weight: number
+}
 
-export function buildLayers(shape: ShapeResult, settings: Pick<GeneratorSettings, 'tone'>, fontSize: number): Layer[] {
-  const tone = tones.find((entry) => entry.value === settings.tone) ?? tones[0]
+export function buildLayers(shape: ShapeResult, options: LayerOptions, fontSize: number): Layer[] {
+  const tone = tones.find((entry) => entry.value === options.tone) ?? tones[0]
   const layers: Layer[] = []
   const texts: Layer[] = []
   const hasText = shape.lines.some((line) => line.text.trim())
@@ -41,26 +45,29 @@ export function buildLayers(shape: ShapeResult, settings: Pick<GeneratorSettings
     // An empty strip would be a stray stub of tape; a connected block is drawn once there is any text.
     const drawTape = tone.tape && piece.path && (shape.strips?.length ? !blank : hasText)
     if (drawTape) layers.push({ kind: 'path', d: piece.path, fill: tone.tape as string, angle: piece.angle, cx: piece.cx, cy: piece.cy })
-    if (!blank) texts.push({ kind: 'text', text: piece.line.text, x: piece.line.x, y: piece.line.baseline, size: fontSize, fill: tone.text, angle: piece.angle, cx: piece.cx, cy: piece.cy })
+    if (!blank) texts.push({ kind: 'text', text: piece.line.text, x: piece.line.x, y: piece.line.baseline, size: fontSize, weight: options.weight, fill: tone.text, angle: piece.angle, cx: piece.cx, cy: piece.cy })
   }
   if (shape.eyebrow) {
     const { eyebrow } = shape
-    // On a yellow headline the label flips to white so it still reads as a separate tag.
-    const fill = settings.tone === 'yellow' ? BRAND.white : BRAND.yellow
+    // A yellow label would vanish on yellow tape or a yellow background, so it turns white there.
+    const fill = options.tone === 'yellow' || options.background === 'yellow' ? BRAND.white : BRAND.yellow
     layers.push({ kind: 'path', d: eyebrow.path, fill, angle: eyebrow.angle, cx: eyebrow.centerX, cy: eyebrow.centerY })
-    texts.push({ kind: 'text', text: eyebrow.text, x: eyebrow.x, y: eyebrow.baseline, size: eyebrow.fontSize, fill: BRAND.dark, angle: eyebrow.angle, cx: eyebrow.centerX, cy: eyebrow.centerY })
+    texts.push({ kind: 'text', text: eyebrow.text, x: eyebrow.x, y: eyebrow.baseline, size: eyebrow.fontSize, weight: 700, fill: BRAND.dark, angle: eyebrow.angle, cx: eyebrow.centerX, cy: eyebrow.centerY })
   }
   return [...layers, ...texts]
 }
 
-export const escapeText = (value: string) => stripControlCharacters(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-export const escapeAttribute = (value: string) => stripControlCharacters(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+/** The lettering in a layer list, by weight: which font files an export needs. */
+export const textRuns = (layers: Layer[]) => layers.flatMap((layer) => (layer.kind === 'text' ? [{ text: layer.text, weight: layer.weight }] : []))
+
+export const escapeText = (value: string) => cleanText(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+export const escapeAttribute = (value: string) => cleanText(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 
 export function layersToSvg(layers: Layer[]) {
   return layers.map((layer) => {
     const transform = layer.angle ? ` transform="rotate(${layer.angle} ${layer.cx} ${layer.cy})"` : ''
     if (layer.kind === 'path') return `<path d="${layer.d}" fill="${layer.fill}"${transform}/>`
-    return `<text x="${layer.x}" y="${layer.y}" font-family="${FONT_FAMILY}, sans-serif" font-size="${layer.size}" font-weight="${FONT_WEIGHT}" fill="${layer.fill}"${transform}>${escapeText(layer.text)}</text>`
+    return `<text x="${layer.x}" y="${layer.y}" font-family="${FONT_FAMILY}, sans-serif" font-size="${layer.size}" font-weight="${layer.weight}" fill="${layer.fill}"${transform}>${escapeText(layer.text)}</text>`
   }).join('')
 }
 
@@ -76,7 +83,7 @@ export function drawLayers(context: CanvasRenderingContext2D, layers: Layer[]) {
     if (layer.kind === 'path') {
       context.fill(new Path2D(layer.d))
     } else {
-      context.font = fontShorthand(layer.size)
+      context.font = fontShorthand(layer.size, layer.weight)
       context.textAlign = 'start'
       context.textBaseline = 'alphabetic'
       context.fillText(layer.text, layer.x, layer.y)
@@ -86,33 +93,36 @@ export function drawLayers(context: CanvasRenderingContext2D, layers: Layer[]) {
 }
 
 /**
- * Where the artwork sits on the artboard: centred on `position` (percentages), then clamped
- * so the text ink and eyebrow stay inside the 80px safe area on every side.
+ * How far the artwork can be moved on each axis (as a translation) while all lettering stays
+ * inside the 80px safe area. The tape and the eyebrow tag may reach into the margin.
+ */
+export function placementRange(shape: ShapeResult) {
+  const { viewBox } = shape
+  const ink = shape.inkBox ?? { left: viewBox.x, right: viewBox.x + viewBox.width, top: viewBox.y, bottom: viewBox.y + viewBox.height }
+  const axis = (low: number, high: number, size: number) => {
+    const minimum = SAFE_MARGIN - low
+    const maximum = size - SAFE_MARGIN - high
+    if (minimum <= maximum) return { minimum, maximum }
+    // Lettering bigger than the safe area can't move: centre it.
+    const centred = (size - low - high) / 2
+    return { minimum: centred, maximum: centred }
+  }
+  return { x: axis(ink.left, ink.right, ARTBOARD_WIDTH), y: axis(ink.top, ink.bottom, ARTBOARD_HEIGHT) }
+}
+
+/**
+ * Where the artwork sits on the artboard. `position` runs 0–100% across the range that keeps the
+ * lettering inside the safe area, so 0 is flush with the left (or top) margin and every drag or
+ * key press moves the artwork: there is no stretch where it is stuck against a clamp.
  */
 export function getPlacement(shape: ShapeResult, position: Position) {
-  const clamp = (value: number, minimum: number, maximum: number, centre: number) =>
-    minimum <= maximum ? Math.max(minimum, Math.min(maximum, value)) : centre
-
-  const inkSpans = shape.lines.filter((line) => line.text.trim()).map((line) => [line.inkX ?? line.x, (line.inkX ?? line.x) + line.width])
-  if (shape.eyebrow) inkSpans.push([shape.eyebrow.box.x, shape.eyebrow.box.x + shape.eyebrow.box.width])
-  const textLeft = inkSpans.length ? Math.min(...inkSpans.map(([left]) => left)) : shape.viewBox.x
-  const textRight = inkSpans.length ? Math.max(...inkSpans.map(([, right]) => right)) : shape.viewBox.x + shape.viewBox.width
-  const x = clamp(
-    ARTBOARD_WIDTH * position.x / 100 - (shape.viewBox.x + shape.viewBox.width / 2),
-    SAFE_MARGIN - textLeft,
-    ARTBOARD_WIDTH - SAFE_MARGIN - textRight,
-    ARTBOARD_WIDTH / 2 - (textLeft + textRight) / 2,
-  )
-
-  const top = shape.inkBounds?.top ?? shape.viewBox.y
-  const bottom = shape.inkBounds?.bottom ?? shape.viewBox.y + shape.viewBox.height
-  const y = clamp(
-    ARTBOARD_HEIGHT * position.y / 100 - (shape.viewBox.y + shape.viewBox.height / 2),
-    SAFE_MARGIN - top,
-    ARTBOARD_HEIGHT - SAFE_MARGIN - bottom,
-    ARTBOARD_HEIGHT / 2 - (top + bottom) / 2,
-  )
-  return { x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }
+  const range = placementRange(shape)
+  const along = (axis: { minimum: number; maximum: number }, percent: number) =>
+    axis.minimum + (axis.maximum - axis.minimum) * Math.max(0, Math.min(100, percent)) / 100
+  return {
+    x: Math.round(along(range.x, position.x) * 100) / 100,
+    y: Math.round(along(range.y, position.y) * 100) / 100,
+  }
 }
 
 export function svgMarkup(
@@ -131,9 +141,8 @@ export function svgMarkup(
   const fill = BACKGROUND_FILLS[background]
   if (fill) backgroundMarkup = `<rect width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}" fill="${fill}"/>`
   if (background === 'photo' && photo) {
-    const href = escapeAttribute(photo)
-    // xlink:href as well as href: Illustrator and older SVG tools only read the xlink form.
-    backgroundMarkup = `<image href="${href}" xlink:href="${href}" width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}" preserveAspectRatio="xMidYMid slice"/><rect width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}" fill="#000" opacity=".12"/>`
+    // xlink:href is read by every SVG viewer (SVG 2 browsers, Figma, Illustrator, Inkscape), so the photo is written once.
+    backgroundMarkup = `<image xlink:href="${escapeAttribute(photo)}" width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}" preserveAspectRatio="xMidYMid slice"/><rect width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}" fill="#000" opacity=".12"/>`
   }
   const placement = getPlacement(shape, position)
   return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${ARTBOARD_WIDTH} ${ARTBOARD_HEIGHT}" width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}">${defs}${backgroundMarkup}<g transform="translate(${placement.x} ${placement.y})">${layersToSvg(layers)}</g></svg>`

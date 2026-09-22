@@ -1,4 +1,4 @@
-export type ShapeMode = 'clean' | 'tape' | 'cling' | 'rough' | 'torn'
+export type ShapeMode = 'plain' | 'clean' | 'tape' | 'cling' | 'rough' | 'torn'
 export type TextAlign = 'left' | 'center' | 'right'
 export type CoverFormat = 'regular' | 'series'
 export type CoverStyle = 'headline' | 'feature'
@@ -51,14 +51,13 @@ export interface ShapeStrip {
   centerY: number
 }
 
-/** Ink measurements for the optional eyebrow label, taken from canvas measureText. */
+/** Ink measurements for the optional eyebrow label (always set in capitals, so no descender allowance). */
 export interface EyebrowMetrics {
   text: string
   fontSize: number
   width: number
   originOffset: number
   capHeight: number
-  descent: number
 }
 
 export interface EyebrowShape {
@@ -80,8 +79,10 @@ export interface ShapeResult {
   strips?: ShapeStrip[]
   lines: TextLine[]
   eyebrow?: EyebrowShape
-  /** Vertical extent of the text ink (and eyebrow label), used to keep it inside the safe area. */
-  inkBounds?: { top: number; bottom: number }
+  /** Extent of all lettering (headline ink and eyebrow text, turned with any rotation): what the safe area protects. */
+  inkBox?: { left: number; right: number; top: number; bottom: number }
+  /** The first line's tape before any cut, and its rotation: where the eyebrow is seated. */
+  anchor?: { left: number; right: number; top: number; angle: number; cx: number; cy: number }
   viewBox: { x: number; y: number; width: number; height: number }
   personality: string
 }

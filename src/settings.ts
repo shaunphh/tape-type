@@ -14,10 +14,15 @@ export const columns: { value: ColumnWidth; label: string; width: number }[] = [
 ]
 export const columnWidth = (column: ColumnWidth) => columns.find((entry) => entry.value === column)?.width ?? TEXT_AREA_WIDTH
 
-// Choosing a style resets the treatment to its house look; everything stays adjustable afterwards.
-export const stylePresets: Record<CoverStyle, Partial<GeneratorSettings>> = {
-  headline: { perLine: false, tone: 'light', align: 'left', mode: 'clean', column: 'narrow', hugStrength: 1, rotationVariance: 0, lineGap: 2 },
-  feature: { perLine: true, tone: 'light', align: 'center', mode: 'torn', column: 'wide', hugStrength: 1, rotationVariance: 0.6, lineGap: 8 },
+/** The settings a cover style owns: its house look, which can still be adjusted afterwards. */
+export const TREATMENT_KEYS = ['perLine', 'tone', 'align', 'mode', 'column', 'hugStrength', 'rotationVariance', 'lineGap'] as const
+export type Treatment = Pick<GeneratorSettings, (typeof TREATMENT_KEYS)[number]>
+
+export const stylePresets: Record<CoverStyle, Treatment> = {
+  // Most published headline covers are one plain rectangle of tape, left aligned, in a narrow column.
+  headline: { perLine: false, tone: 'light', align: 'left', mode: 'plain', column: 'narrow', hugStrength: 1, rotationVariance: 0, lineGap: 2 },
+  // Feature covers: capitals on separate torn strips, centred, slightly turned, with gaps between.
+  feature: { perLine: true, tone: 'light', align: 'center', mode: 'torn', column: 'wide', hugStrength: 1, rotationVariance: 0.6, lineGap: 12 },
 }
 
 export const defaults: GeneratorSettings = {
@@ -38,7 +43,7 @@ export const defaults: GeneratorSettings = {
   lineGap: 2,
   hugStrength: 1,
   preferredEdge: 'auto',
-  mode: 'clean',
+  mode: 'plain',
   seed: 18473562,
   seedLocked: false,
 }
@@ -73,7 +78,7 @@ export function sanitizeSettings(stored: Record<string, unknown>): GeneratorSett
     lineGap: numberIn(stored.lineGap, -8, 20, defaults.lineGap),
     hugStrength: numberIn(stored.hugStrength, 0.82, 1.16, defaults.hugStrength),
     preferredEdge: oneOf(stored.preferredEdge, ['auto', 'left', 'right', 'top', 'bottom'] as const, defaults.preferredEdge),
-    mode: oneOf(stored.mode, ['clean', 'tape', 'cling', 'rough', 'torn'] as const, defaults.mode),
+    mode: oneOf(stored.mode, ['plain', 'clean', 'tape', 'cling', 'rough', 'torn'] as const, defaults.mode),
     seed: Math.max(1, Math.floor(numberIn(stored.seed, 1, 4294967295, defaults.seed))),
     seedLocked: flag(stored.seedLocked, defaults.seedLocked),
   }

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildShape, hasSelfIntersection, wrapText } from './geometry'
+import { buildShape, coverSizeFromCharacters, hasSelfIntersection, wrapText } from './geometry'
 import type { GeneratorSettings } from './types'
 
 const base: GeneratorSettings = {
-  headline: '', uppercase: false, font: 'Barlow Condensed', weight: 800, fontSize: 76, lineHeight: 0.9,
+  headline: '', uppercase: false, coverFormat: 'regular', autoSize: true, font: 'Barlow Condensed', weight: 800, fontSize: 76, lineHeight: 0.9,
   maxWidth: 570, align: 'left', autoWrap: true, perLine: false, rotationVariance: 0, lineGap: 2, horizontalPadding: 14,
   verticalPadding: 8, irregularity: 46, angleSize: 26, hugStrength: 1,
   joinStyle: 'angled', preferredEdge: 'auto', mode: 'cling', shapeColor: '#FFF418',
@@ -43,6 +43,13 @@ describe('shape geometry', () => {
     expect(wrapText('ONE TWO\nTHREE', 20, measure, false)).toEqual(['ONE TWO', 'THREE'])
   })
 
+  it('maps cover character counts into the approved 72–90px range', () => {
+    expect(coverSizeFromCharacters('A'.repeat(30))).toBe(90)
+    expect(coverSizeFromCharacters('A'.repeat(45))).toBe(81)
+    expect(coverSizeFromCharacters('A'.repeat(60))).toBe(72)
+    expect(coverSizeFromCharacters('A'.repeat(90))).toBe(72)
+  })
+
   it('uses seeds to produce structurally different compositions', () => {
     const layout = layouts[2]
     const shapes = Array.from({ length: 30 }, (_, index) => {
@@ -63,5 +70,14 @@ describe('shape geometry', () => {
     expect(new Set(shape.strips?.map((strip) => strip.angle)).size).toBeGreaterThan(1)
     expect(shape.viewBox.width).toBeGreaterThan(0)
     expect(shape.viewBox.height).toBeGreaterThan(0)
+  })
+
+  it('supports over-cling that reaches into the measured glyph bounds', () => {
+    const layout = layouts[2]
+    const standard = buildShape({ ...base, perLine: true, hugStrength: 1, seed: 92831 }, layout.labels, layout.widths)
+    const cropped = buildShape({ ...base, perLine: true, hugStrength: 1.16, seed: 92831 }, layout.labels, layout.widths)
+    expect(cropped.viewBox.width).toBeLessThan(standard.viewBox.width)
+    expect(cropped.viewBox.height).toBeLessThan(standard.viewBox.height)
+    expect(cropped.strips?.every((strip) => !hasSelfIntersection(strip.points))).toBe(true)
   })
 })

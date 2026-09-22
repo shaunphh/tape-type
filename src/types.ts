@@ -1,35 +1,30 @@
-export type ShapeMode = 'clean' | 'tape' | 'cling' | 'rough'
+export type ShapeMode = 'clean' | 'tape' | 'cling' | 'rough' | 'torn'
 export type TextAlign = 'left' | 'center' | 'right'
 export type CoverFormat = 'regular' | 'series'
+export type CoverStyle = 'headline' | 'feature'
+export type TapeTone = 'light' | 'dark' | 'yellow' | 'none'
+export type ColumnWidth = 'narrow' | 'medium' | 'wide'
 export type EdgePreference = 'auto' | 'left' | 'right' | 'top' | 'bottom'
-export type JoinStyle = 'step' | 'angled'
-export type FontChoice = 'Barlow Condensed' | 'Barlow Semi Condensed' | 'Barlow'
 
 export interface GeneratorSettings {
   headline: string
-  uppercase: boolean
+  style: CoverStyle
+  titleCase: boolean
+  tone: TapeTone
+  eyebrowEnabled: boolean
+  eyebrow: string
   coverFormat: CoverFormat
+  column: ColumnWidth
   autoSize: boolean
-  font: FontChoice
-  weight: number
   fontSize: number
-  lineHeight: number
-  maxWidth: number
   align: TextAlign
   autoWrap: boolean
   perLine: boolean
   rotationVariance: number
   lineGap: number
-  horizontalPadding: number
-  verticalPadding: number
-  irregularity: number
-  angleSize: number
   hugStrength: number
-  joinStyle: JoinStyle
   preferredEdge: EdgePreference
   mode: ShapeMode
-  shapeColor: string
-  textColor: string
   seed: number
   seedLocked: boolean
 }
@@ -56,11 +51,35 @@ export interface ShapeStrip {
   centerY: number
 }
 
+/** Ink measurements for the optional eyebrow label, taken from canvas measureText. */
+export interface EyebrowMetrics {
+  text: string
+  fontSize: number
+  width: number
+  originOffset: number
+  capHeight: number
+  descent: number
+}
+
+export interface EyebrowShape {
+  path: string
+  points: Point[]
+  text: string
+  x: number
+  baseline: number
+  fontSize: number
+  angle: number
+  centerX: number
+  centerY: number
+  box: { x: number; y: number; width: number; height: number }
+}
+
 export interface ShapeResult {
   points: Point[]
   path: string
   strips?: ShapeStrip[]
   lines: TextLine[]
+  eyebrow?: EyebrowShape
   viewBox: { x: number; y: number; width: number; height: number }
   personality: string
 }

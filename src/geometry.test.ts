@@ -3,11 +3,9 @@ import { buildShape, coverSizeFromCharacters, hasSelfIntersection, wrapText } fr
 import type { GeneratorSettings } from './types'
 
 const base: GeneratorSettings = {
-  headline: '', uppercase: false, coverFormat: 'regular', autoSize: true, font: 'Barlow Condensed', weight: 800, fontSize: 76, lineHeight: 0.9,
-  maxWidth: 570, align: 'left', autoWrap: true, perLine: false, rotationVariance: 0, lineGap: 2, horizontalPadding: 14,
-  verticalPadding: 8, irregularity: 46, angleSize: 26, hugStrength: 1,
-  joinStyle: 'angled', preferredEdge: 'auto', mode: 'cling', shapeColor: '#FFF418',
-  textColor: '#202020', seed: 1, seedLocked: false,
+  headline: '', style: 'headline', titleCase: true, tone: 'light', eyebrowEnabled: false, eyebrow: '',
+  coverFormat: 'regular', column: 'narrow', autoSize: true, fontSize: 76, align: 'left', autoWrap: true, perLine: false,
+  rotationVariance: 0, lineGap: 2, hugStrength: 1, preferredEdge: 'auto', mode: 'cling', seed: 1, seedLocked: false,
 }
 
 const layouts = [
@@ -19,7 +17,7 @@ const layouts = [
 
 describe('shape geometry', () => {
   it('generates 80 controlled variations without clipping or self-intersection', () => {
-    for (const mode of ['clean', 'tape', 'cling', 'rough'] as const) {
+    for (const mode of ['clean', 'tape', 'cling', 'rough', 'torn'] as const) {
       for (const layout of layouts) {
         for (let seed = 1; seed <= 20; seed += 1) {
           const shape = buildShape({ ...base, mode, seed }, layout.labels, layout.widths)
@@ -41,6 +39,19 @@ describe('shape geometry', () => {
     const measure = (text: string) => text.length * 10
     expect(wrapText('ONE TWO THREE\nFOUR', 75, measure, true)).toEqual(['ONE TWO', 'THREE', 'FOUR'])
     expect(wrapText('ONE TWO\nTHREE', 20, measure, false)).toEqual(['ONE TWO', 'THREE'])
+  })
+
+  it('balances lines instead of stranding the last word', () => {
+    const measure = (text: string) => text.length * 10
+    const text = 'YAMAMORI IZAKAYA HAS HELD ITS FINAL CLUB NIGHT'
+    const greedy = wrapText(text, 200, measure, true)
+    const balanced = wrapText(text, 200, measure, true, true)
+    expect(greedy).toEqual(['YAMAMORI IZAKAYA HAS', 'HELD ITS FINAL CLUB', 'NIGHT'])
+    expect(balanced).toHaveLength(greedy.length)
+    expect(Math.max(...balanced.map((line) => line.length)) - Math.min(...balanced.map((line) => line.length))).toBeLessThanOrEqual(4)
+    expect(balanced.join(' ')).toBe(text)
+    expect(wrapText('HOW TO MAKE THE MOST OF A WEEKEND VISIT TO DUBLIN', 130, measure, true, true))
+      .not.toContain('WEEKEND')
   })
 
   it('maps cover character counts into the approved 72–90px range', () => {
@@ -79,5 +90,50 @@ describe('shape geometry', () => {
     expect(cropped.viewBox.width).toBeLessThan(standard.viewBox.width)
     expect(cropped.viewBox.height).toBeLessThan(standard.viewBox.height)
     expect(cropped.strips?.every((strip) => !hasSelfIntersection(strip.points))).toBe(true)
+  })
+
+  it('tears feature strip ends without self-intersection and keeps text inside each strip', () => {
+    for (const layout of layouts) {
+      for (let seed = 1; seed <= 40; seed += 1) {
+        const shape = buildShape({ ...base, style: 'feature', mode: 'torn', perLine: true, align: 'center', seed }, layout.labels, layout.widths)
+        shape.strips?.forEach((strip) => {
+          expect(hasSelfIntersection(strip.points), `seed ${seed}`).toBe(false)
+          const xs = strip.points.map((point) => point.x)
+          expect(Math.min(...xs)).toBeLessThan(strip.line.inkX ?? strip.line.x)
+          expect(Math.max(...xs)).toBeGreaterThan((strip.line.inkX ?? strip.line.x) + strip.line.width)
+        })
+      }
+    }
+  })
+
+  it('gives feature strips roomier padding than headline strips', () => {
+    const layout = layouts[1]
+    const headline = buildShape({ ...base, perLine: true, mode: 'clean', seed: 7 }, layout.labels, layout.widths)
+    const feature = buildShape({ ...base, style: 'feature', perLine: true, mode: 'clean', seed: 7 }, layout.labels, layout.widths)
+    expect(feature.viewBox.width).toBeGreaterThan(headline.viewBox.width + 10)
+    expect(feature.viewBox.height).toBeGreaterThan(headline.viewBox.height)
+  })
+
+  it('seats the eyebrow on top of the first line and inside the view box', () => {
+    const layout = layouts[2]
+    const eyebrow = { text: 'BREAKING', fontSize: 36, width: 160, originOffset: -2, capHeight: 25, descent: 0 }
+    for (const perLine of [false, true]) {
+      for (const align of ['left', 'center', 'right'] as const) {
+        const plain = buildShape({ ...base, perLine, align, seed: 5 }, layout.labels, layout.widths)
+        const shape = buildShape({ ...base, perLine, align, seed: 5 }, layout.labels, layout.widths, [], undefined, { eyebrow })
+        const box = shape.eyebrow!.box
+        expect(shape.path).toBe(plain.path)
+        expect(box.y + box.height).toBeGreaterThanOrEqual(-0.5)
+        expect(box.y + box.height).toBeLessThanOrEqual(1.5)
+        expect(box.width).toBeCloseTo(160 + 36 * 0.6, 1)
+        expect(shape.viewBox.y).toBeLessThan(box.y)
+        expect(shape.viewBox.x).toBeLessThanOrEqual(box.x)
+        expect(shape.viewBox.x + shape.viewBox.width).toBeGreaterThanOrEqual(box.x + box.width)
+        expect(shape.eyebrow!.baseline).toBeCloseTo(box.y + 36 * 0.2 + 25, 1)
+      }
+    }
+    const tapeless = buildShape({ ...base, seed: 5 }, layout.labels, layout.widths, [], undefined, { eyebrow, tapeless: true })
+    expect(tapeless.eyebrow!.box.x).toBeCloseTo(tapeless.lines[0].inkX ?? 0, 5)
+    expect(tapeless.eyebrow!.box.y + tapeless.eyebrow!.box.height).toBeLessThan(0)
   })
 })

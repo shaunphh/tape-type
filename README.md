@@ -1,6 +1,6 @@
 # Tape Type
 
-A browser-based brand utility for creating controlled cut-paper and tape treatments on a production-size 1080×1350 Instagram artboard.
+A browser-based brand utility for creating controlled cut-paper and tape headline treatments on a production-size 1080×1350 Instagram artboard.
 
 ## Run locally
 
@@ -43,35 +43,38 @@ If the repository is renamed, update the Pages base path in `vite.config.ts`.
 
 The regular `npm run build` output can also be deployed to Vercel or another static host. It uses `/` as its base path and writes the site to `dist/`.
 
+## Cover styles
+
+Two house styles, each a preset that can be adjusted afterwards:
+
+- **Headline** — Barlow Bold in Title Case, left aligned, as one connected block or one strip per line. Title case is applied automatically (short words such as "to", "the" and "of" stay lowercase); it only ever capitalises, so deliberate capitals like "iPhone" or "RTÉ" survive.
+- **Feature** — Barlow Bold in ALL CAPS on roomier strips with hand-torn ends, centred by default.
+
+Tape colours come from the published covers: Light `#F1F1F1`, Dark `#111111` (white text), Yellow `#FFE900`, or None (white text straight on the photo).
+
+An optional **eyebrow** label (Breaking, News, Exclusive, The Big Read, or any text) sits on top of the first line in caps. It is yellow, or white when the headline tape is yellow.
+
 ## How the shapes work
 
-- Regular cover headlines use the approved continuous 72–90px flex zone. The initial size follows headline character count, then the browser measures and wraps the actual text within a 920px area.
-- Barlow Bold at weight 700 is locked for cover artwork. All-caps input is flagged for sentence-case editing.
-- Headlines can use at most four lines. If a headline still exceeds four lines at 72px, the UI asks for an edit rather than shrinking off-scale.
+- Regular covers use a continuous 72–90px size range. The starting size follows the character count, then the browser measures the real text and shrinks it until it fits at most six lines in the chosen column.
+- Columns: Narrow 620px (the default for headlines, like most published covers), Medium 760px, Wide 920px (the default for features). Everything stays inside the 80px safe area.
+- Lines are balanced: the fewest lines that fit, with words spread so line lengths come out even rather than stranding one word.
 - Series covers are an explicit separate format at the reserved 172px scale and allow at most two lines.
-- Every line uses Canvas `actualBoundingBox*` glyph measurements, producing substantially tighter tape bounds than advance-width or generic line-box calculations.
+- Every line uses Canvas `actualBoundingBox*` glyph measurements, so tape fits the actual ink rather than the text's advance box. Text is re-measured whenever a web font finishes loading.
 - The seed evaluates longest/shortest lines, abrupt length changes, and the final line to choose a structurally useful intervention point.
 - Bands join as one continuous square, angled, stepped, or tucked SVG silhouette.
-- A deterministic seed chooses from an approved grammar: clipped corner, torn extension, shallow bite, short tab, or stepped protrusion.
-- Seeds also vary which line extends or tucks and which side carries the overhang, so variations change the composition rather than surface decoration.
-- Padding, hug strength, line height, cut depth, edge energy, and baseline join behavior are chosen automatically from the font and cut style.
+- A deterministic seed chooses from an approved grammar: clipped corner, torn extension, shallow bite, short tab, or stepped protrusion. Torn strips wander slightly off vertical at each end and often carry one thin paper sliver at a corner.
 
-## Focused controls
+## Controls
 
-- Regular or recurring-series cover format
-- Automatic brand sizing or a manual integer size constrained to 72–90px
-- Automatic wrapping or deliberate manual line breaks
-- Connected silhouette or one editable tape strip per line
-- Tape cling and line gap
-- Tape cling runs from a close fit through 100% contact to a restrained 116% over-cling that crops slightly into the glyph bounds. The default is a near-touching 108%.
-- Restrained per-line rotation variance from 0–2°
-- Alignment, cut style, colour presets, and independent text colour
+- Style (Headline / Feature), title case, automatic or manual line breaks
+- Eyebrow on/off, text and quick labels
+- Block or strips, tape colour, tape cling (82–116%; above 100% crops slightly into the glyph bounds), line gap, rotation variance 0–2°
+- Cut style: Clean cut, Torn, Tape, Cling, Rough cut
+- Alignment, Top / Middle / Bottom position, column width, regular or series format, automatic or manual size
 - Drag-to-position artwork within the 1080×1350 artboard and visible 80px safe-area guide
 
-Separate-strip exports keep each background path and its text grouped with the same rotation. Backgrounds render before all text layers so tucked or overlapping strips remain legible.
-
-The cut grammar includes clipped corners, angled whole-edge ends, shallow bites, stepped notches, torn extensions, short tabs, and protrusions. Each style selects from a restrained subset rather than adding arbitrary jagged points.
-- Randomisation never invents arbitrary noisy points.
+The preview, SVG exports and PNG exports are all drawn from the same layer list, so they match. Backgrounds render before all text layers so tucked or overlapping strips remain legible.
 
 The most recent controls are saved in `localStorage`. Uploaded photos stay in the browser and can be included in full-artboard SVG and PNG exports.
 

@@ -1,5 +1,7 @@
 import type {
   EdgePreference,
+  EyebrowMetrics,
+  EyebrowShape,
   GeneratorSettings,
   Point,
   ShapeResult,
@@ -35,11 +37,72 @@ export function coverSizeFromCharacters(text: string) {
   return Math.round(90 - ((characterCount - 30) / 30) * 18)
 }
 
+function greedyLines(words: string[], maxWidth: number, measure: (text: string) => number) {
+  const lines: string[] = []
+  let current = ''
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word
+    if (current && measure(candidate) > maxWidth) {
+      lines.push(current)
+      current = word
+    } else {
+      current = candidate
+    }
+  }
+  if (current) lines.push(current)
+  return lines
+}
+
+/**
+ * Splits words into exactly `count` lines no wider than maxWidth, choosing the breaks
+ * that make line widths as even as possible (least sum of squared widths).
+ */
+function evenLines(words: string[], count: number, maxWidth: number, measure: (text: string) => number) {
+  const widthCache = new Map<string, number>()
+  const width = (from: number, to: number) => {
+    const key = `${from}:${to}`
+    if (!widthCache.has(key)) widthCache.set(key, measure(words.slice(from, to).join(' ')))
+    return widthCache.get(key)!
+  }
+  // cost[k][j]: best cost for the first j words set in k lines; split[k][j]: where line k starts.
+  const cost = Array.from({ length: count + 1 }, () => new Array<number>(words.length + 1).fill(Infinity))
+  const split = Array.from({ length: count + 1 }, () => new Array<number>(words.length + 1).fill(0))
+  cost[0][0] = 0
+  for (let k = 1; k <= count; k += 1) {
+    for (let j = k; j <= words.length; j += 1) {
+      for (let i = k - 1; i < j; i += 1) {
+        if (cost[k - 1][i] === Infinity) continue
+        const lineWidth = width(i, j)
+        if (lineWidth > maxWidth && j - i > 1) continue
+        const total = cost[k - 1][i] + lineWidth * lineWidth
+        if (total < cost[k][j]) {
+          cost[k][j] = total
+          split[k][j] = i
+        }
+      }
+    }
+  }
+  if (cost[count][words.length] === Infinity) return null
+  const lines: string[] = []
+  for (let k = count, j = words.length; k > 0; k -= 1) {
+    const i = split[k][j]
+    lines.unshift(words.slice(i, j).join(' '))
+    j = i
+  }
+  return lines
+}
+
+/**
+ * Wraps each paragraph to maxWidth. With `balance`, keeps the fewest lines that fit
+ * but spreads the words so lines come out evenly weighted, instead of leaving one
+ * word stranded on a line.
+ */
 export function wrapText(
   text: string,
   maxWidth: number,
   measure: (text: string) => number,
   autoWrap: boolean,
+  balance = false,
 ) {
   const paragraphs = text.replace(/\r/g, '').split('\n')
   if (!autoWrap) return paragraphs.map((line) => line || ' ')
@@ -51,17 +114,12 @@ export function wrapText(
       continue
     }
     const words = paragraph.trim().split(/\s+/)
-    let current = ''
-    for (const word of words) {
-      const candidate = current ? `${current} ${word}` : word
-      if (current && measure(candidate) > maxWidth) {
-        lines.push(current)
-        current = word
-      } else {
-        current = candidate
-      }
+    const greedy = greedyLines(words, maxWidth, measure)
+    if (!balance || greedy.length < 2) {
+      lines.push(...greedy)
+      continue
     }
-    if (current) lines.push(current)
+    lines.push(...(evenLines(words, greedy.length, maxWidth, measure) ?? greedy))
   }
   return lines.length ? lines : [' ']
 }
@@ -234,10 +292,11 @@ function getPersonality(settings: GeneratorSettings, widths: number[], random: (
     tape: ['torn', 'tab', 'step', 'slant', 'clip', 'notch'],
     cling: ['clip', 'step', 'torn', 'bite', 'tab', 'slant', 'notch'],
     rough: ['torn', 'step', 'bite', 'clip', 'slant', 'notch', 'notch'],
+    torn: ['torn', 'slant', 'clip', 'torn'],
   }
   const primaryChoices = primaryByMode[settings.mode]
   const primary = primaryChoices[Math.floor(random() * primaryChoices.length)]
-  const secondaryChance = { clean: 0.12, tape: 0.34, cling: 0.27, rough: 0.55 }[settings.mode]
+  const secondaryChance = { clean: 0.12, tape: 0.34, cling: 0.27, rough: 0.55, torn: 0.2 }[settings.mode]
   const secondaryRoll = random()
   const secondary = random() < secondaryChance
     ? secondaryRoll < 0.42 ? 'clip' : secondaryRoll < 0.72 ? 'bite' : 'notch'
@@ -254,6 +313,7 @@ function getPersonality(settings: GeneratorSettings, widths: number[], random: (
     tape: ['angled', 'stepped', 'square'],
     cling: ['tucked', 'angled', 'stepped', 'square'],
     rough: ['stepped', 'tucked', 'angled'],
+    torn: ['angled', 'stepped', 'square'],
   }
   const joinTreatment = joinChoices[settings.mode][Math.floor(random() * joinChoices[settings.mode].length)]
   const focalJoin = widths.length <= 1
@@ -367,6 +427,49 @@ function rotatePoint(point: Point, centerX: number, centerY: number, angle: numb
   }
 }
 
+/**
+ * A strip torn by hand: both ends wander slightly off vertical, and most strips
+ * carry one thin paper sliver at a corner, as on the feature covers.
+ */
+function tornStrip(left: number, right: number, top: number, bottom: number, fontSize: number, random: () => number): Point[] {
+  const height = bottom - top
+  const wobble = fontSize * 0.022
+  const lean = fontSize * 0.1
+  const tornEnd = (x: number) => {
+    const topX = x + (random() - 0.5) * lean
+    const bottomX = x + (random() - 0.5) * lean * 2
+    return [0, 1, 2, 3].map((step) => {
+      const t = step / 3
+      const drift = step === 0 || step === 3 ? 0 : (random() - 0.5) * 2 * wobble
+      return { x: topX + (bottomX - topX) * t + drift, y: top + height * t }
+    })
+  }
+  const rightEnd = tornEnd(right)
+  const leftEnd = tornEnd(left)
+  const points: Point[] = [leftEnd[0], ...rightEnd, leftEnd[3], leftEnd[2], leftEnd[1]]
+  if (random() > 0.62) return points
+
+  const length = fontSize * (0.1 + random() * 0.16)
+  const thickness = fontSize * (0.02 + random() * 0.025)
+  const onRight = random() < 0.5
+  const atTop = random() < 0.5
+  const withSliver = points.map((point) => ({ ...point }))
+  if (onRight && atTop) {
+    const corner = rightEnd[0]
+    withSliver.splice(2, 0, { x: corner.x + length, y: corner.y + thickness * 0.25 }, { x: corner.x, y: corner.y + thickness })
+  } else if (onRight) {
+    const corner = rightEnd[3]
+    withSliver.splice(4, 0, { x: corner.x, y: corner.y - thickness }, { x: corner.x + length, y: corner.y - thickness * 0.25 })
+  } else if (atTop) {
+    const corner = leftEnd[0]
+    withSliver.push({ x: corner.x, y: corner.y + thickness }, { x: corner.x - length, y: corner.y + thickness * 0.25 })
+  } else {
+    const corner = leftEnd[3]
+    withSliver.splice(6, 0, { x: corner.x - length, y: corner.y - thickness * 0.25 }, { x: corner.x, y: corner.y - thickness })
+  }
+  return hasSelfIntersection(withSliver) ? points : withSliver
+}
+
 function buildSeparateShape(
   settings: GeneratorSettings,
   lines: TextLine[],
@@ -417,7 +520,9 @@ function buildSeparateShape(
       { x: left + (random() < 0.5 ? -lean * 0.55 : lean * 0.55), y: bottom },
     ]
 
-    if (index === personality.targetLine) {
+    if (settings.mode === 'torn') {
+      points = tornStrip(left, right, top, bottom, settings.fontSize, random)
+    } else if (index === personality.targetLine) {
       if (personality.primary === 'clip') {
         points = clipCorner(points, personality.edge, { x: naturalSide === 'right' ? right : left, y: (top + bottom) / 2 }, Math.min(10, 4 + structuralDepth * 0.22))
       } else {
@@ -482,7 +587,89 @@ function buildSeparateShape(
   }
 }
 
+export interface ShapeOptions {
+  /** Measured eyebrow label to seat above the first line. */
+  eyebrow?: EyebrowMetrics
+  /** No tape is drawn (text sits straight on the image), so the eyebrow anchors to the ink instead. */
+  tapeless?: boolean
+}
+
 export function buildShape(
+  settings: GeneratorSettings,
+  labels: string[],
+  widths: number[],
+  originOffsets: number[] = [],
+  fontBounds?: { ascent: number; descent: number },
+  options: ShapeOptions = {},
+): ShapeResult {
+  const shape = buildTapeShape(settings, labels, widths, originOffsets, fontBounds)
+  if (!options.eyebrow?.text.trim() || !shape.lines.length) return shape
+
+  const ascent = fontBounds?.ascent ?? settings.fontSize * 0.76
+  const firstLine = shape.lines[0]
+  const firstPoints = shape.strips?.[0]?.points ?? shape.points
+  const tapeTop = Math.min(...firstPoints.map((point) => point.y))
+  // Only true top-edge corners: torn slivers dip a little below the edge and must not widen the anchor.
+  const topEdge = firstPoints.filter((point) => point.y <= tapeTop + 0.3).map((point) => point.x)
+  const inkLeft = firstLine.inkX ?? firstLine.x
+  const anchor = options.tapeless
+    ? { left: inkLeft, right: inkLeft + firstLine.width, top: firstLine.baseline - ascent, gap: settings.fontSize * 0.22, overhang: 0 }
+    : { left: Math.min(...topEdge), right: Math.max(...topEdge), top: tapeTop, gap: -1, overhang: 1 }
+  const eyebrow = placeEyebrow(options.eyebrow, anchor, settings, mulberry32((settings.seed ^ 0x9e3779b9) >>> 0))
+  return { ...shape, eyebrow, viewBox: unionViewBox(shape.viewBox, rotatedCorners(eyebrow), 7) }
+}
+
+function placeEyebrow(
+  metrics: EyebrowMetrics,
+  anchor: { left: number; right: number; top: number; gap: number; overhang: number },
+  settings: GeneratorSettings,
+  random: () => number,
+): EyebrowShape {
+  const padX = metrics.fontSize * 0.3
+  const padY = metrics.fontSize * 0.2
+  const width = metrics.width + padX * 2
+  const height = metrics.capHeight + metrics.descent + padY * 2
+  // Printed labels rarely sit exactly flush: nudge it a little past the tape's outer edge.
+  const overhang = anchor.overhang * metrics.fontSize * (0.04 + random() * 0.1)
+  let x = anchor.left - overhang
+  if (settings.align === 'center') x = (anchor.left + anchor.right - width) / 2
+  if (settings.align === 'right') x = anchor.right - width + overhang
+  const y = anchor.top - anchor.gap - height
+  const points = [
+    { x, y },
+    { x: x + width, y },
+    { x: x + width, y: y + height },
+    { x, y: y + height },
+  ].map((point) => ({ x: round(point.x), y: round(point.y) }))
+  let angle = settings.rotationVariance > 0 ? (random() * 2 - 1) * settings.rotationVariance : 0
+  angle = round(angle)
+  return {
+    path: pointsToPath(points),
+    points,
+    text: metrics.text,
+    x: round(x + padX + metrics.originOffset),
+    baseline: round(y + padY + metrics.capHeight),
+    fontSize: metrics.fontSize,
+    angle,
+    centerX: round(x + width / 2),
+    centerY: round(y + height / 2),
+    box: { x: round(x), y: round(y), width: round(width), height: round(height) },
+  }
+}
+
+function rotatedCorners(eyebrow: EyebrowShape) {
+  return eyebrow.points.map((point) => rotatePoint(point, eyebrow.centerX, eyebrow.centerY, eyebrow.angle))
+}
+
+function unionViewBox(viewBox: ShapeResult['viewBox'], points: Point[], margin: number): ShapeResult['viewBox'] {
+  const minX = Math.min(viewBox.x, ...points.map((point) => point.x - margin))
+  const minY = Math.min(viewBox.y, ...points.map((point) => point.y - margin))
+  const maxX = Math.max(viewBox.x + viewBox.width, ...points.map((point) => point.x + margin))
+  const maxY = Math.max(viewBox.y + viewBox.height, ...points.map((point) => point.y + margin))
+  return { x: round(minX), y: round(minY), width: round(maxX - minX), height: round(maxY - minY) }
+}
+
+function buildTapeShape(
   settings: GeneratorSettings,
   labels: string[],
   widths: number[],
@@ -491,13 +678,17 @@ export function buildShape(
 ): ShapeResult {
   const random = mulberry32(settings.seed)
   const personality = getPersonality(settings, widths, random)
-  const energyBase = { clean: 28, tape: 46, cling: 40, rough: 60 }[settings.mode]
+  const energyBase = { clean: 28, tape: 46, cling: 40, rough: 60, torn: 44 }[settings.mode]
   const energy = energyBase + (random() - 0.5) * 8
   const cling = Math.max(0.82, Math.min(1.16, settings.hugStrength))
   const looseness = Math.max(0, 1 - cling)
   const overCling = Math.max(0, cling - 1) / 0.16
-  const horizontalPadding = Math.max(6, settings.fontSize * 0.085) * (1 + looseness * 1.8) * (1 - overCling * 1.18)
-  const verticalPadding = Math.max(3, settings.fontSize * 0.045) * (1 + looseness * 1.3) * (1 - overCling * 1.1)
+  // Feature strips are cut roomier than headline blocks, matching the printed covers.
+  const roomy = settings.style === 'feature'
+  const basePaddingX = roomy ? settings.fontSize * 0.3 : Math.max(6, settings.fontSize * 0.11)
+  const basePaddingY = roomy ? settings.fontSize * 0.2 : Math.max(3, settings.fontSize * 0.055)
+  const horizontalPadding = basePaddingX * (1 + looseness * 1.8) * (1 - overCling * 1.18)
+  const verticalPadding = basePaddingY * (1 + looseness * 1.3) * (1 - overCling * 1.1)
   const ascent = fontBounds?.ascent ?? settings.fontSize * 0.76
   const descent = fontBounds?.descent ?? settings.fontSize * 0.14
   const glyphHeight = ascent + descent
@@ -509,7 +700,7 @@ export function buildShape(
   const boundaries = labels.slice(1).map((_, index) => {
     return verticalPadding + glyphHeight + index * lineHeightPx + (lineHeightPx - glyphHeight) / 2
   })
-  const modeHug = { clean: -0.035, tape: -0.012, cling: 0, rough: -0.008 }[settings.mode]
+  const modeHug = { clean: -0.035, tape: -0.012, cling: 0, rough: -0.008, torn: -0.01 }[settings.mode]
   const hug = Math.max(0.78, Math.min(1, cling + modeHug))
   const effectiveWidths = widths.map((width) => maxMeasured - (maxMeasured - width) * hug)
   const lefts: number[] = []

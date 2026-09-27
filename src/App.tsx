@@ -62,6 +62,18 @@ const positions: { label: string; y: number }[] = [
   { label: 'Bottom', y: 100 },
 ]
 
+const alignOptions: { value: TextAlign; label: string }[] = [
+  { value: 'left', label: 'Left' },
+  { value: 'center', label: 'Centre' },
+  { value: 'right', label: 'Right' },
+]
+const positionOptions = positions.map((entry) => ({ value: entry.label, label: entry.label }))
+const columnOptions = columns.map((entry) => ({ value: entry.value, label: entry.label }))
+const formatOptions: { value: GeneratorSettings['coverFormat']; label: string }[] = [
+  { value: 'regular', label: 'Regular' },
+  { value: 'series', label: 'Series' },
+]
+
 const samples = [
   'What’s new in Dublin',
   'Dublin gets a new night market',
@@ -258,20 +270,71 @@ function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = 
   )
 }
 
-function SelectField({ label, value, children, onChange }: {
-  label: string
-  value: string | number
+const PANELS_KEY = 'tape-type-panels-v1'
+type PanelId = 'words' | 'style' | 'tape' | 'layout' | 'tune'
+/** Which control groups start open: the everyday decisions, with layout and fine-tuning folded away. */
+const panelDefaults: Record<PanelId, boolean> = { words: true, style: true, tape: true, layout: false, tune: false }
+
+function loadPanels(): Record<PanelId, boolean> {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PANELS_KEY) ?? 'null') as Record<string, unknown> | null
+    if (!stored || typeof stored !== 'object') return panelDefaults
+    const panels = { ...panelDefaults }
+    for (const id of Object.keys(panelDefaults) as PanelId[]) {
+      const value = stored[id]
+      if (typeof value === 'boolean') panels[id] = value
+    }
+    return panels
+  } catch {
+    return panelDefaults
+  }
+}
+
+function savePanels(panels: Record<PanelId, boolean>) {
+  try {
+    localStorage.setItem(PANELS_KEY, JSON.stringify(panels))
+  } catch {
+    // Blocked storage only costs remembering which groups were open.
+  }
+}
+
+/** A collapsible control group. While closed, its header shows the group's current settings in a few words. */
+function Panel({ id, title, summary, open, onToggle, children }: {
+  id: PanelId
+  title: string
+  summary: string
+  open: boolean
+  onToggle: (id: PanelId, open: boolean) => void
   children: React.ReactNode
-  onChange: (value: string) => void
 }) {
   return (
-    <label className="select-field">
+    <details className="panel" open={open} onToggle={(event) => onToggle(id, event.currentTarget.open)}>
+      <summary>
+        <span className="panel-title">{title}</span>
+        <span className="panel-summary">{summary}</span>
+        <ChevronDown size={15} className="panel-chevron" aria-hidden="true" />
+      </summary>
+      <div className="panel-body">{children}</div>
+    </details>
+  )
+}
+
+function Segmented<T extends string>({ label, value, options, disabled = false, onChange }: {
+  label: string
+  value: T | null
+  options: { value: T; label: string }[]
+  disabled?: boolean
+  onChange: (value: T) => void
+}) {
+  return (
+    <div className="position-field">
       <span>{label}</span>
-      <span className="select-wrap">
-        <select value={value} onChange={(event) => onChange(event.target.value)}>{children}</select>
-        <ChevronDown size={15} aria-hidden="true" />
-      </span>
-    </label>
+      <div className="piece-toggle compact" role="group" aria-label={label} style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
+        {options.map((option) => (
+          <button key={option.value} aria-pressed={value === option.value} className={value === option.value ? 'active' : ''} disabled={disabled} onClick={() => onChange(option.value)}>{option.label}</button>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -300,6 +363,7 @@ function App() {
   const [photo, setPhoto] = useState<string | null>(null)
   const [position, setPosition] = useState<Position>({ x: anchorX(settings.align), y: 50 })
   const [sampleOpen, setSampleOpen] = useState(false)
+  const [panels, setPanels] = useState<Record<PanelId, boolean>>(loadPanels)
   const previewRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<Drag | null>(null)
   const noticeTimer = useRef<number | undefined>(undefined)
@@ -332,9 +396,14 @@ function App() {
 
   useEffect(() => { preloadEmbeddedFonts(runs) }, [runs])
   useEffect(() => { saveSettings(settings) }, [settings])
+  useEffect(() => { savePanels(panels) }, [panels])
 
   const update = useCallback(<K extends keyof GeneratorSettings>(key: K, value: GeneratorSettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }))
+  }, [])
+
+  const togglePanel = useCallback((id: PanelId, open: boolean) => {
+    setPanels((current) => (current[id] === open ? current : { ...current, [id]: open }))
   }, [])
 
   const chooseStyle = (style: CoverStyle) => {
@@ -590,6 +659,28 @@ function App() {
       ? 'All caps is for Feature covers. Switch style, or retype the headline in title case.'
       : series ? 'Reserved 172px recurring-series scale.' : 'Fits the approved 72–90px cover range.'
 
+  const toneLabel = tones.find((tone) => tone.value === settings.tone)?.label ?? 'Light'
+  const modeLabel = modes.find((mode) => mode.value === settings.mode)?.label ?? 'Plain'
+  const columnLabel = columns.find((entry) => entry.value === settings.column)?.label ?? 'Narrow'
+  const alignLabel = alignOptions.find((entry) => entry.value === settings.align)?.label ?? 'Left'
+  const positionEntry = positions.find((entry) => Math.abs(position.y - entry.y) < 0.5)
+  const headlinePreview = settings.headline.replace(/\s+/g, ' ').trim()
+  const eyebrowPreview = settings.eyebrowEnabled ? settings.eyebrow.trim() : ''
+  const summaries: Record<PanelId, string> = {
+    words: headlinePreview ? (eyebrowPreview ? `${eyebrowPreview} · ${headlinePreview}` : headlinePreview) : 'No headline yet',
+    style: `${isFeature ? 'Feature' : 'Headline'} · Barlow ${isFeature ? 'Black' : 'Bold'}`,
+    tape: noTape ? 'No tape' : `${toneLabel} · ${settings.perLine ? 'Strips' : 'Block'} · ${modeLabel}`,
+    layout: [
+      alignLabel,
+      positionEntry?.label ?? `${Math.round(position.y)}% down`,
+      series ? 'Series cover' : `${columnLabel} column`,
+      series ? '172px' : settings.autoSize ? `Auto ${layout.fontSize}px` : `${layout.fontSize}px`,
+    ].join(' · '),
+    tune: `Cling ${Math.round(settings.hugStrength * 100)}% · Gap ${settings.lineGap}px · Turn ${settings.rotationVariance.toFixed(1)}°`,
+  }
+  const fitTone = blockedReason && !layout.empty ? 'error' : layout.caseWarning ? 'warning' : ''
+  const exportBlocked = blockedReason ?? (fonts.loading ? 'Loading fonts…' : null)
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -597,6 +688,8 @@ function App() {
           <span className="brand-mark"><span>T</span></span>
           <span>Tape Type</span>
         </a>
+        <h1 className="visually-hidden">Tape Type: cutout text generator</h1>
+        <p className="topbar-tagline">Controlled tape geometry built around your headline — never a rotated rectangle.</p>
         <div className="topbar-meta">
           <span className="status-dot" />
           Local tool
@@ -605,15 +698,9 @@ function App() {
 
       <main id="top" className="workspace">
         <aside className="controls-panel">
-          <div className="panel-intro">
-            <p className="eyebrow">Cutout generator / 01</p>
-            <h1>Shape the words.</h1>
-            <p>Controlled tape geometry built around your headline—never a rotated rectangle.</p>
-          </div>
-
-          <section className="control-section first">
+          <Panel id="words" title="Words" summary={summaries.words} open={panels.words} onToggle={togglePanel}>
             <div className="section-label-row">
-              <h2>Headline</h2>
+              <span className="field-label">Headline</span>
               <div className="sample-picker">
                 <button className="text-button" aria-expanded={sampleOpen} onClick={() => setSampleOpen((open) => !open)}>Try a sample <ChevronDown size={14} /></button>
                 {sampleOpen && (
@@ -630,30 +717,62 @@ function App() {
             <textarea
               aria-label="Headline text"
               value={settings.headline}
-              rows={4}
+              rows={3}
               onChange={(event) => update('headline', event.target.value)}
             />
-            <div className="quick-toggles">
-              {!isFeature && (
+            <div className="words-status">
+              <div className={`fit-line ${fitTone}`}>
+                <strong>{layout.fontSize}px</strong>
+                <span>{layout.labels.length} / {layout.maxLines} lines</span>
+                <span>{layout.characterCount} chars</span>
+              </div>
+              <div className="quick-toggles">
+                {!isFeature && (
+                  <label className="toggle-row">
+                    <span>Title case</span>
+                    <input type="checkbox" checked={settings.titleCase} onChange={(event) => update('titleCase', event.target.checked)} />
+                    <span className="switch" />
+                  </label>
+                )}
                 <label className="toggle-row">
-                  <span>Title case</span>
-                  <input type="checkbox" checked={settings.titleCase} onChange={(event) => update('titleCase', event.target.checked)} />
+                  <span>Auto wrap</span>
+                  <input type="checkbox" checked={settings.autoWrap} onChange={(event) => update('autoWrap', event.target.checked)} />
                   <span className="switch" />
                 </label>
+              </div>
+            </div>
+            {fitTone && <p className={`fit-message ${fitTone}`} role="status">{statusMessage}</p>}
+            <div className="sub-block">
+              <div className="section-label-row">
+                <span className="field-label">Eyebrow</span>
+                <label className="toggle-row inline-toggle">
+                  <span className="visually-hidden">Show eyebrow</span>
+                  <input type="checkbox" checked={settings.eyebrowEnabled} onChange={(event) => update('eyebrowEnabled', event.target.checked)} />
+                  <span className="switch" />
+                </label>
+              </div>
+              {settings.eyebrowEnabled && (
+                <>
+                  <input
+                    className="eyebrow-input"
+                    aria-label="Eyebrow text"
+                    value={settings.eyebrow}
+                    maxLength={40}
+                    placeholder="Breaking"
+                    onChange={(event) => update('eyebrow', event.target.value)}
+                  />
+                  <div className="chip-row">
+                    {eyebrowSuggestions.map((suggestion) => {
+                      const active = settings.eyebrow.trim().toLocaleLowerCase() === suggestion.toLocaleLowerCase()
+                      return <button key={suggestion} aria-pressed={active} className={active ? 'active' : ''} onClick={() => update('eyebrow', suggestion)}>{suggestion}</button>
+                    })}
+                  </div>
+                </>
               )}
-              <label className="toggle-row">
-                <span>Auto wrap</span>
-                <input type="checkbox" checked={settings.autoWrap} onChange={(event) => update('autoWrap', event.target.checked)} />
-                <span className="switch" />
-              </label>
             </div>
-          </section>
+          </Panel>
 
-          <section className="control-section brand-format-section">
-            <div className="section-label-row">
-              <h2>Style</h2>
-              <button className="text-button" onClick={resetStyle} title="Put this style's tape, colour, cut and layout back to the house look">Reset style</button>
-            </div>
+          <Panel id="style" title="Style" summary={summaries.style} open={panels.style} onToggle={togglePanel}>
             <div className="style-toggle" role="group" aria-label="Cover style">
               {styles.map((style) => (
                 <button key={style.value} aria-pressed={settings.style === style.value} className={settings.style === style.value ? 'active' : ''} onClick={() => chooseStyle(style.value)}>
@@ -662,47 +781,14 @@ function App() {
                 </button>
               ))}
             </div>
-            <div className={`fit-status ${blockedReason && !layout.empty ? 'error' : layout.caseWarning ? 'warning' : ''}`} role="status">
-              <div><strong>{layout.fontSize}px</strong><span>{layout.labels.length} / {layout.maxLines} lines</span><span>{layout.characterCount} chars</span></div>
-              <p>{statusMessage}</p>
+            <div className="style-caption">
+              <Lock size={12} aria-hidden="true" />
+              <span>Barlow {isFeature ? 'Black' : 'Bold'} {layout.weight} · {isFeature ? 'ALL CAPS' : settings.titleCase ? 'Title Case' : 'as typed'} · {series ? TEXT_AREA_WIDTH : columnWidth(settings.column)}px column</span>
+              <button className="text-button" onClick={resetStyle} title="Put this style's tape, colour, cut and layout back to the house look">Reset style</button>
             </div>
-          </section>
+          </Panel>
 
-          <section className="control-section eyebrow-section">
-            <div className="section-label-row">
-              <h2>Eyebrow</h2>
-              <label className="toggle-row inline-toggle">
-                <span className="visually-hidden">Show eyebrow</span>
-                <input type="checkbox" checked={settings.eyebrowEnabled} onChange={(event) => update('eyebrowEnabled', event.target.checked)} />
-                <span className="switch" />
-              </label>
-            </div>
-            {settings.eyebrowEnabled && (
-              <>
-                <input
-                  className="eyebrow-input"
-                  aria-label="Eyebrow text"
-                  value={settings.eyebrow}
-                  maxLength={40}
-                  placeholder="Breaking"
-                  onChange={(event) => update('eyebrow', event.target.value)}
-                />
-                <div className="chip-row">
-                  {eyebrowSuggestions.map((suggestion) => {
-                    const active = settings.eyebrow.trim().toLocaleLowerCase() === suggestion.toLocaleLowerCase()
-                    return <button key={suggestion} aria-pressed={active} className={active ? 'active' : ''} onClick={() => update('eyebrow', suggestion)}>{suggestion}</button>
-                  })}
-                </div>
-              </>
-            )}
-          </section>
-
-          <section className="control-section composition-section">
-            <h2>Tape</h2>
-            <div className="piece-toggle" role="group" aria-label="Tape pieces">
-              <button aria-pressed={!settings.perLine} className={!settings.perLine ? 'active' : ''} onClick={() => update('perLine', false)}>Block</button>
-              <button aria-pressed={settings.perLine} className={settings.perLine ? 'active' : ''} onClick={() => update('perLine', true)}>Strips</button>
-            </div>
+          <Panel id="tape" title="Tape" summary={summaries.tape} open={panels.tape} onToggle={togglePanel}>
             <div className="tone-row" role="radiogroup" aria-label="Tape colour">
               {tones.map((tone) => (
                 <button
@@ -718,15 +804,10 @@ function App() {
               ))}
             </div>
             {clash && <p className="tone-note" role="status">{clash}</p>}
-            <div className="range-stack composition-ranges">
-              <RangeField label="Tape cling" value={settings.hugStrength} min={0.82} max={1.16} step={0.01} disabled={noTape} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => update('hugStrength', value)} />
-              <RangeField label="Line gap" value={settings.lineGap} min={-8} max={20} suffix="px" onChange={(value) => update('lineGap', value)} />
-              <RangeField label="Rotation variance" value={settings.rotationVariance} min={0} max={2} step={0.1} disabled={!settings.perLine} format={(value) => `${value.toFixed(1)}°`} onChange={(value) => update('rotationVariance', value)} />
+            <div className="piece-toggle" role="group" aria-label="Tape pieces">
+              <button aria-pressed={!settings.perLine} className={!settings.perLine ? 'active' : ''} onClick={() => update('perLine', false)}>Block</button>
+              <button aria-pressed={settings.perLine} className={settings.perLine ? 'active' : ''} onClick={() => update('perLine', true)}>Strips</button>
             </div>
-          </section>
-
-          <section className="control-section">
-            <h2>Cut style</h2>
             <div className="mode-grid" role="group" aria-label="Cut style">
               {modes.map((mode) => (
                 <button
@@ -743,53 +824,47 @@ function App() {
               ))}
             </div>
             {noTape && <p className="tone-note">No tape: the text sits straight on the image.</p>}
-          </section>
+          </Panel>
 
-          <section className="control-section compact-grid typography-grid brand-type-section">
-            <h2>Layout</h2>
-            <div className="brand-lock"><Lock size={14} aria-hidden="true" /><span><strong>Barlow {isFeature ? 'Black' : 'Bold'}</strong><small>{layout.weight} · {isFeature ? 'ALL CAPS' : settings.titleCase ? 'Title Case' : 'as typed'} · {series ? TEXT_AREA_WIDTH : columnWidth(settings.column)}px column</small></span></div>
-            <SelectField label="Alignment" value={settings.align} onChange={(value) => chooseAlign(value as TextAlign)}>
-              <option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option>
-            </SelectField>
-            <div className="position-field">
-              <span>Position</span>
-              <div className="piece-toggle compact" role="group" aria-label="Vertical position">
-                {positions.map((entry) => {
-                  const active = Math.abs(position.y - entry.y) < 0.5
-                  return <button key={entry.label} aria-pressed={active} className={active ? 'active' : ''} onClick={() => setPosition({ x: anchorX(settings.align), y: entry.y })}>{entry.label}</button>
-                })}
-              </div>
-            </div>
-            <div className="position-field column-field">
-              <span>Column</span>
-              <div className="piece-toggle compact" role="group" aria-label="Column width">
-                {columns.map((entry) => {
-                  const active = !series && settings.column === entry.value
-                  return <button key={entry.value} aria-pressed={active} className={active ? 'active' : ''} disabled={series} onClick={() => update('column', entry.value)}>{entry.label}</button>
-                })}
-              </div>
-            </div>
-            <div className="piece-toggle format-toggle" role="group" aria-label="Cover format">
-              <button aria-pressed={!series} className={!series ? 'active' : ''} onClick={() => update('coverFormat', 'regular')}>Regular cover</button>
-              <button aria-pressed={series} className={series ? 'active' : ''} onClick={() => update('coverFormat', 'series')}>Series cover</button>
-            </div>
-            {!series && (
-              <>
-                <label className="toggle-row auto-size-toggle">
-                  <span>Auto size</span>
-                  <input type="checkbox" checked={settings.autoSize} onChange={(event) => setAutoSize(event.target.checked)} />
-                  <span className="switch" />
-                </label>
-                <div className="size-control">
+          <Panel id="layout" title="Layout" summary={summaries.layout} open={panels.layout} onToggle={togglePanel}>
+            <div className="layout-grid">
+              <Segmented label="Alignment" value={settings.align} options={alignOptions} onChange={chooseAlign} />
+              <Segmented
+                label="Position"
+                value={positionEntry?.label ?? null}
+                options={positionOptions}
+                onChange={(label) => {
+                  const entry = positions.find((candidate) => candidate.label === label)
+                  if (entry) setPosition({ x: anchorX(settings.align), y: entry.y })
+                }}
+              />
+              <Segmented label="Column" value={series ? null : settings.column} options={columnOptions} disabled={series} onChange={(column) => update('column', column)} />
+              <Segmented label="Format" value={settings.coverFormat} options={formatOptions} onChange={(format) => update('coverFormat', format)} />
+              {!series && (
+                <>
+                  <label className="toggle-row auto-size-toggle">
+                    <span>Auto size</span>
+                    <input type="checkbox" checked={settings.autoSize} onChange={(event) => setAutoSize(event.target.checked)} />
+                    <span className="switch" />
+                  </label>
                   <RangeField label="Cover size" value={settings.autoSize ? layout.fontSize : settings.fontSize} min={72} max={90} suffix="px" disabled={settings.autoSize} onChange={(value) => update('fontSize', value)} />
-                </div>
-              </>
-            )}
-            <p className="automatic-note"><Sparkles size={13} aria-hidden="true" /> Size, fit and cut depth stay inside the brand system</p>
-          </section>
+                </>
+              )}
+            </div>
+          </Panel>
+
+          <Panel id="tune" title="Fine-tune" summary={summaries.tune} open={panels.tune} onToggle={togglePanel}>
+            <div className="range-stack">
+              <RangeField label="Tape cling" value={settings.hugStrength} min={0.82} max={1.16} step={0.01} disabled={noTape} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => update('hugStrength', value)} />
+              <RangeField label="Line gap" value={settings.lineGap} min={-8} max={20} suffix="px" onChange={(value) => update('lineGap', value)} />
+              <RangeField label="Rotation variance" value={settings.rotationVariance} min={0} max={2} step={0.1} disabled={!settings.perLine} format={(value) => `${value.toFixed(1)}°`} onChange={(value) => update('rotationVariance', value)} />
+            </div>
+          </Panel>
+
+          <p className="automatic-note panel-footer"><Sparkles size={13} aria-hidden="true" /> Size, fit and cut depth stay inside the brand system</p>
         </aside>
 
-        <section className="preview-column">
+        <section className="stage-column">
           <div className="preview-toolbar">
             <div className="background-switcher" role="group" aria-label="Preview background">
               <button aria-pressed={previewBackground === 'transparent'} className={previewBackground === 'transparent' ? 'active' : ''} onClick={() => setPreviewBackground('transparent')}>Clear</button>
@@ -800,54 +875,6 @@ function App() {
                 {photo ? <ImageIcon size={14} aria-hidden="true" /> : <Upload size={14} aria-hidden="true" />} Photo
               </label>
             </div>
-            <p>1080 × 1350 · drag or use arrow keys to position</p>
-          </div>
-
-          {notice && <p className="notice" role="alert">{notice}</p>}
-
-          <div
-            ref={previewRef}
-            className={`preview-stage ${previewBackground}`}
-            style={photo && previewBackground === 'photo' ? { backgroundImage: `linear-gradient(rgba(0,0,0,.12),rgba(0,0,0,.12)), url(${photo})` } : undefined}
-          >
-            {previewBackground === 'photo' && !photo && (
-              <label className="photo-empty"><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
-            )}
-            <div
-              className="artwork draggable"
-              tabIndex={0}
-              role="application"
-              aria-label="Artwork position. Drag, or use the arrow keys (Shift for bigger steps)."
-              onPointerDown={startDrag}
-              onPointerMove={drag}
-              onPointerUp={endDrag}
-              onPointerCancel={cancelDrag}
-              // Only the artwork's own capture ending stops a drag: on touch, the SVG element under the
-              // finger holds capture first and hands it over when the drag starts.
-              onLostPointerCapture={(event) => { if (event.target === event.currentTarget) endDrag() }}
-              onKeyDown={nudge}
-            >
-              <svg
-                role="img"
-                aria-label={`Generated tape artwork: ${shape.personality}`}
-                viewBox={`0 0 ${ARTBOARD_WIDTH} ${ARTBOARD_HEIGHT}`}
-              >
-                <rect className="safe-guide" x={SAFE_MARGIN} y={SAFE_MARGIN} width={TEXT_AREA_WIDTH} height={ARTBOARD_HEIGHT - SAFE_MARGIN * 2} />
-                <g transform={`translate(${placement.x} ${placement.y})`}>
-                  {layers.map((layer, index) => {
-                    const transform = layer.angle ? `rotate(${layer.angle} ${layer.cx} ${layer.cy})` : undefined
-                    return layer.kind === 'path'
-                      ? <path key={`path-${index}`} d={layer.d} fill={layer.fill} transform={transform} />
-                      : <text key={`text-${index}`} x={layer.x} y={layer.y} fill={layer.fill} fontFamily={FONT_FAMILY} fontWeight={layer.weight} fontSize={layer.size} transform={transform}>{layer.text}</text>
-                  })}
-                </g>
-              </svg>
-            </div>
-            <span className="stage-coordinate top-left">1080 × 1350 / 4:5</span>
-            <span className="stage-coordinate bottom-right">{layout.fontSize}px · {layout.labels.length} lines · {shape.personality.toUpperCase()}</span>
-          </div>
-
-          <div className="variation-bar">
             <div className="variation-controls" title={variationNote}>
               <button className="icon-button" aria-label="Previous variation" disabled={variationOff || historyIndex === 0} onClick={previous}><ArrowLeft size={18} /></button>
               <button className="randomise-button" disabled={variationOff} onClick={randomise}><Sparkles size={17} aria-hidden="true" /> Randomise cut</button>
@@ -869,22 +896,68 @@ function App() {
             </div>
           </div>
 
-          <div className="export-bar">
-            <div>
-              <p className="eyebrow">Ready for layout</p>
-              <strong>Export clean, editable artwork</strong>
-              {(blockedReason || fonts.loading) && <p className="export-message" role="status">{blockedReason ?? 'Loading fonts…'}</p>}
-            </div>
-            <div className="export-actions">
-              <button disabled={exportDisabled} onClick={() => copy('svg')}>{copied === 'svg' ? <Check size={16} /> : <Clipboard size={16} />}{copied === 'svg' ? 'Copied' : 'Copy SVG'}</button>
-              <button disabled={exportDisabled} onClick={() => downloadSvg(false)}><Download size={16} aria-hidden="true" /> Cutout SVG</button>
-              <button disabled={exportDisabled || exporting} onClick={() => downloadPng(1)}><Download size={16} aria-hidden="true" /> PNG 1×</button>
-              <button className="png-fallback" disabled={exportDisabled || exporting} onClick={() => downloadPng(2)}><Download size={16} aria-hidden="true" /> PNG 2×</button>
-              <button disabled={exportDisabled || exporting} onClick={() => downloadPng(3)}><Download size={16} aria-hidden="true" /> PNG 3×</button>
-              <button className="primary" disabled={exportDisabled} onClick={() => downloadSvg(true)}><Download size={16} aria-hidden="true" /> Full SVG</button>
+          <div className="stage-wrap">
+            {notice && <p className="notice" role="alert">{notice}</p>}
+            <div
+              ref={previewRef}
+              className={`preview-stage ${previewBackground}`}
+              style={photo && previewBackground === 'photo' ? { backgroundImage: `linear-gradient(rgba(0,0,0,.12),rgba(0,0,0,.12)), url(${photo})` } : undefined}
+            >
+              {previewBackground === 'photo' && !photo && (
+                <label className="photo-empty"><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
+              )}
+              <div
+                className="artwork draggable"
+                tabIndex={0}
+                role="application"
+                aria-label="Artwork position. Drag, or use the arrow keys (Shift for bigger steps)."
+                onPointerDown={startDrag}
+                onPointerMove={drag}
+                onPointerUp={endDrag}
+                onPointerCancel={cancelDrag}
+                // Only the artwork's own capture ending stops a drag: on touch, the SVG element under the
+                // finger holds capture first and hands it over when the drag starts.
+                onLostPointerCapture={(event) => { if (event.target === event.currentTarget) endDrag() }}
+                onKeyDown={nudge}
+              >
+                <svg
+                  role="img"
+                  aria-label={`Generated tape artwork: ${shape.personality}`}
+                  viewBox={`0 0 ${ARTBOARD_WIDTH} ${ARTBOARD_HEIGHT}`}
+                >
+                  <rect className="safe-guide" x={SAFE_MARGIN} y={SAFE_MARGIN} width={TEXT_AREA_WIDTH} height={ARTBOARD_HEIGHT - SAFE_MARGIN * 2} />
+                  <g transform={`translate(${placement.x} ${placement.y})`}>
+                    {layers.map((layer, index) => {
+                      const transform = layer.angle ? `rotate(${layer.angle} ${layer.cx} ${layer.cy})` : undefined
+                      return layer.kind === 'path'
+                        ? <path key={`path-${index}`} d={layer.d} fill={layer.fill} transform={transform} />
+                        : <text key={`text-${index}`} x={layer.x} y={layer.y} fill={layer.fill} fontFamily={FONT_FAMILY} fontWeight={layer.weight} fontSize={layer.size} transform={transform}>{layer.text}</text>
+                    })}
+                  </g>
+                </svg>
+              </div>
+              <span className="stage-coordinate top-left">1080 × 1350 · drag or arrow keys to position</span>
+              <span className="stage-coordinate bottom-right">{layout.fontSize}px · {layout.labels.length} lines · {shape.personality.toUpperCase()}</span>
             </div>
           </div>
         </section>
+
+        <footer className="export-bar">
+          <div className="export-status">
+            <p className="eyebrow">{exportBlocked ? 'Export' : 'Ready for layout'}</p>
+            {exportBlocked
+              ? <p className="export-message" role="status">{exportBlocked}</p>
+              : <strong>Export clean, editable artwork</strong>}
+          </div>
+          <div className="export-actions">
+            <button disabled={exportDisabled} onClick={() => copy('svg')}>{copied === 'svg' ? <Check size={16} /> : <Clipboard size={16} />}{copied === 'svg' ? 'Copied' : 'Copy SVG'}</button>
+            <button disabled={exportDisabled} onClick={() => downloadSvg(false)}><Download size={16} aria-hidden="true" /> Cutout SVG</button>
+            <button disabled={exportDisabled || exporting} onClick={() => downloadPng(1)}><Download size={16} aria-hidden="true" /> PNG 1×</button>
+            <button className="png-fallback" disabled={exportDisabled || exporting} onClick={() => downloadPng(2)}><Download size={16} aria-hidden="true" /> PNG 2×</button>
+            <button disabled={exportDisabled || exporting} onClick={() => downloadPng(3)}><Download size={16} aria-hidden="true" /> PNG 3×</button>
+            <button className="primary" disabled={exportDisabled} onClick={() => downloadSvg(true)}><Download size={16} aria-hidden="true" /> Full SVG</button>
+          </div>
+        </footer>
       </main>
     </div>
   )

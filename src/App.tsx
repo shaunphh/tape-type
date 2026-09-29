@@ -1142,7 +1142,7 @@ function App() {
               <div className="sub-block">
                 <div className="section-label-row">
                   <span className="field-label">Details</span>
-                  <span className="field-hint">Dates, place, tickets · lighter</span>
+                  <span className="field-hint">Dates, place, tickets</span>
                 </div>
                 <textarea aria-label="Details" className="body-input details-input" value={inside.details} rows={3} placeholder={'22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite'} onChange={(event) => updateInside('details', event.target.value)} />
                 <div className="words-status">
@@ -1152,7 +1152,7 @@ function App() {
                     <span>text and details</span>
                   </div>
                 </div>
-                <p className="panel-note">Leave a blank line between paragraphs. Start a line with a dash for a bullet. Put a line in *stars* to make it bold.</p>
+                <p className="panel-note">Leave a blank line between paragraphs. Start a line with a dash for a bullet. Put a line in *stars* to pick it out in white.</p>
               </div>
               {blockedReason && !page.empty && <p className="fit-message error" role="status">{blockedReason}</p>}
             </Panel>
@@ -1180,7 +1180,7 @@ function App() {
                 <Segmented label="Weight" note={WEIGHT_NAMES[pageType.details.weight]} value={String(pageType.details.weight)} options={weightOptions} onChange={(weight) => updateType('details', { weight: Number(weight) })} />
               </div>
               <div className="sub-block range-stack">
-                <span className="field-label">Bold lines</span>
+                <span className="field-label">Lines in stars</span>
                 <Segmented label="Weight" note={WEIGHT_NAMES[pageType.strong.weight]} value={String(pageType.strong.weight)} options={weightOptions} onChange={(weight) => updateType('strong', { weight: Number(weight) })} />
               </div>
               <div className="sub-block range-stack">
@@ -1442,7 +1442,8 @@ function App() {
               </button>
             ))}
           </div>
-          {!isInside && <div className="preview-toolbar">
+          {/* An inside page has no use for these, but keeps their room, so it is shown as large as a cover. */}
+          <div className={isInside ? 'preview-toolbar spacer' : 'preview-toolbar'} aria-hidden={isInside || undefined}>
             <div className="background-switcher" role="group" aria-label="Preview background">
               <button aria-pressed={previewBackground === 'transparent'} className={previewBackground === 'transparent' ? 'active' : ''} onClick={() => setPreviewBackground('transparent')}>Clear</button>
               <button aria-pressed={previewBackground === 'charcoal'} className={previewBackground === 'charcoal' ? 'active' : ''} onClick={() => setPreviewBackground('charcoal')}>Dark</button>
@@ -1471,7 +1472,7 @@ function App() {
               />
               <button aria-label="Copy seed" onClick={() => copy('seed')}>{copied === 'seed' ? <Check size={14} /> : <Copy size={14} />}</button>
             </div>
-          </div>}
+          </div>
 
           <div className="stage-wrap">
             {notice && <p className="notice" role="alert">{notice}</p>}

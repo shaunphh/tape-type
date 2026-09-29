@@ -1,7 +1,6 @@
 import { BRAND, buildLayers, drawLayers, escapeAttribute, layersToSvg, type Layer } from './artwork'
 import type { Box, LogoSide } from './furniture'
 import { buildShape, wrapText } from './geometry'
-import { EYEBROW_SCALE } from './layout'
 import { lockedLineGap } from './locks'
 import type { InkMetrics } from './metrics'
 import { photoRect, type PhotoView } from './photo'
@@ -48,17 +47,15 @@ export const TEXT_WIDTH = POST_FRAME.width - PAGE_MARGIN * 2
 /** The logo is small on an inside page, and the marks sit on the page's own margin. */
 export const INSIDE_MARKS = { margin: PAGE_MARGIN, logoWidth: 128 }
 
-export const TITLE = { weight: 700, largest: 69, smallest: 52, lineHeight: 1.08, lines: 3, mostLines: 4, fill: BRAND.light }
-export const BODY = { weight: 500, size: 38, lineHeight: 1.32, paragraphGap: 26, bulletGap: 8, indent: 44, fill: '#C2C2C2' }
-/** Details are the story's size in a lighter weight. */
-export const DETAILS = { weight: 400 }
-/** A line in stars is bold and white, in the story or the details: a name, a lead sentence. */
-export const STRONG = { weight: 700, fill: BRAND.light }
-/**
- * The label is a cover's tape in small: capitals on light tape, with a cut of its own. It is
- * 45px: the 50 of the Canva pages, brought down by as much as a cover's eyebrow is.
- */
-export const LABEL = { size: Math.round(50 * EYEBROW_SCALE), weight: 700 }
+// The sizes and weights below are the ones Shaun settled on in the Type panel (29 September 2026).
+export const TITLE = { weight: 700, largest: 52, smallest: 45, lineHeight: 1.07, lines: 3, mostLines: 4, fill: BRAND.light }
+export const BODY = { weight: 400, size: 38, lineHeight: 1.2, paragraphGap: 26, bulletGap: 8, indent: 44, fill: '#C2C2C2' }
+/** Details are the story's size, a little heavier and brighter: halfway from the story's grey to the title's white. */
+export const DETAILS = { weight: 500, fill: '#D9D9D9' }
+/** A line in stars is white, in the story or the details: a name, a lead sentence. */
+export const STRONG = { weight: 400, fill: BRAND.light }
+/** The label is a cover's tape in small: capitals on light tape, with a cut of its own. */
+export const LABEL = { size: 38, weight: 800 }
 
 /** The sizes and weights the page is set in. `pageType.ts` lets others be tried on this machine. */
 export interface PageType {
@@ -184,7 +181,7 @@ function buildLabel(label: string, top: number, inkOf: MeasureInk, cut: ShapeMod
 /**
  * Sets the page, top to bottom: the title, the story, the details, with the picture at the top,
  * at the bottom, or after the first of them. The label sits over whichever comes first. The
- * title takes the largest size from 69 down to 52 that fits it in three lines; the story and
+ * title takes the largest size from 52 down to 45 that fits it in three lines; the story and
  * the details are always 38. A picture that fills takes the room the words leave. `marks` says
  * where the logo ends and the arrow starts, so the words keep clear of both. Without `ink`
  * to measure it by, there is no label. `type` is for trying other sizes and weights.
@@ -258,7 +255,7 @@ export function layoutInside(
       })
       y += titleLines.length * titlePitch
     }
-    const setText = (paragraphs: TypedLine[][], block: { size: number; weight: number }) => {
+    const setText = (paragraphs: TypedLine[][], block: { size: number; weight: number }, blockFill: string) => {
       const { lineHeight } = type.text
       // The gaps and the bullets' indent are the text's, and grow and shrink with it.
       const scale = block.size / BODY.size
@@ -267,7 +264,7 @@ export function layoutInside(
         paragraph.forEach((typed, lineIndex) => {
           if (lineIndex > 0 && typed.bullet && paragraph[lineIndex - 1].bullet) y += BODY.bulletGap * scale
           const weight = typed.strong ? type.strong.weight : block.weight
-          const fill = typed.strong ? STRONG.fill : BODY.fill
+          const fill = typed.strong ? STRONG.fill : blockFill
           const indent = typed.bullet ? Math.round(BODY.indent * scale) : 0
           const lines = wrapText(typed.text, TEXT_WIDTH - indent, (value) => measure(value, block.size, weight), true)
           if (typed.bullet) layers.push(text('•', PAGE_MARGIN + Math.round(10 * scale), y + baselineIn(block.size, lineHeight), block.size, weight, fill))
@@ -282,8 +279,8 @@ export function layoutInside(
 
     const blocks = [
       { has: titleLines.length > 0, gap: 0, labelGap: GAP.labelToTitle, set: setTitle },
-      { has: story.length > 0, gap: GAP.aboveBody, labelGap: GAP.labelToText, set: () => setText(story, type.text) },
-      { has: details.length > 0, gap: GAP.aboveDetails, labelGap: GAP.labelToText, set: () => setText(details, type.details) },
+      { has: story.length > 0, gap: GAP.aboveBody, labelGap: GAP.labelToText, set: () => setText(story, type.text, BODY.fill) },
+      { has: details.length > 0, gap: GAP.aboveDetails, labelGap: GAP.labelToText, set: () => setText(details, type.details, DETAILS.fill) },
     ].filter((block) => block.has)
     blocks.forEach((block, index) => {
       if (after === 'words') y += block.gap
@@ -389,7 +386,8 @@ export const insideDefaults: InsideOptions = {
   image: 'fill',
   position: 'top',
   logo: 'off',
-  arrow: true,
+  // Off to start with: without it the words run down to the bottom margin.
+  arrow: false,
 }
 
 /** Stored pages are untrusted, like everything else that is remembered. */

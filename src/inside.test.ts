@@ -29,21 +29,21 @@ describe('inside page', () => {
     expect(layout.overflow).toBeNull()
   })
 
-  it('sets the title as large as fits in three lines, between 52 and 69', () => {
-    expect([TITLE.smallest, TITLE.largest]).toEqual([52, 69])
-    expect(page({ title: 'Ireland Music Week is back' }).titleSize).toBe(69)
-    // 100 characters: three lines of 28 characters at 69 won't hold it, so it comes down.
-    const long = page({ title: 'Bolands Mills is set to come alive this Culture Night with Milling About and Culture in Every Corner' })
-    expect(long.titleSize).toBeLessThan(69)
-    expect(long.titleSize).toBeGreaterThanOrEqual(52)
+  it('sets the title as large as fits in three lines, between 45 and 52', () => {
+    expect([TITLE.smallest, TITLE.largest]).toEqual([45, 52])
+    expect(page({ title: 'Ireland Music Week is back' }).titleSize).toBe(52)
+    // 116 characters: three lines of 37 characters at 52 won't hold it, so it comes down.
+    const title = 'Bolands Mills is set to come alive this Culture Night with Milling About and Culture in Every Corner of the old mill'
+    const long = page({ title })
+    expect(long.titleSize).toBeLessThan(52)
+    expect(long.titleSize).toBeGreaterThanOrEqual(45)
     expect(long.titleLines).toBeLessThanOrEqual(TITLE.lines)
     // It comes down no further than it has to: a pixel bigger would take a fourth line.
-    const title = 'Bolands Mills is set to come alive this Culture Night with Milling About and Culture in Every Corner'
     const linesAt = (size: number) => wrapText(title, TEXT_WIDTH, (value) => measure(value, size, TITLE.weight), true).length
     expect(linesAt(long.titleSize)).toBe(TITLE.lines)
     expect(linesAt(long.titleSize + 1)).toBeGreaterThan(TITLE.lines)
     const tooLong = page({ title: Array(40).fill('wordy').join(' ') })
-    expect(tooLong.titleSize).toBe(52)
+    expect(tooLong.titleSize).toBe(45)
     expect(tooLong.overflow).toBe('title')
   })
 
@@ -88,8 +88,10 @@ describe('inside page', () => {
     expect(capTop(lines[0])).toBeLessThan(PAGE_MARGIN + 40)
     expect(Math.max(...lines.map((layer) => layer.y))).toBeLessThan(layout.banner!.y)
     expect(layout.overflow).toBeNull()
-    // The picture takes the same room from the words wherever it is.
-    expect(layout.bodyRoom).toBe(page({ position: 'top', image: 'short' }).bodyRoom)
+    // The picture takes much the same room from the words wherever it is: its gap is a little wider here.
+    const atTop = page({ position: 'top', image: 'short' }).bodyRoom
+    expect(layout.bodyRoom).toBeLessThanOrEqual(atTop)
+    expect(layout.bodyRoom).toBeGreaterThanOrEqual(atTop - 1)
     // The arrow sits on the picture, so it takes no more from the words.
     expect(page({ position: 'bottom', image: 'short' }, { arrowTop: 1250 }).bodyRoom).toBe(layout.bodyRoom)
     const long = page({ position: 'bottom', image: 'short', body: Array(150).fill('words').join(' ') })
@@ -193,8 +195,9 @@ describe('inside page', () => {
     expect(none.layers).toEqual(page({ image: 'none', position: 'top' }).layers)
   })
 
-  it('sets the label as much smaller as a cover’s eyebrow is', () => {
-    expect(LABEL.size).toBe(45)
+  it('sets the label in ExtraBold at the text’s size', () => {
+    expect(LABEL).toEqual({ size: 38, weight: 800 })
+    expect(LABEL.size).toBe(BODY.size)
   })
 
   it('sets the label in capitals on light tape, over whatever comes first', () => {
@@ -202,7 +205,7 @@ describe('inside page', () => {
     const [tapePath] = paths(layout.layers)
     const lettering = texts(layout.layers).find((layer) => layer.text === 'MEET THE ARTISTS')!
     expect(tapePath).toMatchObject({ fill: BRAND.light })
-    expect(lettering).toMatchObject({ size: LABEL.size, weight: 700, fill: BRAND.dark, x: PAGE_MARGIN })
+    expect(lettering).toMatchObject({ size: LABEL.size, weight: LABEL.weight, fill: BRAND.dark, x: PAGE_MARGIN })
     // The tape reaches into the margin; its lettering starts on it, like the title under it.
     const label = layout.label!
     expect(label.x).toBeLessThan(PAGE_MARGIN)
@@ -222,7 +225,7 @@ describe('inside page', () => {
     const under = page({ label: 'Meet the artists' })
     expect(under.label!.y).toBeGreaterThan(IMAGE_HEIGHTS.medium + 40)
     const untitled = page({ label: 'Meet the artists', title: '', image: 'none' })
-    const first = texts(untitled.layers).find((layer) => layer.size === BODY.size)!
+    const first = texts(untitled.layers).find((layer) => layer.weight === BODY.weight)!
     expect(capTop(first)).toBeGreaterThan(untitled.label!.y + untitled.label!.height + 40)
     expect(capTop(first)).toBeLessThan(untitled.label!.y + untitled.label!.height + 80)
     // In the middle, the picture follows the label and the title together, never the label alone.
@@ -252,8 +255,8 @@ describe('inside page', () => {
     expect(layoutInside({ label: 'Meet the artists', title: 'A title', body: '', image: 'none' }, measure).label).toBeNull()
   })
 
-  it('starts a new page with a picture that fills, at the top', () => {
-    expect(insideDefaults).toMatchObject({ image: 'fill', position: 'top', label: '' })
+  it('starts a new page with a picture that fills, at the top, and no arrow', () => {
+    expect(insideDefaults).toMatchObject({ image: 'fill', position: 'top', label: '', arrow: false, logo: 'off' })
     const layout = layoutInside(insideDefaults, measure, {}, ink)
     expect(layout.banner!.y).toBe(0)
     expect(layout.banner!.height).toBeGreaterThan(FILL_SMALLEST)
@@ -262,7 +265,7 @@ describe('inside page', () => {
 
   it('wraps a long label inside the margins', () => {
     const layout = page({ label: 'Everything you need to know before you go out tonight', image: 'none' })
-    const lettering = texts(layout.layers).filter((layer) => layer.size === LABEL.size)
+    const lettering = texts(layout.layers).filter((layer) => layer.weight === LABEL.weight && layer.fill === BRAND.dark)
     expect(lettering.length).toBeGreaterThan(1)
     expect(layout.label!.x + layout.label!.width).toBeLessThan(POST_FRAME.width - PAGE_MARGIN + 1)
     expect(lettering[1].y - lettering[0].y).toBeCloseTo(LABEL.size * 0.94, 1)
@@ -294,14 +297,18 @@ describe('inside page', () => {
     expect(second.y - first.y).toBeCloseTo(pitch + BODY.bulletGap, 1)
   })
 
-  it('sets the details under the story, the same size in a lighter weight', () => {
+  it('sets the details under the story, the same size, a little heavier and brighter', () => {
     const layout = page({ body: 'The story.', details: '22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite' })
     const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
     const story = lines.find((layer) => layer.text === 'The story.')!
     const details = lines.filter((layer) => layer.weight === DETAILS.weight)
     expect(details.map((layer) => layer.text)).toEqual(['22 September · 6.30pm', 'This Must Be The Place, Smithfield', 'Tickets via Eventbrite'])
-    expect(story.weight).toBe(BODY.weight)
-    expect(DETAILS.weight).toBeLessThan(BODY.weight)
+    expect(story).toMatchObject({ weight: BODY.weight, fill: BODY.fill })
+    expect(DETAILS.weight).toBeGreaterThan(BODY.weight)
+    expect(details.every((layer) => layer.fill === DETAILS.fill)).toBe(true)
+    // Their grey is halfway from the story's to the title's white.
+    const grey = (fill: string) => parseInt(fill.slice(1, 3), 16)
+    expect(grey(DETAILS.fill)).toBe((grey(BODY.fill) + grey(TITLE.fill)) / 2)
     expect(details[0].y).toBeGreaterThan(story.y + BODY.size * BODY.lineHeight)
     expect(details[1].y - details[0].y).toBeCloseTo(BODY.size * BODY.lineHeight, 1)
     expect(layout.bodyLines).toBe(4)
@@ -309,12 +316,13 @@ describe('inside page', () => {
     expect(page({ title: '', body: '', details: 'Tickets via Eventbrite' })).toMatchObject({ empty: false, bodyLines: 1 })
   })
 
-  it('sets a line in stars bold and white, in the story or the details', () => {
+  it('sets a line in stars in white, in the story or the details', () => {
     const layout = page({ body: '*Each artist will give a short presentation.*', details: '*Ishmael Claxton*\nPhotography' })
     const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
     expect(lines.find((layer) => layer.text === 'Each artist will give a short presentation.')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
     expect(lines.find((layer) => layer.text === 'Ishmael Claxton')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
-    expect(lines.find((layer) => layer.text === 'Photography')).toMatchObject({ weight: DETAILS.weight, fill: BODY.fill })
+    expect(lines.find((layer) => layer.text === 'Photography')).toMatchObject({ weight: DETAILS.weight, fill: DETAILS.fill })
+    expect(STRONG.fill).toBe(TITLE.fill)
   })
 
   it('sets the page in other sizes and weights when they are being tried', () => {
@@ -330,6 +338,7 @@ describe('inside page', () => {
     expect(titles.every((layer) => layer.weight === 800)).toBe(true)
     expect(titles[1].y - titles[0].y).toBeCloseTo(80, 1)
     expect(find('The story.')).toMatchObject({ size: 30, weight: 400, fill: BODY.fill })
+    expect(find('A date').fill).toBe(DETAILS.fill)
     expect(find('A bold line.')).toMatchObject({ size: 30, weight: 900, fill: STRONG.fill })
     expect(find('A bold line.').y - find('The story.').y).toBeCloseTo(30 * 1.5, 1)
     // The bullet's indent is the text's, so it shrinks with it.

@@ -631,6 +631,8 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
   gap: 8px 10px;
 }
 .preview-toolbar .variation-controls { margin-left: auto; }
+/* An inside page keeps the toolbar's room without showing it, so its preview is a cover's size. */
+.preview-toolbar.spacer { visibility: hidden; }
 
 .background-switcher {
   display: flex;
@@ -827,6 +829,10 @@ textarea.title-input { font-family: 'Barlow', Arial, sans-serif; font-size: 18px
   border-top: 1px solid #d0cdc6;
 }
 .export-status { min-width: 0; }
+/* Room for a message of two lines, so the preview keeps its size whatever the export bar says. */
+@media (min-width: 761px) {
+  .export-status { display: grid; min-height: 45px; align-content: center; }
+}
 .export-status .eyebrow { margin-bottom: 3px; }
 .export-status strong { font-family: 'Barlow Condensed'; font-size: 17px; text-transform: uppercase; }
 .export-message { max-width: 360px; margin: 0; color: #8f1f16; font-size: 11px; line-height: 1.35; }
@@ -898,6 +904,8 @@ input[type='range']:focus-visible {
     box-shadow: 0 8px 20px rgba(0,0,0,.10);
   }
   .stage-wrap { flex: none; height: min(46vh, 420px); }
+  /* Here the preview has a height of its own, so the room is not needed. */
+  .preview-toolbar.spacer { display: none; }
   .preview-toolbar .variation-controls { margin-left: 0; }
   .preview-toolbar .seed-control { margin-left: auto; }
   .controls-panel { overflow: visible; padding-bottom: 8px; border-right: 0; }

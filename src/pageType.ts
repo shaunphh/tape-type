@@ -60,12 +60,23 @@ export function sanitizePageType(stored: Record<string, unknown>): PageType {
   }
 }
 
+export const sameType = (one: PageType, other: PageType) => JSON.stringify(one) === JSON.stringify(other)
+
+/**
+ * What was tried, from what is stored. A trial is kept with the tool's own values it started
+ * from: once those change (a trial was written into the tool), it has done its job and is dropped.
+ */
+export function readPageType(stored: unknown): PageType {
+  const { from, type } = part(stored)
+  if (!from || !type || !sameType(sanitizePageType(part(from)), PAGE_TYPE)) return PAGE_TYPE
+  return sanitizePageType(part(type))
+}
+
 /** What was last tried on this machine. Anywhere else, the tool's own. */
 export function loadPageType(local = isLocal()): PageType {
   if (!local) return PAGE_TYPE
   try {
-    const stored = JSON.parse(localStorage.getItem(TYPE_KEY) ?? 'null')
-    return stored && typeof stored === 'object' && !Array.isArray(stored) ? sanitizePageType(stored) : PAGE_TYPE
+    return readPageType(JSON.parse(localStorage.getItem(TYPE_KEY) ?? 'null'))
   } catch {
     return PAGE_TYPE
   }
@@ -74,13 +85,11 @@ export function loadPageType(local = isLocal()): PageType {
 export function savePageType(type: PageType) {
   try {
     if (sameType(type, PAGE_TYPE)) localStorage.removeItem(TYPE_KEY)
-    else localStorage.setItem(TYPE_KEY, JSON.stringify(type))
+    else localStorage.setItem(TYPE_KEY, JSON.stringify({ from: PAGE_TYPE, type }))
   } catch {
     // Blocked storage only costs remembering what was tried.
   }
 }
-
-export const sameType = (one: PageType, other: PageType) => JSON.stringify(one) === JSON.stringify(other)
 
 const named = (weight: number) => `${WEIGHT_NAMES[weight] ?? ''} ${weight}`.trim()
 
@@ -90,7 +99,7 @@ export function describePageType(type: PageType) {
     `Title: ${type.title.largest}px down to ${type.title.smallest}px, ${named(type.title.weight)}, line height ${type.title.lineHeight}`,
     `Text: ${type.text.size}px, ${named(type.text.weight)}, line height ${type.text.lineHeight}`,
     `Details: ${type.details.size}px, ${named(type.details.weight)}`,
-    `Bold lines: ${named(type.strong.weight)}`,
+    `Lines in stars: ${named(type.strong.weight)}`,
     `Label: ${type.label.size}px, ${named(type.label.weight)}`,
   ].join('\n')
 }

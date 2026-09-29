@@ -71,33 +71,35 @@ The switch above the canvas picks one of three: a post's **Cover**, its **Inside
 
 A post is a cover and, usually, one page inside it. The inside page is a picture, a label, a title, the story, then the details, on brand black:
 
-- **Label**: a few words in capitals on light tape, over whatever comes first on the page ("Meet the artists"). Barlow Bold at 45px, its lettering starting on the margin like the lines under it. Leave it empty for none. Its cut is its own: Label cut and Randomise cut, under the box, change the label and leave the cover's tape alone. It starts with the Clean cut, one quiet cut, like the labels on the Canva pages.
-- **Title**: Barlow Bold, white. It takes the largest size from 69px down to 52px that fits in three lines.
-- **Text**: the story, in Barlow Medium at 38px (28.5 in Canva, whose sizes are points), light grey, lines 1.32 apart.
-- **Details**: dates, place, tickets. The same size in a lighter weight (Regular), under the story.
+- **Label**: a few words in capitals on light tape, over whatever comes first on the page ("Meet the artists"). Barlow ExtraBold at 38px, its lettering starting on the margin like the lines under it. Leave it empty for none. Its cut is its own: Label cut and Randomise cut, under the box, change the label and leave the cover's tape alone. It starts with the Clean cut, one quiet cut, like the labels on the Canva pages.
+- **Title**: Barlow Bold, white. It takes the largest size from 52px down to 45px that fits in three lines.
+- **Text**: the story, in Barlow Regular at 38px (28.5 in Canva, whose sizes are points), light grey (`#C2C2C2`), lines 1.2 apart.
+- **Details**: dates, place, tickets, under the story. The same size, a little heavier (Medium) and brighter (`#D9D9D9`, halfway from the story's grey to the title's white).
 - **Picture**: Fill (what a new page starts with), None, Short (340px), Medium (430px) or Tall (540px). It starts as the cover's photo and can be given its own; drag it inside its banner, or use the sliders, as on a cover.
 - **Position**: where the picture goes. **Top**: above the words. **Middle**: after the first thing on the page, which is the title, or the story when there is no title. **Bottom**: under the words, on the foot of the page, with the arrow over it.
-- **Marks**: the arrow is on and the logo is off to start with. The logo is small here (128px) and both sit on the page's 56px margin. With the picture in the middle or at the bottom, the words start under the logo.
+- **Marks**: the arrow and the logo are both off to start with; Logo & arrow switches them on. With the arrow off, the words run down to the bottom margin; with it on, they end above it. The logo is small here (128px) and both sit on the page's 56px margin. With the picture in the middle or at the bottom, the words start under the logo.
 
 A picture that **fills** takes the room the words leave, so the page is always full: at the top the words sit on the foot of the page, in the middle the first words stay at the top and the rest go to the foot, and at the bottom the picture runs from under the words to the foot. It is never less than 260px tall; past that the words are too long.
 
-Everything under the title is one size, and what matters more or less is told apart by weight alone. In the text and the details:
+Everything under the title is one size, and what matters more or less is told apart by weight and by how bright it is. In the text and the details:
 
 - a blank line starts a new paragraph, and a new line is a new line;
 - a line starting with a dash is a bullet;
-- a line in `*stars*` is bold and white: a name, a lead sentence, a call to book.
+- a line in `*stars*` is white: a name, a lead sentence, a call to book.
 
 Emoji typed into either box are drawn as the device draws them.
 
-The panel counts the lines of text and details against the room the page has, and exports are blocked while they run over: cut them, use a shorter picture, or none. With a Medium picture and a three-line title there is room for about seven lines. A picture in the middle costs about two lines more than one at the top or the bottom, because it has a gap on both sides.
+The panel counts the lines of text and details against the room the page has, and exports are blocked while they run over: cut them, use a shorter picture, or none. With a Medium picture and a three-line title there is room for about ten lines. A picture in the middle costs about two lines more than one at the top or the bottom, because it has a gap on both sides.
 
 Sizes, margins and greys follow the article pages of the Alternative Dublin social templates; they are set at the top of `src/inside.ts`. The cutout SVG is for covers only.
 
 #### Trying other sizes and weights
 
-Run on your own machine (`npm run dev`, or any `localhost` address), the inside page has one more panel: **Type · this machine only**. It sets the title's largest and smallest size, weight and line height; the text's size, weight and line height; the details' size and weight; the weight of bold lines; and the label's size and weight. Weights are Barlow's 400 to 900. The preview and the exports follow, and what was tried is remembered in that browser.
+Run on your own machine (`npm run dev`, or any `localhost` address), the inside page has one more panel: **Type · this machine only**. It sets the title's largest and smallest size, weight and line height; the text's size, weight and line height; the details' size and weight; the weight of lines in stars; and the label's size and weight. Weights are Barlow's 400 to 900. The preview and the exports follow, and what was tried is remembered in that browser.
 
-The published tool never shows the panel and never reads what it saved, so everyone else's pages stay in the tool's own sizes. **Copy values** puts the settings on the clipboard in words; to make them the tool's own, write them into `TITLE`, `BODY`, `DETAILS`, `STRONG` and `LABEL` at the top of `src/inside.ts`. **Back to the tool's** undoes the trial.
+The published tool never shows the panel and never reads what it saved, so everyone else's pages stay in the tool's own sizes. **Copy values** puts the settings on the clipboard in words; to make them the tool's own, write them into `TITLE`, `BODY`, `DETAILS`, `STRONG` and `LABEL` at the top of `src/inside.ts`. **Back to the tool's** undoes the trial. A trial is also dropped once the tool's own values change, since it has then done its job.
+
+The preview of an inside page is the same size as a cover's, so the two can be judged side by side.
 
 ### Video covers
 

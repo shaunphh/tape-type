@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PAGE_TYPE } from './inside'
-import { describePageType, isLocal, loadPageType, sameType, sanitizePageType } from './pageType'
+import { describePageType, isLocal, loadPageType, readPageType, sameType, sanitizePageType } from './pageType'
 
 describe('trying other sizes and weights', () => {
   it('is for this machine only: the published tool keeps its own', () => {
@@ -16,11 +16,11 @@ describe('trying other sizes and weights', () => {
 
   it('starts from the tool’s own sizes and weights', () => {
     expect(PAGE_TYPE).toEqual({
-      title: { largest: 69, smallest: 52, weight: 700, lineHeight: 1.08 },
-      text: { size: 38, weight: 500, lineHeight: 1.32 },
-      details: { size: 38, weight: 400 },
-      strong: { weight: 700 },
-      label: { size: 45, weight: 700 },
+      title: { largest: 52, smallest: 45, weight: 700, lineHeight: 1.07 },
+      text: { size: 38, weight: 400, lineHeight: 1.2 },
+      details: { size: 38, weight: 500 },
+      strong: { weight: 400 },
+      label: { size: 38, weight: 800 },
     })
     expect(sanitizePageType({})).toEqual(PAGE_TYPE)
     expect(sameType(sanitizePageType(JSON.parse(JSON.stringify(PAGE_TYPE))), PAGE_TYPE)).toBe(true)
@@ -36,7 +36,7 @@ describe('trying other sizes and weights', () => {
     })
     expect(tried.title).toEqual({ largest: 120, smallest: 36, weight: 700, lineHeight: 1.4 })
     expect(tried.text).toEqual({ size: 38, weight: 600, lineHeight: 1.26 })
-    expect(tried.details).toEqual({ size: 32, weight: 400 })
+    expect(tried.details).toEqual({ size: 32, weight: PAGE_TYPE.details.weight })
     expect(tried.strong).toEqual({ weight: 900 })
     expect(tried.label).toEqual(PAGE_TYPE.label)
     // The smallest title is never the larger of the two.
@@ -45,11 +45,22 @@ describe('trying other sizes and weights', () => {
 
   it('says what is set in words, for passing on', () => {
     expect(describePageType(PAGE_TYPE)).toBe([
-      'Title: 69px down to 52px, Bold 700, line height 1.08',
-      'Text: 38px, Medium 500, line height 1.32',
-      'Details: 38px, Regular 400',
-      'Bold lines: Bold 700',
-      'Label: 45px, Bold 700',
+      'Title: 52px down to 45px, Bold 700, line height 1.07',
+      'Text: 38px, Regular 400, line height 1.2',
+      'Details: 38px, Medium 500',
+      'Lines in stars: Regular 400',
+      'Label: 38px, ExtraBold 800',
     ].join('\n'))
+  })
+
+  it('drops a trial once the tool’s own values are no longer the ones it started from', () => {
+    const tried = { ...PAGE_TYPE, text: { ...PAGE_TYPE.text, size: 34 } }
+    expect(readPageType({ from: PAGE_TYPE, type: tried })).toEqual(tried)
+    // A trial from before the tool's values changed, or one kept without them, has done its job.
+    const before = { ...PAGE_TYPE, title: { ...PAGE_TYPE.title, largest: 69 } }
+    expect(readPageType({ from: before, type: tried })).toBe(PAGE_TYPE)
+    expect(readPageType(tried)).toBe(PAGE_TYPE)
+    expect(readPageType(null)).toBe(PAGE_TYPE)
+    expect(readPageType('nonsense')).toBe(PAGE_TYPE)
   })
 })

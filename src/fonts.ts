@@ -4,9 +4,15 @@ import regularVietnamese from '@fontsource/barlow/files/barlow-vietnamese-400-no
 import medium from '@fontsource/barlow/files/barlow-latin-500-normal.woff2?url'
 import mediumExt from '@fontsource/barlow/files/barlow-latin-ext-500-normal.woff2?url'
 import mediumVietnamese from '@fontsource/barlow/files/barlow-vietnamese-500-normal.woff2?url'
+import semibold from '@fontsource/barlow/files/barlow-latin-600-normal.woff2?url'
+import semiboldExt from '@fontsource/barlow/files/barlow-latin-ext-600-normal.woff2?url'
+import semiboldVietnamese from '@fontsource/barlow/files/barlow-vietnamese-600-normal.woff2?url'
 import bold from '@fontsource/barlow/files/barlow-latin-700-normal.woff2?url'
 import boldExt from '@fontsource/barlow/files/barlow-latin-ext-700-normal.woff2?url'
 import boldVietnamese from '@fontsource/barlow/files/barlow-vietnamese-700-normal.woff2?url'
+import extrabold from '@fontsource/barlow/files/barlow-latin-800-normal.woff2?url'
+import extraboldExt from '@fontsource/barlow/files/barlow-latin-ext-800-normal.woff2?url'
+import extraboldVietnamese from '@fontsource/barlow/files/barlow-vietnamese-800-normal.woff2?url'
 import black from '@fontsource/barlow/files/barlow-latin-900-normal.woff2?url'
 import blackExt from '@fontsource/barlow/files/barlow-latin-ext-900-normal.woff2?url'
 import blackVietnamese from '@fontsource/barlow/files/barlow-vietnamese-900-normal.woff2?url'
@@ -27,9 +33,16 @@ const FACES: { weight: number; subset: Subset; url: string }[] = [
   { weight: 500, subset: 'latin', url: medium },
   { weight: 500, subset: 'latin-ext', url: mediumExt },
   { weight: 500, subset: 'vietnamese', url: mediumVietnamese },
+  // SemiBold and ExtraBold are only set when other weights are being tried on the inside page.
+  { weight: 600, subset: 'latin', url: semibold },
+  { weight: 600, subset: 'latin-ext', url: semiboldExt },
+  { weight: 600, subset: 'vietnamese', url: semiboldVietnamese },
   { weight: 700, subset: 'latin', url: bold },
   { weight: 700, subset: 'latin-ext', url: boldExt },
   { weight: 700, subset: 'vietnamese', url: boldVietnamese },
+  { weight: 800, subset: 'latin', url: extrabold },
+  { weight: 800, subset: 'latin-ext', url: extraboldExt },
+  { weight: 800, subset: 'vietnamese', url: extraboldVietnamese },
   { weight: 900, subset: 'latin', url: black },
   { weight: 900, subset: 'latin-ext', url: blackExt },
   { weight: 900, subset: 'vietnamese', url: blackVietnamese },

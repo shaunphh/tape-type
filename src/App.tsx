@@ -51,8 +51,8 @@ import { LINE_HEIGHT, applyLocks, isBarred, isLocked, lockedLineGap, unlocked } 
 import {
   BODY,
   INSIDE_MARKS,
-  LABEL,
   PAGE_MARGIN,
+  PAGE_TYPE,
   TEXT_WIDTH as PAGE_TEXT_WIDTH,
   TITLE,
   drawInside,
@@ -64,8 +64,10 @@ import {
   type InsideOptions,
   type MeasureInk,
   type MeasureWidth,
+  type PageType,
   type PicturePosition,
 } from './inside'
+import { TYPE_RANGE, TYPE_WEIGHTS, WEIGHT_NAMES, describePageType, isLocal, loadPageType, sameType, savePageType } from './pageType'
 import { measureInk } from './metrics'
 import { CENTRED, MAX_ZOOM, dragPhoto, photoRect, photoSlack, visiblePart, type PhotoView } from './photo'
 import {
@@ -151,7 +153,7 @@ const colourOptions: { value: ColourChoice; label: string }[] = [
   { value: 'dark', label: 'Dark' },
 ]
 const LOCKED_NOTE = 'Switched off for now'
-const WEIGHT_NAMES: Record<number, string> = { 700: 'Bold', 800: 'ExtraBold', 900: 'Black' }
+const weightOptions = TYPE_WEIGHTS.map((weight) => ({ value: String(weight), label: String(weight) }))
 
 const samples = [
   'What’s new in Dublin',
@@ -425,9 +427,9 @@ function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = 
 }
 
 const PANELS_KEY = 'tape-type-panels-v1'
-type PanelId = 'cover' | 'words' | 'photo' | 'marks' | 'style' | 'tape' | 'layout' | 'tune'
+type PanelId = 'cover' | 'words' | 'type' | 'photo' | 'marks' | 'style' | 'tape' | 'layout' | 'tune'
 /** Which control groups start open: the everyday decisions, with layout and fine-tuning folded away. */
-const panelDefaults: Record<PanelId, boolean> = { cover: true, words: true, photo: true, marks: true, style: true, tape: true, layout: false, tune: false }
+const panelDefaults: Record<PanelId, boolean> = { cover: true, words: true, type: true, photo: true, marks: true, style: true, tape: true, layout: false, tune: false }
 
 function loadPanels(): Record<PanelId, boolean> {
   try {
@@ -535,7 +537,7 @@ function App() {
   const [history, setHistory] = useState<number[]>([settings.seed])
   const [historyIndex, setHistoryIndex] = useState(0)
   const [seedDraft, setSeedDraft] = useState<string | null>(null)
-  const [copied, setCopied] = useState<'svg' | 'seed' | null>(null)
+  const [copied, setCopied] = useState<'svg' | 'seed' | 'type' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [previewBackground, setPreviewBackground] = useState<PreviewBackground>('charcoal')
@@ -544,6 +546,9 @@ function App() {
   const [inside, setInside] = useState<InsideOptions>(loadInside)
   const [insidePhoto, setInsidePhoto] = useState<Photo | null>(null)
   const [insideView, setInsideView] = useState<PhotoView>(CENTRED)
+  // Other sizes and weights can be tried where the tool runs on this machine; the published tool keeps its own.
+  const local = useMemo(() => isLocal(), [])
+  const [pageType, setPageType] = useState<PageType>(() => loadPageType())
   const [position, setPosition] = useState<Position>(() => ({ x: anchorX(settings.align), y: lookFor(cover.kind, cover.video).position.y }))
   const [sampleOpen, setSampleOpen] = useState(false)
   const [panels, setPanels] = useState<Record<PanelId, boolean>>(loadPanels)
@@ -607,15 +612,16 @@ function App() {
   useEffect(() => {
     if (!isInside) return
     const words = `${inside.title} ${inside.body} ${inside.details}`
-    for (const weight of [400, 500, 700]) document.fonts.load(fontShorthand(BODY.size, weight), words).catch(() => undefined)
+    const weights = new Set([pageType.title.weight, pageType.text.weight, pageType.details.weight, pageType.strong.weight])
+    for (const weight of weights) document.fonts.load(fontShorthand(BODY.size, weight), words).catch(() => undefined)
     const label = normaliseEyebrow(inside.label)
-    if (label) document.fonts.load(fontShorthand(LABEL.size, LABEL.weight), label).catch(() => undefined)
-  }, [isInside, inside.label, inside.title, inside.body, inside.details])
+    if (label) document.fonts.load(fontShorthand(pageType.label.size, pageType.label.weight), label).catch(() => undefined)
+  }, [isInside, inside.label, inside.title, inside.body, inside.details, pageType])
   const page = useMemo(
-    () => layoutInside(inside, measureWidth, { logoBottom: markBoxes.logo ? markBoxes.logo.y + markBoxes.logo.height : undefined, arrowTop: markBoxes.arrow?.y }, measureLabel),
+    () => layoutInside(inside, measureWidth, { logoBottom: markBoxes.logo ? markBoxes.logo.y + markBoxes.logo.height : undefined, arrowTop: markBoxes.arrow?.y }, measureLabel, pageType),
     // Measured again whenever a font finishes loading.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [inside, measureWidth, markBoxes, measureLabel, fonts.version],
+    [inside, measureWidth, markBoxes, measureLabel, pageType, fonts.version],
   )
   const runs = useMemo(() => textRuns(isInside ? page.layers : layers), [isInside, page.layers, layers])
 
@@ -664,6 +670,7 @@ function App() {
   useEffect(() => { saveSettings(settings) }, [settings])
   useEffect(() => { saveCover(cover) }, [cover])
   useEffect(() => { saveInside(inside) }, [inside])
+  useEffect(() => { if (local) savePageType(pageType) }, [local, pageType])
   useEffect(() => { savePanels(panels) }, [panels])
   // A replaced photo is let go; its address only has to last while it is on show.
   useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url) }, [photo])
@@ -684,6 +691,20 @@ function App() {
   const updateInside = useCallback(<K extends keyof InsideOptions>(key: K, value: InsideOptions[K]) => {
     setInside((current) => ({ ...current, [key]: value }))
   }, [])
+
+  const updateType = useCallback(<G extends keyof PageType>(group: G, changes: Partial<PageType[G]>) => {
+    setPageType((current) => ({ ...current, [group]: { ...current[group], ...changes } }))
+  }, [])
+
+  const copyType = async () => {
+    try {
+      await navigator.clipboard.writeText(describePageType(pageType))
+      setCopied('type')
+      setTimeout(() => setCopied(null), 1400)
+    } catch {
+      flash('The browser blocked copying.')
+    }
+  }
 
   /** Puts the text block into a look: its tape, case and place, and the tag it starts with. */
   const applyLook = (next: Look) => {
@@ -1039,6 +1060,9 @@ function App() {
     words: isInside
       ? [insideLabel, insideTitle || 'No title yet'].filter(Boolean).join(' · ')
       : headlinePreview ? (eyebrowPreview ? `${eyebrowPreview} · ${headlinePreview}` : headlinePreview) : 'No headline yet',
+    type: sameType(pageType, PAGE_TYPE)
+      ? `The tool’s own · title ${pageType.title.largest}–${pageType.title.smallest}, text ${pageType.text.size}`
+      : `Changed · title ${pageType.title.largest}–${pageType.title.smallest}, text ${pageType.text.size}`,
     photo: !anyPhoto
       ? 'No photo yet'
       : [shownPhoto ? (photoMoved ? `Zoom ${Math.round(view.zoom * 100)}%` : 'Centred') : isInside ? 'No picture' : 'Hidden', cover.darken ? 'Darkened' : 'As shot'].join(' · '),
@@ -1107,7 +1131,7 @@ function App() {
                   <div className={`fit-line ${page.overflow === 'title' ? 'error' : ''}`}>
                     <strong>{page.titleLines ? `${page.titleSize}px` : 'No title'}</strong>
                     <span>{page.titleLines} / {TITLE.lines} lines</span>
-                    <span>sized {TITLE.smallest}–{TITLE.largest}</span>
+                    <span>sized {pageType.title.smallest}–{pageType.title.largest}</span>
                   </div>
                 </div>
               </div>
@@ -1123,7 +1147,7 @@ function App() {
                 <textarea aria-label="Details" className="body-input details-input" value={inside.details} rows={3} placeholder={'22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite'} onChange={(event) => updateInside('details', event.target.value)} />
                 <div className="words-status">
                   <div className={`fit-line ${page.overflow === 'body' ? 'error' : ''}`}>
-                    <strong>{BODY.size}px</strong>
+                    <strong>{pageType.text.size}px</strong>
                     <span>{page.bodyLines} / {page.bodyRoom} lines</span>
                     <span>text and details</span>
                   </div>
@@ -1131,6 +1155,43 @@ function App() {
                 <p className="panel-note">Leave a blank line between paragraphs. Start a line with a dash for a bullet. Put a line in *stars* to make it bold.</p>
               </div>
               {blockedReason && !page.empty && <p className="fit-message error" role="status">{blockedReason}</p>}
+            </Panel>
+          )}
+
+          {isInside && local && (
+            <Panel id="type" title="Type · this machine only" summary={summaries.type} open={panels.type} onToggle={togglePanel}>
+              <p className="panel-note">For trying sizes and weights. The published tool doesn’t show this and keeps its own.</p>
+              <div className="range-stack">
+                <span className="field-label">Title</span>
+                <RangeField label="Largest" value={pageType.title.largest} min={TYPE_RANGE.title.size.min} max={TYPE_RANGE.title.size.max} suffix="px" onChange={(largest) => updateType('title', { largest, smallest: Math.min(largest, pageType.title.smallest) })} />
+                <RangeField label="Smallest" value={pageType.title.smallest} min={TYPE_RANGE.title.size.min} max={TYPE_RANGE.title.size.max} suffix="px" onChange={(smallest) => updateType('title', { smallest, largest: Math.max(smallest, pageType.title.largest) })} />
+                <Segmented label="Weight" note={WEIGHT_NAMES[pageType.title.weight]} value={String(pageType.title.weight)} options={weightOptions} onChange={(weight) => updateType('title', { weight: Number(weight) })} />
+                <RangeField label="Line height" value={pageType.title.lineHeight} min={TYPE_RANGE.title.lineHeight.min} max={TYPE_RANGE.title.lineHeight.max} step={0.01} format={(value) => value.toFixed(2)} onChange={(lineHeight) => updateType('title', { lineHeight })} />
+              </div>
+              <div className="sub-block range-stack">
+                <span className="field-label">Text</span>
+                <RangeField label="Size" value={pageType.text.size} min={TYPE_RANGE.text.size.min} max={TYPE_RANGE.text.size.max} suffix="px" onChange={(size) => updateType('text', { size })} />
+                <Segmented label="Weight" note={WEIGHT_NAMES[pageType.text.weight]} value={String(pageType.text.weight)} options={weightOptions} onChange={(weight) => updateType('text', { weight: Number(weight) })} />
+                <RangeField label="Line height" value={pageType.text.lineHeight} min={TYPE_RANGE.text.lineHeight.min} max={TYPE_RANGE.text.lineHeight.max} step={0.01} format={(value) => value.toFixed(2)} onChange={(lineHeight) => updateType('text', { lineHeight })} />
+              </div>
+              <div className="sub-block range-stack">
+                <span className="field-label">Details</span>
+                <RangeField label="Size" value={pageType.details.size} min={TYPE_RANGE.text.size.min} max={TYPE_RANGE.text.size.max} suffix="px" onChange={(size) => updateType('details', { size })} />
+                <Segmented label="Weight" note={WEIGHT_NAMES[pageType.details.weight]} value={String(pageType.details.weight)} options={weightOptions} onChange={(weight) => updateType('details', { weight: Number(weight) })} />
+              </div>
+              <div className="sub-block range-stack">
+                <span className="field-label">Bold lines</span>
+                <Segmented label="Weight" note={WEIGHT_NAMES[pageType.strong.weight]} value={String(pageType.strong.weight)} options={weightOptions} onChange={(weight) => updateType('strong', { weight: Number(weight) })} />
+              </div>
+              <div className="sub-block range-stack">
+                <span className="field-label">Label</span>
+                <RangeField label="Size" value={pageType.label.size} min={TYPE_RANGE.label.size.min} max={TYPE_RANGE.label.size.max} suffix="px" onChange={(size) => updateType('label', { size })} />
+                <Segmented label="Weight" note={WEIGHT_NAMES[pageType.label.weight]} value={String(pageType.label.weight)} options={weightOptions} onChange={(weight) => updateType('label', { weight: Number(weight) })} />
+              </div>
+              <div className="photo-actions">
+                <button className="panel-button" onClick={copyType}>{copied === 'type' ? <Check size={14} aria-hidden="true" /> : <Clipboard size={14} aria-hidden="true" />} {copied === 'type' ? 'Copied' : 'Copy values'}</button>
+                <button className="text-button underlined" disabled={sameType(pageType, PAGE_TYPE)} onClick={() => setPageType(PAGE_TYPE)}>Back to the tool’s</button>
+              </div>
             </Panel>
           )}
 

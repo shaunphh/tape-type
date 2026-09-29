@@ -10,6 +10,8 @@ describe('embedded fonts', () => {
     expect(subsets([{ text: 'Việt Nam', weight: 700 }])).toContain('700 vietnamese')
     expect(subsets([{ text: 'Price † ₹', weight: 700 }])).toContain('700 latin-ext')
     expect(subsets([{ text: 'YAMAMORI', weight: 900 }, { text: 'NEWS', weight: 700 }])).toEqual(['700 latin', '900 latin'])
+    // Every weight that can be tried on the inside page has its files.
+    expect([400, 500, 600, 700, 800, 900].flatMap((weight) => subsets([{ text: 'Dublin', weight }]))).toEqual(['400 latin', '500 latin', '600 latin', '700 latin', '800 latin', '900 latin'])
   })
 
   it('has nothing ready before the files load', () => {

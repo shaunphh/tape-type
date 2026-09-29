@@ -93,6 +93,12 @@ The panel counts the lines of text and details against the room the page has, an
 
 Sizes, margins and greys follow the article pages of the Alternative Dublin social templates; they are set at the top of `src/inside.ts`. The cutout SVG is for covers only.
 
+#### Trying other sizes and weights
+
+Run on your own machine (`npm run dev`, or any `localhost` address), the inside page has one more panel: **Type · this machine only**. It sets the title's largest and smallest size, weight and line height; the text's size, weight and line height; the details' size and weight; the weight of bold lines; and the label's size and weight. Weights are Barlow's 400 to 900. The preview and the exports follow, and what was tried is remembered in that browser.
+
+The published tool never shows the panel and never reads what it saved, so everyone else's pages stay in the tool's own sizes. **Copy values** puts the settings on the clipboard in words; to make them the tool's own, write them into `TITLE`, `BODY`, `DETAILS`, `STRONG` and `LABEL` at the top of `src/inside.ts`. **Back to the tool's** undoes the trial.
+
 ### Video covers
 
 A video cover is 9:16 (1080×1920), where a post's pages are 4:5 (1080×1350). Exports follow: a video cover's PNGs are 1080×1920, 2160×3840 and 3240×5760.

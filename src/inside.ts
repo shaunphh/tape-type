@@ -59,6 +59,26 @@ export const STRONG = { weight: 700, fill: BRAND.light }
  * 45px: the 50 of the Canva pages, brought down by as much as a cover's eyebrow is.
  */
 export const LABEL = { size: Math.round(50 * EYEBROW_SCALE), weight: 700 }
+
+/** The sizes and weights the page is set in. `pageType.ts` lets others be tried on this machine. */
+export interface PageType {
+  title: { largest: number; smallest: number; weight: number; lineHeight: number }
+  text: { size: number; weight: number; lineHeight: number }
+  /** The details take the text's line height. */
+  details: { size: number; weight: number }
+  /** A line in stars. */
+  strong: { weight: number }
+  label: { size: number; weight: number }
+}
+
+/** The tool's own: what every page is set in unless others are being tried. */
+export const PAGE_TYPE: PageType = {
+  title: { largest: TITLE.largest, smallest: TITLE.smallest, weight: TITLE.weight, lineHeight: TITLE.lineHeight },
+  text: { size: BODY.size, weight: BODY.weight, lineHeight: BODY.lineHeight },
+  details: { size: BODY.size, weight: DETAILS.weight },
+  strong: { weight: STRONG.weight },
+  label: { size: LABEL.size, weight: LABEL.weight },
+}
 const CUTS: readonly ShapeMode[] = ['plain', 'torn', 'clean', 'tape', 'cling', 'rough']
 const GAP = {
   // Under a picture at the top, and around one among the words or under them.
@@ -125,17 +145,17 @@ const text = (value: string, x: number, y: number, size: number, weight: number,
 export type MeasureInk = (text: string, size: number, weight: number) => InkMetrics
 
 /** The label as tape and lettering, its lettering starting on the margin and its tape at `top`. */
-function buildLabel(label: string, top: number, inkOf: MeasureInk, cut: ShapeMode, seed: number) {
+function buildLabel(label: string, top: number, inkOf: MeasureInk, cut: ShapeMode, seed: number, { size, weight }: PageType['label']) {
   // Measured from where a line starts, not from its first letter's ink, so the label lines up
   // with the lines under it, which start on the margin too.
   const measure = (value: string) => {
-    const ink = inkOf(value, LABEL.size, LABEL.weight)
+    const ink = inkOf(value, size, weight)
     return { ...ink, width: ink.width - ink.originOffset }
   }
-  const lines = wrapText(label, TEXT_WIDTH - LABEL.size, (value) => measure(value).width, true, { balance: true })
+  const lines = wrapText(label, TEXT_WIDTH - size, (value) => measure(value).width, true, { balance: true })
   const metrics = lines.map(measure)
   // Capitals have no descenders, so the tape is balanced on the cap height, as a feature cover's is.
-  const bounds = { ascent: Math.max(measure('H').ascent || LABEL.size * 0.7, ...metrics.map((metric) => metric.ascent)), descent: LABEL.size * 0.02 }
+  const bounds = { ascent: Math.max(measure('H').ascent || size * 0.7, ...metrics.map((metric) => metric.ascent)), descent: size * 0.02 }
   const settings: GeneratorSettings = {
     ...defaults,
     headline: label,
@@ -145,16 +165,16 @@ function buildLabel(label: string, top: number, inkOf: MeasureInk, cut: ShapeMod
     align: 'left',
     mode: cut,
     seed,
-    fontSize: LABEL.size,
+    fontSize: size,
     hugStrength: 1,
     rotationVariance: 0,
-    lineGap: lockedLineGap(LABEL.size, bounds.ascent + bounds.descent),
+    lineGap: lockedLineGap(size, bounds.ascent + bounds.descent),
   }
   const shape = buildShape(settings, lines, metrics.map((metric) => metric.width), [], bounds)
   const xs = shape.points.map((point) => point.x)
   const ys = shape.points.map((point) => point.y)
   const offset = { x: PAGE_MARGIN, y: top - Math.min(...ys) }
-  const layers = buildLayers(shape, { tone: 'light', background: 'charcoal', weight: LABEL.weight }, LABEL.size).map((layer): Layer => (layer.kind === 'path'
+  const layers = buildLayers(shape, { tone: 'light', background: 'charcoal', weight }, size).map((layer): Layer => (layer.kind === 'path'
     ? { ...layer, place: { x: offset.x, y: Math.round(offset.y * 100) / 100, scale: 1 } }
     : { ...layer, x: Math.round((layer.x + offset.x) * 100) / 100, y: Math.round((layer.y + offset.y) * 100) / 100 }))
   const box: Box = { x: offset.x + Math.min(...xs), y: top, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }
@@ -167,13 +187,14 @@ function buildLabel(label: string, top: number, inkOf: MeasureInk, cut: ShapeMod
  * title takes the largest size from 69 down to 52 that fits it in three lines; the story and
  * the details are always 38. A picture that fills takes the room the words leave. `marks` says
  * where the logo ends and the arrow starts, so the words keep clear of both. Without `ink`
- * to measure it by, there is no label.
+ * to measure it by, there is no label. `type` is for trying other sizes and weights.
  */
 export function layoutInside(
   content: Pick<InsideOptions, 'title' | 'body' | 'image'> & Partial<Pick<InsideOptions, 'label' | 'cut' | 'seed' | 'details' | 'position'>>,
   measure: MeasureWidth,
   marks: { logoBottom?: number; arrowTop?: number } = {},
   ink?: MeasureInk,
+  type: PageType = PAGE_TYPE,
 ): InsideLayout {
   const { width, height: pageHeight } = POST_FRAME
   const fills = content.image === 'fill'
@@ -183,13 +204,14 @@ export function layoutInside(
   const title = normaliseHeadline(content.title)
   const story = readLines(content.body)
   const details = readLines(content.details ?? '')
-  const pitch = BODY.size * BODY.lineHeight
+  // Lines are counted in lines of the text.
+  const pitch = type.text.size * type.text.lineHeight
   // The words end above the arrow, or on the bottom margin.
   const foot = marks.arrowTop !== undefined ? marks.arrowTop - GAP.aboveArrow : pageHeight - PAGE_MARGIN
 
-  const wrapTitle = (size: number) => wrapText(title, TEXT_WIDTH, (value) => measure(value, size, TITLE.weight), true, { balance: true })
-  let titleSize = TITLE.largest
-  while (title && titleSize > TITLE.smallest && wrapTitle(titleSize).length > TITLE.lines) titleSize -= 1
+  const wrapTitle = (size: number) => wrapText(title, TEXT_WIDTH, (value) => measure(value, size, type.title.weight), true, { balance: true })
+  let titleSize = Math.max(type.title.largest, type.title.smallest)
+  while (title && titleSize > Math.min(type.title.largest, type.title.smallest) && wrapTitle(titleSize).length > TITLE.lines) titleSize -= 1
   const titleLines = title ? wrapTitle(titleSize) : []
 
   /** The page with a picture this tall. */
@@ -224,31 +246,34 @@ export function layoutInside(
     const setLabel = (gapUnder: number) => {
       if (!label || !ink) return
       y += GAP.aboveLabel
-      const made = buildLabel(label, y, ink, content.cut ?? insideDefaults.cut, content.seed ?? insideDefaults.seed)
+      const made = buildLabel(label, y, ink, content.cut ?? insideDefaults.cut, content.seed ?? insideDefaults.seed, type.label)
       layers.push(...made.layers)
       placed.label = made.box
       y += made.box.height + gapUnder
     }
     const setTitle = () => {
-      const titlePitch = titleSize * TITLE.lineHeight
+      const titlePitch = titleSize * type.title.lineHeight
       titleLines.forEach((line, index) => {
-        layers.push(text(line, PAGE_MARGIN, y + index * titlePitch + baselineIn(titleSize, TITLE.lineHeight), titleSize, TITLE.weight, TITLE.fill))
+        layers.push(text(line, PAGE_MARGIN, y + index * titlePitch + baselineIn(titleSize, type.title.lineHeight), titleSize, type.title.weight, TITLE.fill))
       })
       y += titleLines.length * titlePitch
     }
-    const setText = (paragraphs: TypedLine[][], blockWeight: number) => {
+    const setText = (paragraphs: TypedLine[][], block: { size: number; weight: number }) => {
+      const { lineHeight } = type.text
+      // The gaps and the bullets' indent are the text's, and grow and shrink with it.
+      const scale = block.size / BODY.size
       paragraphs.forEach((paragraph, paragraphIndex) => {
-        if (paragraphIndex > 0) y += BODY.paragraphGap
+        if (paragraphIndex > 0) y += BODY.paragraphGap * scale
         paragraph.forEach((typed, lineIndex) => {
-          if (lineIndex > 0 && typed.bullet && paragraph[lineIndex - 1].bullet) y += BODY.bulletGap
-          const weight = typed.strong ? STRONG.weight : blockWeight
+          if (lineIndex > 0 && typed.bullet && paragraph[lineIndex - 1].bullet) y += BODY.bulletGap * scale
+          const weight = typed.strong ? type.strong.weight : block.weight
           const fill = typed.strong ? STRONG.fill : BODY.fill
-          const indent = typed.bullet ? BODY.indent : 0
-          const lines = wrapText(typed.text, TEXT_WIDTH - indent, (value) => measure(value, BODY.size, weight), true)
-          if (typed.bullet) layers.push(text('•', PAGE_MARGIN + 10, y + baselineIn(BODY.size, BODY.lineHeight), BODY.size, weight, fill))
+          const indent = typed.bullet ? Math.round(BODY.indent * scale) : 0
+          const lines = wrapText(typed.text, TEXT_WIDTH - indent, (value) => measure(value, block.size, weight), true)
+          if (typed.bullet) layers.push(text('•', PAGE_MARGIN + Math.round(10 * scale), y + baselineIn(block.size, lineHeight), block.size, weight, fill))
           for (const line of lines) {
-            layers.push(text(line, PAGE_MARGIN + indent, y + baselineIn(BODY.size, BODY.lineHeight), BODY.size, weight, fill))
-            y += pitch
+            layers.push(text(line, PAGE_MARGIN + indent, y + baselineIn(block.size, lineHeight), block.size, weight, fill))
+            y += block.size * lineHeight
             bodyLines += 1
           }
         })
@@ -257,8 +282,8 @@ export function layoutInside(
 
     const blocks = [
       { has: titleLines.length > 0, gap: 0, labelGap: GAP.labelToTitle, set: setTitle },
-      { has: story.length > 0, gap: GAP.aboveBody, labelGap: GAP.labelToText, set: () => setText(story, BODY.weight) },
-      { has: details.length > 0, gap: GAP.aboveDetails, labelGap: GAP.labelToText, set: () => setText(details, DETAILS.weight) },
+      { has: story.length > 0, gap: GAP.aboveBody, labelGap: GAP.labelToText, set: () => setText(story, type.text) },
+      { has: details.length > 0, gap: GAP.aboveDetails, labelGap: GAP.labelToText, set: () => setText(details, type.details) },
     ].filter((block) => block.has)
     blocks.forEach((block, index) => {
       if (after === 'words') y += block.gap

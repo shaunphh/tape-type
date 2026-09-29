@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BRAND, type Layer } from './artwork'
 import { furnitureBoxes } from './furniture'
 import { wrapText } from './geometry'
-import { BODY, DETAILS, FILL_SMALLEST, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, readLines, sanitizeInside, type MeasureInk, type MeasureWidth } from './inside'
+import { BODY, DETAILS, FILL_SMALLEST, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, PAGE_TYPE, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, readLines, sanitizeInside, type MeasureInk, type MeasureWidth } from './inside'
 import { POST_FRAME } from './settings'
 
 // A stand-in for canvas: every character is half an em wide.
@@ -315,6 +315,33 @@ describe('inside page', () => {
     expect(lines.find((layer) => layer.text === 'Each artist will give a short presentation.')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
     expect(lines.find((layer) => layer.text === 'Ishmael Claxton')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
     expect(lines.find((layer) => layer.text === 'Photography')).toMatchObject({ weight: DETAILS.weight, fill: BODY.fill })
+  })
+
+  it('sets the page in other sizes and weights when they are being tried', () => {
+    const content = { label: 'Meet the artists', title: 'The closure follows a months-long legal dispute', body: 'The story.\n*A bold line.*\n- A bullet', details: 'A date', image: 'none' as const }
+    const tried = { title: { largest: 80, smallest: 60, weight: 800, lineHeight: 1 }, text: { size: 30, weight: 400, lineHeight: 1.5 }, details: { size: 26, weight: 600 }, strong: { weight: 900 }, label: { size: 60, weight: 900 } }
+    const layout = layoutInside(content, measure, {}, ink, tried)
+    const lines = texts(layout.layers)
+    const find = (value: string) => lines.find((layer) => layer.text === value)!
+    expect(find('MEET THE ARTISTS')).toMatchObject({ size: 60, weight: 900 })
+    // At 80 a line holds 24 characters, and the title's words fall into three of them.
+    expect(layout).toMatchObject({ titleSize: 80, titleLines: 3 })
+    const titles = lines.filter((layer) => layer.size === 80)
+    expect(titles.every((layer) => layer.weight === 800)).toBe(true)
+    expect(titles[1].y - titles[0].y).toBeCloseTo(80, 1)
+    expect(find('The story.')).toMatchObject({ size: 30, weight: 400, fill: BODY.fill })
+    expect(find('A bold line.')).toMatchObject({ size: 30, weight: 900, fill: STRONG.fill })
+    expect(find('A bold line.').y - find('The story.').y).toBeCloseTo(30 * 1.5, 1)
+    // The bullet's indent is the text's, so it shrinks with it.
+    expect(find('A bullet').x).toBe(PAGE_MARGIN + Math.round(BODY.indent * 30 / BODY.size))
+    expect(find('A date')).toMatchObject({ size: 26, weight: 600 })
+    // A title that cannot come down further than its smallest runs over, as before.
+    expect(layoutInside({ ...content, title: Array(40).fill('wordy').join(' ') }, measure, {}, ink, tried)).toMatchObject({ titleSize: 60, overflow: 'title' })
+    // Smaller text leaves room for more of it.
+    const room = (type: typeof tried) => layoutInside({ ...content, body: 'The story.' }, measure, {}, ink, type).bodyRoom
+    expect(room(tried)).toBeGreaterThan(room({ ...tried, text: { ...tried.text, size: 44 }, details: { ...tried.details, size: 44 } }))
+    // Left out, the page is set in the tool's own.
+    expect(layoutInside(content, measure, {}, ink).layers).toEqual(layoutInside(content, measure, {}, ink, PAGE_TYPE).layers)
   })
 
   it('is empty until something is typed', () => {

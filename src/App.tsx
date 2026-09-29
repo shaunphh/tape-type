@@ -48,9 +48,25 @@ import {
 import { buildShape, nextSeed } from './geometry'
 import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type HeadlineLayout, type Measure } from './layout'
 import { LINE_HEIGHT, applyLocks, isBarred, isLocked, lockedLineGap, unlocked } from './locks'
+import {
+  BODY,
+  IMAGE_HEIGHTS,
+  INSIDE_MARKS,
+  PAGE_MARGIN,
+  TEXT_WIDTH as PAGE_TEXT_WIDTH,
+  drawInside,
+  insideSvg,
+  layoutInside,
+  loadInside,
+  saveInside,
+  type ImageHeight,
+  type InsideOptions,
+  type MeasureWidth,
+} from './inside'
 import { measureInk } from './metrics'
 import { CENTRED, MAX_ZOOM, dragPhoto, photoRect, photoSlack, visiblePart, type PhotoView } from './photo'
 import {
+  POST_FRAME,
   TEXT_AREA_WIDTH,
   TREATMENT_KEYS,
   columnWidth,
@@ -58,7 +74,6 @@ import {
   loadSettings,
   saveSettings,
   stylePresets,
-  type Frame,
   type Treatment,
 } from './settings'
 import { displayText, isAllCaps, normaliseEyebrow, normaliseHeadline } from './text'
@@ -76,6 +91,16 @@ const eyebrowSuggestions: Record<CoverKind, string[]> = {
 const kindOptions: { value: CoverKind; label: string }[] = [
   { value: 'post', label: 'Post 4:5' },
   { value: 'video', label: 'Video cover 9:16' },
+]
+const pageOptions: { value: CoverOptions['page']; label: string }[] = [
+  { value: 'cover', label: '1 · Cover' },
+  { value: 'inside', label: '2 · Inside page' },
+]
+const imageOptions: { value: ImageHeight; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'short', label: 'Short' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'tall', label: 'Tall' },
 ]
 
 const positions: { label: string; y: number }[] = [
@@ -245,6 +270,9 @@ interface Photo {
   height: number
 }
 
+/** What a photo sits behind: a whole cover, or the banner of an inside page. */
+type Size = { width: number; height: number }
+
 const toJpeg = (canvas: HTMLCanvasElement, quality: number) =>
   new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('unreadable'))), 'image/jpeg', quality))
 
@@ -253,7 +281,7 @@ const toJpeg = (canvas: HTMLCanvasElement, quality: number) =>
  * behind the cover. It is kept at no more than the 3× export needs with the photo at its widest,
  * so the preview and every export draw from the same pixels.
  */
-async function preparePhoto(file: File, frame: Frame): Promise<Photo> {
+async function preparePhoto(file: File, frame: Size): Promise<Photo> {
   const source = URL.createObjectURL(file)
   const canvas = document.createElement('canvas')
   try {
@@ -285,7 +313,7 @@ async function preparePhoto(file: File, frame: Frame): Promise<Photo> {
 }
 
 /** The part of the photo the cover shows, as a JPEG data URL for SVG exports (which stay a sensible size). */
-async function cropPhoto(photo: Photo, view: PhotoView, frame: Frame) {
+async function cropPhoto(photo: Photo, view: PhotoView, frame: Size) {
   const part = visiblePart(photo.width, photo.height, view, frame)
   const scale = Math.min(1, frame.height * LARGEST_EXPORT / part.height)
   const canvas = document.createElement('canvas')
@@ -313,7 +341,7 @@ const SAMPLE = { width: 24, height: 12 }
 let sampler: CanvasRenderingContext2D | null | undefined
 
 /** How bright the photo is under a mark, as the cover shows it: one luminance per sample, for checking the mark reads. */
-function photoGround(photo: Photo, view: PhotoView, box: Box, darken: number, frame: Frame) {
+function photoGround(photo: Photo, view: PhotoView, box: Box, darken: number, frame: Size) {
   if (sampler === undefined) {
     const canvas = document.createElement('canvas')
     canvas.width = SAMPLE.width
@@ -494,6 +522,9 @@ function App() {
   const [previewBackground, setPreviewBackground] = useState<PreviewBackground>('charcoal')
   const [photo, setPhoto] = useState<Photo | null>(null)
   const [photoView, setPhotoView] = useState<PhotoView>(CENTRED)
+  const [inside, setInside] = useState<InsideOptions>(loadInside)
+  const [insidePhoto, setInsidePhoto] = useState<Photo | null>(null)
+  const [insideView, setInsideView] = useState<PhotoView>(CENTRED)
   const [position, setPosition] = useState<Position>(() => ({ x: anchorX(settings.align), y: lookFor(cover.kind, cover.video).position.y }))
   const [sampleOpen, setSampleOpen] = useState(false)
   const [panels, setPanels] = useState<Record<PanelId, boolean>>(loadPanels)
@@ -505,7 +536,8 @@ function App() {
   const locksOff = useMemo(unlocked, [])
   const frame = frameFor(cover.kind)
   const look = lookFor(cover.kind, cover.video)
-  const fileStem = cover.kind === 'video' ? 'tape-type-video-cover' : 'tape-type-instagram'
+  const isInside = cover.kind === 'post' && cover.page === 'inside'
+  const fileStem = cover.kind === 'video' ? 'tape-type-video-cover' : isInside ? 'tape-type-instagram-page-2' : 'tape-type-instagram'
   const fonts = useFontStatus()
   const layout = useTextLayout(settings, fonts.version)
   const layoutSettings = useMemo<GeneratorSettings>(() => ({
@@ -526,41 +558,83 @@ function App() {
     () => buildLayers(shape, { tone: settings.tone, background: previewBackground, weight: layout.weight, tag: look.tag }, layout.fontSize),
     [shape, settings.tone, previewBackground, layout.weight, layout.fontSize, look.tag],
   )
-  const runs = useMemo(() => textRuns(layers), [layers])
   const range = useMemo(() => placementRange(shape, frame), [shape, frame])
-  const shownPhoto = previewBackground === 'photo' ? photo : null
   const darken = cover.darken ? PHOTO_DARKEN : 0
-  const markBoxes = useMemo(() => furnitureBoxes({ logo: cover.logo, arrow: cover.arrow }, frame), [cover.logo, cover.arrow, frame])
+
+  // The inside page has its own marks (a small logo, off to start with) and sets them on its own margin.
+  const marksLogo = isInside ? inside.logo : cover.logo
+  const marksArrow = isInside ? inside.arrow : cover.arrow
+  const markSizes = isInside ? INSIDE_MARKS : undefined
+  const markBoxes = useMemo(() => furnitureBoxes({ logo: marksLogo, arrow: marksArrow }, frame, markSizes), [marksLogo, marksArrow, frame, markSizes])
   const obstacles = useMemo(() => furnitureObstacles({ logo: cover.logo, arrow: cover.arrow }, frame), [cover.logo, cover.arrow, frame])
+
+  const measureWidth = useMemo<MeasureWidth>(() => {
+    const context = document.createElement('canvas').getContext('2d')
+    return (value, size, weight) => {
+      if (!context) return value.length * size * 0.5
+      context.font = fontShorthand(size, weight)
+      return context.measureText(value).width
+    }
+  }, [])
+  useEffect(() => {
+    if (!isInside) return
+    document.fonts.load(fontShorthand(70, 700), inside.title || ' ').catch(() => undefined)
+    document.fonts.load(fontShorthand(BODY.size, BODY.weight), inside.body || ' ').catch(() => undefined)
+  }, [isInside, inside.title, inside.body])
+  const page = useMemo(
+    () => layoutInside(inside, measureWidth, { logoBottom: markBoxes.logo ? markBoxes.logo.y + markBoxes.logo.height : undefined, arrowTop: markBoxes.arrow?.y }),
+    // Measured again whenever a font finishes loading.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inside, measureWidth, markBoxes, fonts.version],
+  )
+  const runs = useMemo(() => textRuns(isInside ? page.layers : layers), [isInside, page.layers, layers])
+
+  // The photo in play: behind a cover, or in the inside page's banner (the cover's, until another is chosen).
+  const shownPhoto = isInside ? (page.banner ? insidePhoto ?? photo : null) : previewBackground === 'photo' ? photo : null
+  const view = isInside ? insideView : photoView
+  const setView = isInside ? setInsideView : setPhotoView
+  const photoFrame = isInside && page.banner ? page.banner : frame
+
   // For now the arrow takes the logo's colour whenever both are on the cover.
-  const tied = !locksOff && cover.logo !== 'off' && cover.arrow
+  const tied = !locksOff && marksLogo !== 'off' && marksArrow
   // Each mark is checked against what is behind it, so moving the photo can change its colour.
   const rulings = useMemo(() => {
-    const flat = BACKGROUND_FILLS[previewBackground]
-    const groundUnder = (box?: Box) => (!box ? [] : shownPhoto ? photoGround(shownPhoto, photoView, box, darken, frame) : flat ? [fillLuminance(flat)] : [])
+    const flat = isInside ? BRAND.dark : BACKGROUND_FILLS[previewBackground]
+    const onPhoto = (box: Box) => shownPhoto && (!isInside || box.y + box.height / 2 < photoFrame.height)
+    const groundUnder = (box?: Box) => (!box ? [] : onPhoto(box) && shownPhoto ? photoGround(shownPhoto, view, box, darken, photoFrame) : flat ? [fillLuminance(flat)] : [])
     const logo = settleColour(cover.logoColour, groundUnder(markBoxes.logo))
     // Tied, the arrow is drawn in the logo's colour and only checked against its own ground.
     return { logo, arrow: settleColour(tied ? logo.colour : cover.arrowColour, groundUnder(markBoxes.arrow)) }
-  }, [tied, cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, photoView, darken, previewBackground, frame])
+  }, [tied, isInside, cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, view, darken, previewBackground, photoFrame])
   const furniture = useMemo(
-    () => buildFurniture({ logo: cover.logo, arrow: cover.arrow }, { logo: rulings.logo.colour, arrow: rulings.arrow.colour }, frame),
-    [cover.logo, cover.arrow, rulings.logo.colour, rulings.arrow.colour, frame],
+    () => buildFurniture({ logo: marksLogo, arrow: marksArrow }, { logo: rulings.logo.colour, arrow: rulings.arrow.colour }, frame, markSizes),
+    [marksLogo, marksArrow, rulings.logo.colour, rulings.arrow.colour, frame, markSizes],
   )
   // Rotation or a wide eyebrow can make the lettering bigger than the safe area even when every line fits its column.
   const lettersTooBig = range.x.excess > 4 || range.y.excess > 4
-  const blockedReason = layout.empty
+  const coverBlocked = layout.empty
     ? 'Type a headline to export.'
     : layout.overflow
       ? overflowMessage(layout, settings)
       : lettersTooBig ? `The lettering is bigger than ${cover.kind === 'video' ? 'what the profile grid shows' : 'the safe area'}. Try a narrower column, less rotation or a shorter eyebrow.` : null
+  const pageBlocked = page.empty
+    ? 'Type a title or some text to export.'
+    : page.overflow === 'title'
+      ? 'The title runs past four lines. Shorten it.'
+      : page.overflow === 'body'
+        ? `The text is ${page.over} ${page.over === 1 ? 'line' : 'lines'} too long for the page. Cut it${page.banner ? ', or use a shorter picture' : ''}.`
+        : page.banner && !shownPhoto ? 'Choose a photo, or set the picture to None.' : null
+  const blockedReason = isInside ? pageBlocked : coverBlocked
   const exportDisabled = Boolean(blockedReason) || fonts.loading
 
   useEffect(() => { preloadEmbeddedFonts(runs) }, [runs])
   useEffect(() => { saveSettings(settings) }, [settings])
   useEffect(() => { saveCover(cover) }, [cover])
+  useEffect(() => { saveInside(inside) }, [inside])
   useEffect(() => { savePanels(panels) }, [panels])
   // A replaced photo is let go; its address only has to last while it is on show.
   useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url) }, [photo])
+  useEffect(() => () => { if (insidePhoto) URL.revokeObjectURL(insidePhoto.url) }, [insidePhoto])
 
   const update = useCallback(<K extends keyof GeneratorSettings>(key: K, value: GeneratorSettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }))
@@ -572,6 +646,10 @@ function App() {
 
   const updateCover = useCallback(<K extends keyof CoverOptions>(key: K, value: CoverOptions[K]) => {
     setCover((current) => ({ ...current, [key]: value }))
+  }, [])
+
+  const updateInside = useCallback(<K extends keyof InsideOptions>(key: K, value: InsideOptions[K]) => {
+    setInside((current) => ({ ...current, [key]: value }))
   }, [])
 
   /** Puts the text block into a look: its tape, case and place, and the tag it starts with. */
@@ -664,15 +742,16 @@ function App() {
     noticeTimer.current = window.setTimeout(() => setNotice(null), 7000)
   }
 
-  const svgFor = (artboard: boolean, fontCss: string, crop: string | null) =>
-    svgMarkup(layers, shape, { artboard, background: previewBackground, photo: crop, darken, position, fontCss, furniture, obstacles, frame })
+  const svgFor = (artboard: boolean, fontCss: string, crop: string | null) => (isInside
+    ? insideSvg(page, { photo: crop, darken, furniture, fontCss })
+    : svgMarkup(layers, shape, { artboard, background: previewBackground, photo: crop, darken, position, fontCss, furniture, obstacles, frame }))
 
   /** The photo as the cover shows it, for SVG exports. Made once per photo position, when first asked for. */
   const photoCrop = (): Promise<string | null> => {
     if (!shownPhoto) return Promise.resolve(null)
-    const key = [shownPhoto.url, photoView.x, photoView.y, photoView.zoom, frame.height].join('|')
+    const key = [shownPhoto.url, view.x, view.y, view.zoom, photoFrame.height].join('|')
     if (cropRef.current?.key !== key) {
-      const crop = cropPhoto(shownPhoto, photoView, frame)
+      const crop = cropPhoto(shownPhoto, view, photoFrame)
       cropRef.current = { key, crop }
       crop.catch(() => { if (cropRef.current?.crop === crop) cropRef.current = null })
     }
@@ -721,7 +800,7 @@ function App() {
     if (exporting) return
     setExporting(true)
     // Snapshot everything now, so edits made while the export runs cannot mix into this file.
-    const snapshot = { layers, furniture, obstacles, frame, shape, position, background: previewBackground, photo: shownPhoto, view: photoView, darken, fileStem }
+    const snapshot = { layers: isInside ? page.layers : layers, page: isInside ? page : null, furniture, obstacles, frame, shape, position, background: previewBackground, photo: shownPhoto, view, darken, fileStem }
     const canvas = document.createElement('canvas')
     try {
       const allText = snapshot.layers.map((layer) => layer.kind === 'text' ? layer.text : '').join(' ')
@@ -733,7 +812,9 @@ function App() {
       if (!context) throw new Error('this device could not create the image')
       context.scale(scale, scale)
       const fill = BACKGROUND_FILLS[snapshot.background]
-      if (fill) {
+      if (snapshot.page) {
+        drawInside(context, snapshot.page, { photo: snapshot.photo, view: snapshot.view, darken: snapshot.darken, furniture: snapshot.furniture })
+      } else if (fill) {
         context.fillStyle = fill
         context.fillRect(0, 0, snapshot.frame.width, snapshot.frame.height)
       } else if (snapshot.photo) {
@@ -745,10 +826,12 @@ function App() {
           context.fillRect(0, 0, snapshot.frame.width, snapshot.frame.height)
         }
       }
-      drawLayers(context, snapshot.furniture)
-      const placement = getPlacement(snapshot.shape, snapshot.position, snapshot.obstacles, snapshot.frame)
-      context.translate(placement.x, placement.y)
-      drawLayers(context, snapshot.layers)
+      if (!snapshot.page) {
+        drawLayers(context, snapshot.furniture)
+        const placement = getPlacement(snapshot.shape, snapshot.position, snapshot.obstacles, snapshot.frame)
+        context.translate(placement.x, placement.y)
+        drawLayers(context, snapshot.layers)
+      }
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
       if (!blob) throw new Error('this device could not create an image that large')
       downloadBlob(blob, 'image/png', `${snapshot.fileStem}-${scale}x.png`)
@@ -767,6 +850,11 @@ function App() {
     event.target.value = ''
     if (!file) return
     try {
+      if (isInside) {
+        setInsidePhoto(await preparePhoto(file, POST_FRAME))
+        setInsideView(CENTRED)
+        return
+      }
       setPhoto(await preparePhoto(file, frame))
       setPhotoView(CENTRED)
       setPreviewBackground('photo')
@@ -777,7 +865,7 @@ function App() {
 
   const clickPhoto = (event: React.MouseEvent) => {
     // With a photo already loaded, the first click switches back to it; the next one replaces it.
-    if (photo && previewBackground !== 'photo') {
+    if (!isInside && photo && previewBackground !== 'photo') {
       event.preventDefault()
       setPreviewBackground('photo')
     }
@@ -798,15 +886,18 @@ function App() {
     const { viewBox } = shape
     const onWords = x >= viewBox.x - GRAB_MARGIN && x <= viewBox.x + viewBox.width + GRAB_MARGIN
       && y >= viewBox.y - GRAB_MARGIN && y <= viewBox.y + viewBox.height + GRAB_MARGIN
+    // On the inside page only the picture moves, and only from inside its banner.
+    const onBanner = (event.clientY - stage.top) * scale < photoFrame.height
+    if (isInside && !(shownPhoto && onBanner)) return
     dragRef.current = {
       pointerId: event.pointerId,
-      target: shownPhoto && !onWords ? 'photo' : 'artwork',
+      target: isInside || (shownPhoto && !onWords) ? 'photo' : 'artwork',
       touch,
       active: !touch,
       startX: event.clientX,
       startY: event.clientY,
       from: position,
-      fromView: photoView,
+      fromView: view,
       scale,
       span: spans(),
     }
@@ -830,7 +921,7 @@ function App() {
     }
     if (start.target === 'photo') {
       // On touch, vertical swipes scroll the page: the Up – down slider moves the photo that way.
-      if (shownPhoto) setPhotoView(dragPhoto(shownPhoto.width, shownPhoto.height, start.fromView, dx * start.scale, start.touch ? 0 : dy * start.scale, frame))
+      if (shownPhoto) setView(dragPhoto(shownPhoto.width, shownPhoto.height, start.fromView, dx * start.scale, start.touch ? 0 : dy * start.scale, photoFrame))
       return
     }
     setPosition({
@@ -845,13 +936,14 @@ function App() {
   const cancelDrag = () => {
     // The browser took the gesture over (usually to scroll): undo anything it moved.
     if (dragRef.current?.active) {
-      if (dragRef.current.target === 'photo') setPhotoView(dragRef.current.fromView)
+      if (dragRef.current.target === 'photo') setView(dragRef.current.fromView)
       else setPosition(dragRef.current.from)
     }
     dragRef.current = null
   }
 
   const nudge = (event: React.KeyboardEvent) => {
+    if (isInside) return
     const step = event.shiftKey ? 50 : 10
     const moves: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }
     const move = moves[event.key]
@@ -865,10 +957,11 @@ function App() {
   }
 
   const placement = getPlacement(shape, position, obstacles, frame)
-  const photoPlace = shownPhoto ? photoRect(shownPhoto.width, shownPhoto.height, photoView, frame) : null
-  const slack = shownPhoto ? photoSlack(shownPhoto.width, shownPhoto.height, photoView, frame) : { x: 0, y: 0 }
+  const photoPlace = shownPhoto ? photoRect(shownPhoto.width, shownPhoto.height, view, photoFrame) : null
+  const slack = shownPhoto ? photoSlack(shownPhoto.width, shownPhoto.height, view, photoFrame) : { x: 0, y: 0 }
   const isVideo = cover.kind === 'video'
-  const photoMoved = photoView.x !== CENTRED.x || photoView.y !== CENTRED.y || photoView.zoom !== CENTRED.zoom
+  const photoMoved = view.x !== CENTRED.x || view.y !== CENTRED.y || view.zoom !== CENTRED.zoom
+  const anyPhoto = isInside ? insidePhoto ?? photo : photo
   const isFeature = settings.style === 'feature'
   const series = settings.coverFormat === 'series'
   const locked = settings.seedLocked
@@ -898,13 +991,16 @@ function App() {
   const positionEntry = positions.find((entry) => Math.abs(position.y - entry.y) < 0.5)
   const headlinePreview = settings.headline.replace(/\s+/g, ' ').trim()
   const eyebrowPreview = settings.eyebrowEnabled ? settings.eyebrow.trim() : ''
+  const insideTitle = inside.title.replace(/\s+/g, ' ').trim()
   const summaries: Record<PanelId, string> = {
-    cover: isVideo ? `Video cover · ${look.label}` : 'Post',
-    words: headlinePreview ? (eyebrowPreview ? `${eyebrowPreview} · ${headlinePreview}` : headlinePreview) : 'No headline yet',
-    photo: !photo
+    cover: isVideo ? `Video cover · ${look.label}` : isInside ? 'Post · inside page' : 'Post · cover',
+    words: isInside
+      ? insideTitle || 'No title yet'
+      : headlinePreview ? (eyebrowPreview ? `${eyebrowPreview} · ${headlinePreview}` : headlinePreview) : 'No headline yet',
+    photo: !anyPhoto
       ? 'No photo yet'
-      : [shownPhoto ? (photoMoved ? `Zoom ${Math.round(photoView.zoom * 100)}%` : 'Centred') : 'Hidden', cover.darken ? 'Darkened' : 'As shot'].join(' · '),
-    marks: [cover.logo === 'off' ? 'No logo' : `Logo ${cover.logo}, ${rulings.logo.colour}`, cover.arrow ? `Arrow, ${rulings.arrow.colour}` : 'No arrow'].join(' · '),
+      : [shownPhoto ? (photoMoved ? `Zoom ${Math.round(view.zoom * 100)}%` : 'Centred') : isInside ? 'No picture' : 'Hidden', cover.darken ? 'Darkened' : 'As shot'].join(' · '),
+    marks: [marksLogo === 'off' ? 'No logo' : `Logo ${marksLogo}, ${rulings.logo.colour}`, marksArrow ? `Arrow, ${rulings.arrow.colour}` : 'No arrow'].join(' · '),
     style: `${isFeature ? 'Feature' : 'Headline'} · Barlow ${WEIGHT_NAMES[layout.weight] ?? layout.weight}`,
     tape: noTape ? 'No tape' : `${toneLabel} · ${settings.perLine ? 'Strips' : 'Block'} · ${modeLabel}`,
     layout: [
@@ -937,6 +1033,12 @@ function App() {
         <aside className="controls-panel">
           <Panel id="cover" title="Cover" summary={summaries.cover} open={panels.cover} onToggle={togglePanel}>
             <Segmented label="Made for" note={`${frame.width} × ${frame.height}`} value={cover.kind} options={kindOptions} onChange={chooseKind} />
+            {!isVideo && (
+              <>
+                <Segmented label="Page" value={cover.page} options={pageOptions} onChange={(page) => updateCover('page', page)} />
+                {isInside && <p className="panel-note">The page inside the post: a picture across the top, a title, then the story.</p>}
+              </>
+            )}
             {isVideo && (
               <>
                 <div className="look-toggle" role="group" aria-label="Kind of video">
@@ -952,7 +1054,33 @@ function App() {
             )}
           </Panel>
 
-          <Panel id="words" title="Words" summary={summaries.words} open={panels.words} onToggle={togglePanel}>
+          {isInside && (
+            <Panel id="words" title="Words" summary={summaries.words} open={panels.words} onToggle={togglePanel}>
+              <span className="field-label">Title</span>
+              <textarea aria-label="Title" className="title-input" value={inside.title} rows={3} onChange={(event) => updateInside('title', event.target.value)} />
+              <div className="words-status">
+                <div className={`fit-line ${page.overflow === 'title' ? 'error' : ''}`}>
+                  <strong>{page.titleSize}px</strong>
+                  <span>{page.titleLines} / 3 lines</span>
+                  <span>sized 50–70</span>
+                </div>
+              </div>
+              <div className="sub-block">
+                <span className="field-label">Text</span>
+                <textarea aria-label="Text" className="body-input" value={inside.body} rows={9} onChange={(event) => updateInside('body', event.target.value)} />
+                <div className="words-status">
+                  <div className={`fit-line ${page.overflow === 'body' ? 'error' : ''}`}>
+                    <strong>{BODY.size}px</strong>
+                    <span>{page.bodyLines} / {page.bodyRoom} lines</span>
+                  </div>
+                </div>
+                <p className="panel-note">A new line starts a new paragraph. Start a line with a dash for a bullet.</p>
+              </div>
+              {blockedReason && !page.empty && <p className="fit-message error" role="status">{blockedReason}</p>}
+            </Panel>
+          )}
+
+          {!isInside && <Panel id="words" title="Words" summary={summaries.words} open={panels.words} onToggle={togglePanel}>
             <div className="section-label-row">
               <span className="field-label">Headline</span>
               <div className="sample-picker">
@@ -1024,26 +1152,30 @@ function App() {
                 </>
               )}
             </div>
-          </Panel>
+          </Panel>}
 
           <Panel id="photo" title="Photo" summary={summaries.photo} open={panels.photo} onToggle={togglePanel}>
+            {isInside && <Segmented label="Picture" note={page.banner ? `${page.banner.height}px tall` : 'Words only'} value={inside.image} options={imageOptions} onChange={(image) => updateInside('image', image)} />}
             <div className="photo-actions">
               <label className="panel-button upload-button" onClick={clickPhoto}>
                 <input type="file" accept="image/*" onChange={choosePhoto} />
-                {photo ? <ImageIcon size={14} aria-hidden="true" /> : <Upload size={14} aria-hidden="true" />}
-                {!photo ? 'Choose photo' : shownPhoto ? 'Replace photo' : 'Show photo'}
+                {anyPhoto ? <ImageIcon size={14} aria-hidden="true" /> : <Upload size={14} aria-hidden="true" />}
+                {isInside ? (insidePhoto ? 'Replace photo' : 'Choose photo') : !photo ? 'Choose photo' : shownPhoto ? 'Replace photo' : 'Show photo'}
               </label>
-              {shownPhoto && <button className="text-button underlined" disabled={!photoMoved} onClick={() => setPhotoView(CENTRED)}>Reset position</button>}
+              {shownPhoto && <button className="text-button underlined" disabled={!photoMoved} onClick={() => setView(CENTRED)}>Reset position</button>}
             </div>
             {shownPhoto ? (
               <div className="range-stack">
-                <RangeField label="Zoom" value={photoView.zoom} min={1} max={MAX_ZOOM} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(zoom) => setPhotoView((current) => ({ ...current, zoom }))} />
-                <RangeField label="Left – right" value={photoView.x} min={0} max={100} disabled={slack.x < 1} format={(value) => (slack.x < 1 ? 'Fits' : value === 50 ? 'Centre' : `${Math.round(value)}%`)} onChange={(x) => setPhotoView((current) => ({ ...current, x }))} />
-                <RangeField label="Up – down" value={photoView.y} min={0} max={100} disabled={slack.y < 1} format={(value) => (slack.y < 1 ? 'Fits' : value === 50 ? 'Centre' : `${Math.round(value)}%`)} onChange={(y) => setPhotoView((current) => ({ ...current, y }))} />
+                <RangeField label="Zoom" value={view.zoom} min={1} max={MAX_ZOOM} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(zoom) => setView((current) => ({ ...current, zoom }))} />
+                <RangeField label="Left – right" value={view.x} min={0} max={100} disabled={slack.x < 1} format={(value) => (slack.x < 1 ? 'Fits' : value === 50 ? 'Centre' : `${Math.round(value)}%`)} onChange={(x) => setView((current) => ({ ...current, x }))} />
+                <RangeField label="Up – down" value={view.y} min={0} max={100} disabled={slack.y < 1} format={(value) => (slack.y < 1 ? 'Fits' : value === 50 ? 'Centre' : `${Math.round(value)}%`)} onChange={(y) => setView((current) => ({ ...current, y }))} />
               </div>
             ) : (
-              <p className="panel-note">{photo ? 'The photo is hidden while another background is showing.' : 'Photos stay in your browser. Once one is in, drag it on the cover to reposition it.'}</p>
+              <p className="panel-note">{isInside
+                ? (page.banner ? 'Photos stay in your browser. Once one is in, drag it in its banner to reposition it.' : 'This page has no picture. Pick a height above to add one.')
+                : photo ? 'The photo is hidden while another background is showing.' : 'Photos stay in your browser. Once one is in, drag it on the cover to reposition it.'}</p>
             )}
+            {isInside && shownPhoto && !insidePhoto && <p className="panel-note">This is the cover’s photo. Choose another to change it on this page only.</p>}
             <label className="toggle-row spread">
               <span>Darken photo <small>{Math.round(PHOTO_DARKEN * 100)}% black, so the words read</small></span>
               <input type="checkbox" checked={cover.darken} onChange={(event) => updateCover('darken', event.target.checked)} />
@@ -1052,32 +1184,33 @@ function App() {
           </Panel>
 
           <Panel id="marks" title="Logo & arrow" summary={summaries.marks} open={panels.marks} onToggle={togglePanel}>
-            <Segmented label="Logo" note="Top corner" value={cover.logo} options={logoOptions} onChange={(logo) => updateCover('logo', logo)} />
+            <Segmented label="Logo" note={isInside ? 'Small, top corner' : 'Top corner'} value={marksLogo} options={logoOptions} onChange={(logo) => (isInside ? updateInside('logo', logo) : updateCover('logo', logo))} />
             <Segmented
               label="Logo colour"
-              note={cover.logo !== 'off' ? colourNote(rulings.logo, cover.logoColour) : undefined}
+              note={marksLogo !== 'off' ? colourNote(rulings.logo, cover.logoColour) : undefined}
               value={cover.logoColour}
               options={colourOptions}
-              disabled={cover.logo === 'off'}
+              disabled={marksLogo === 'off'}
               onChange={(colour) => updateCover('logoColour', colour)}
             />
             <label className="toggle-row spread">
               <span>Swipe arrow <small>Bottom right corner</small></span>
-              <input type="checkbox" checked={cover.arrow} onChange={(event) => updateCover('arrow', event.target.checked)} />
+              <input type="checkbox" checked={marksArrow} onChange={(event) => (isInside ? updateInside('arrow', event.target.checked) : updateCover('arrow', event.target.checked))} />
               <span className="switch" />
             </label>
             <Segmented
               label="Arrow colour"
-              note={!cover.arrow ? undefined : tied ? (rulings.arrow.reads ? 'Same as the logo' : 'Same as the logo · hard to read here') : colourNote(rulings.arrow, cover.arrowColour)}
+              note={!marksArrow ? undefined : tied ? (rulings.arrow.reads ? 'Same as the logo' : 'Same as the logo · hard to read here') : colourNote(rulings.arrow, cover.arrowColour)}
               value={tied ? cover.logoColour : cover.arrowColour}
               options={colourOptions}
-              disabled={!cover.arrow}
+              disabled={!marksArrow}
               locked={() => tied}
               lockedNote={TIED_NOTE}
               onChange={(colour) => updateCover('arrowColour', colour)}
             />
           </Panel>
 
+          {!isInside && <>
           <Panel id="style" title="Style" summary={summaries.style} open={panels.style} onToggle={togglePanel}>
             <div className="style-toggle" role="group" aria-label="Cover style">
               {styles.map((style) => {
@@ -1178,13 +1311,19 @@ function App() {
               <RangeField label="Rotation variance" value={settings.rotationVariance} min={0} max={2} step={0.1} disabled={!settings.perLine} format={(value) => `${value.toFixed(1)}°`} onChange={(value) => update('rotationVariance', value)} />
             </div>
           </Panel>
+          </>}
 
-          <p className="automatic-note panel-footer"><Sparkles size={13} aria-hidden="true" /> Size, fit and cut depth stay inside the brand system</p>
-          {!locksOff && <p className="automatic-note panel-footer locked-note"><Lock size={12} aria-hidden="true" /> Greyed-out choices are switched off for now</p>}
+          <p className="automatic-note panel-footer"><Sparkles size={13} aria-hidden="true" /> {isInside ? 'Sizes, margins and line heights are set by the page' : 'Size, fit and cut depth stay inside the brand system'}</p>
+          {!locksOff && !isInside && <p className="automatic-note panel-footer locked-note"><Lock size={12} aria-hidden="true" /> Greyed-out choices are switched off for now</p>}
         </aside>
 
         <section className="stage-column">
-          <div className="preview-toolbar">
+          {isInside && (
+            <div className="preview-toolbar">
+              <p className="toolbar-note">Inside page · the title sizes itself, and the text tells you when it runs over</p>
+            </div>
+          )}
+          {!isInside && <div className="preview-toolbar">
             <div className="background-switcher" role="group" aria-label="Preview background">
               <button aria-pressed={previewBackground === 'transparent'} className={previewBackground === 'transparent' ? 'active' : ''} onClick={() => setPreviewBackground('transparent')}>Clear</button>
               <button aria-pressed={previewBackground === 'charcoal'} className={previewBackground === 'charcoal' ? 'active' : ''} onClick={() => setPreviewBackground('charcoal')}>Dark</button>
@@ -1213,23 +1352,28 @@ function App() {
               />
               <button aria-label="Copy seed" onClick={() => copy('seed')}>{copied === 'seed' ? <Check size={14} /> : <Copy size={14} />}</button>
             </div>
-          </div>
+          </div>}
 
           <div className="stage-wrap">
             {notice && <p className="notice" role="alert">{notice}</p>}
             <div
               ref={previewRef}
-              className={`preview-stage ${previewBackground}`}
+              className={`preview-stage ${isInside ? 'charcoal' : previewBackground}`}
               style={{ aspectRatio: `${frame.width} / ${frame.height}`, width: `min(100cqw, ${Math.round(frame.width / frame.height * 10000) / 100}cqh)` }}
             >
-              {previewBackground === 'photo' && !photo && (
+              {!isInside && previewBackground === 'photo' && !photo && (
                 <label className="photo-empty"><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
+              )}
+              {isInside && page.banner && !shownPhoto && (
+                <label className="photo-empty banner" style={{ height: `${page.banner.height / frame.height * 100}%` }}><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
               )}
               <div
                 className="artwork draggable"
                 tabIndex={0}
                 role="application"
-                aria-label={`Artwork position. Drag, or use the arrow keys (Shift for bigger steps).${shownPhoto ? ' Drag the photo behind the words to reposition it.' : ''}`}
+                aria-label={isInside
+                  ? `Inside page.${shownPhoto ? ' Drag the picture in its banner to reposition it.' : ''}`
+                  : `Artwork position. Drag, or use the arrow keys (Shift for bigger steps).${shownPhoto ? ' Drag the photo behind the words to reposition it.' : ''}`}
                 onPointerDown={startDrag}
                 onPointerMove={drag}
                 onPointerUp={endDrag}
@@ -1239,7 +1383,21 @@ function App() {
                 onLostPointerCapture={(event) => { if (event.target === event.currentTarget) endDrag() }}
                 onKeyDown={nudge}
               >
-                <svg
+                {isInside && (
+                  <svg role="img" aria-label={`Inside page: ${insideTitle || 'no title yet'}`} viewBox={`0 0 ${frame.width} ${frame.height}`}>
+                    <defs><clipPath id="banner"><rect width={photoFrame.width} height={photoFrame.height} /></clipPath></defs>
+                    {shownPhoto && photoPlace && (
+                      <g clipPath="url(#banner)">
+                        <image href={shownPhoto.url} x={photoPlace.x} y={photoPlace.y} width={photoPlace.width} height={photoPlace.height} preserveAspectRatio="none" />
+                        {darken > 0 && <rect width={photoFrame.width} height={photoFrame.height} fill="#000" opacity={darken} />}
+                      </g>
+                    )}
+                    <rect className="safe-guide" x={PAGE_MARGIN} y={PAGE_MARGIN} width={PAGE_TEXT_WIDTH} height={frame.height - PAGE_MARGIN * 2} />
+                    <LayerList layers={furniture} />
+                    <LayerList layers={page.layers} />
+                  </svg>
+                )}
+                {!isInside && <svg
                   role="img"
                   aria-label={`Generated tape artwork: ${shape.personality}`}
                   viewBox={`0 0 ${frame.width} ${frame.height}`}
@@ -1258,10 +1416,10 @@ function App() {
                   <g transform={`translate(${placement.x} ${placement.y})`}>
                     <LayerList layers={layers} />
                   </g>
-                </svg>
+                </svg>}
               </div>
-              <span className="stage-coordinate top-left">{frame.width} × {frame.height} · {shownPhoto ? 'drag the words or the photo' : 'drag or arrow keys to position'}</span>
-              <span className="stage-coordinate bottom-right">{layout.fontSize}px · {layout.labels.length} lines · {shape.personality.toUpperCase()}</span>
+              {!isInside && <span className="stage-coordinate top-left">{frame.width} × {frame.height} · {shownPhoto ? 'drag the words or the photo' : 'drag or arrow keys to position'}</span>}
+              {!isInside && <span className="stage-coordinate bottom-right">{layout.fontSize}px · {layout.labels.length} lines · {shape.personality.toUpperCase()}</span>}
             </div>
           </div>
         </section>
@@ -1275,7 +1433,7 @@ function App() {
           </div>
           <div className="export-actions">
             <button disabled={exportDisabled} onClick={() => copy('svg')}>{copied === 'svg' ? <Check size={16} /> : <Clipboard size={16} />}{copied === 'svg' ? 'Copied' : 'Copy SVG'}</button>
-            <button disabled={exportDisabled} onClick={() => downloadSvg(false)}><Download size={16} aria-hidden="true" /> Cutout SVG</button>
+            <button disabled={exportDisabled || isInside} title={isInside ? 'A cutout is the tape and words of a cover: an inside page has none' : undefined} onClick={() => downloadSvg(false)}><Download size={16} aria-hidden="true" /> Cutout SVG</button>
             <button disabled={exportDisabled || exporting} onClick={() => downloadPng(1)}><Download size={16} aria-hidden="true" /> PNG 1×</button>
             <button className="png-fallback" disabled={exportDisabled || exporting} onClick={() => downloadPng(2)}><Download size={16} aria-hidden="true" /> PNG 2×</button>
             <button disabled={exportDisabled || exporting} onClick={() => downloadPng(3)}><Download size={16} aria-hidden="true" /> PNG 3×</button>

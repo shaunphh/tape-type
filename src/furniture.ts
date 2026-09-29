@@ -36,8 +36,9 @@ export function readMark(svg: string): Mark {
 const logos = { left: readMark(logoLeftSvg), right: readMark(logoRightSvg) }
 const swipeArrow = readMark(swipeArrowSvg)
 
-// Measured from the cover mock-up: the logo is about a quarter of the cover wide.
-export const LOGO_WIDTH = 250
+// A fifth of the cover wide: a little smaller than on the first mock-up (250), a little larger
+// than on the published posts (about 176).
+export const LOGO_WIDTH = 210
 /** The painted arrow was drawn 137px wide; it is used a little smaller. */
 export const ARROW_WIDTH = 110
 /** Clear space between a mark and the headline's lettering: room for the tape and the eyebrow tag. */
@@ -52,29 +53,34 @@ const draw = (mark: Mark, box: Box, fill: string): Layer[] =>
 
 const sized = (mark: Mark, width: number) => ({ width, height: mark.height * width / mark.width })
 
+/** How far in the marks sit, and how wide they are. Covers use these; an inside page sets its own. */
+export interface MarkSizes { margin: number; logoWidth: number; arrowWidth: number }
+export const COVER_MARKS: MarkSizes = { margin: SAFE_MARGIN, logoWidth: LOGO_WIDTH, arrowWidth: ARROW_WIDTH }
+
 /**
  * Where each mark sits: the logo in a top corner, the arrow in the bottom right one, 80px in
  * from the edges of the whole cover (on a video cover that is outside what the profile grid shows).
  */
-export function furnitureBoxes(furniture: Pick<Furniture, 'logo' | 'arrow'>, frame: Frame = POST_FRAME): { logo?: Box; arrow?: Box } {
-  const right = frame.width - SAFE_MARGIN
-  const bottom = frame.height - SAFE_MARGIN
+export function furnitureBoxes(furniture: Pick<Furniture, 'logo' | 'arrow'>, frame: Frame = POST_FRAME, sizes: Partial<MarkSizes> = {}): { logo?: Box; arrow?: Box } {
+  const { margin, logoWidth, arrowWidth } = { ...COVER_MARKS, ...sizes }
+  const right = frame.width - margin
+  const bottom = frame.height - margin
   let logo: Box | undefined
   if (furniture.logo !== 'off') {
-    const size = sized(logos[furniture.logo], LOGO_WIDTH)
-    logo = { x: furniture.logo === 'left' ? SAFE_MARGIN : right - size.width, y: SAFE_MARGIN, ...size }
+    const size = sized(logos[furniture.logo], logoWidth)
+    logo = { x: furniture.logo === 'left' ? margin : right - size.width, y: margin, ...size }
   }
   let arrow: Box | undefined
   if (furniture.arrow) {
-    const size = sized(swipeArrow, ARROW_WIDTH)
+    const size = sized(swipeArrow, arrowWidth)
     arrow = { x: right - size.width, y: bottom - size.height, ...size }
   }
   return { logo, arrow }
 }
 
 /** The logo and swipe arrow as layers, in artboard coordinates, each in the colour settled for it. */
-export function buildFurniture(furniture: Pick<Furniture, 'logo' | 'arrow'>, colours: { logo: MarkColour; arrow: MarkColour }, frame: Frame = POST_FRAME): Layer[] {
-  const boxes = furnitureBoxes(furniture, frame)
+export function buildFurniture(furniture: Pick<Furniture, 'logo' | 'arrow'>, colours: { logo: MarkColour; arrow: MarkColour }, frame: Frame = POST_FRAME, sizes: Partial<MarkSizes> = {}): Layer[] {
+  const boxes = furnitureBoxes(furniture, frame, sizes)
   return [
     ...(boxes.logo && furniture.logo !== 'off' ? draw(logos[furniture.logo], boxes.logo, MARK_FILLS[colours.logo]) : []),
     ...(boxes.arrow ? draw(swipeArrow, boxes.arrow, MARK_FILLS[colours.arrow]) : []),

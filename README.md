@@ -49,7 +49,7 @@ The tool makes the whole cover, not only the headline:
 
 - **Photo**: choose a photo, then drag it on the cover to reposition it (a press on the words moves the words; anywhere else moves the photo). The Photo group has Zoom (100–300%), Left – right and Up – down sliders, and Reset position. On phones a sideways swipe moves the photo and the sliders do the rest, because vertical swipes scroll the page.
 - **Darken photo** lays 15% black over the photo so the words and marks read. It is on by default and can be switched off.
-- **Logo**: Off, Left or Right. The Alternative Dublin logo sits in a top corner of the safe area, 250px wide, with DUBLIN lined up on that side.
+- **Logo**: Off, Left or Right. The Alternative Dublin logo sits in a top corner of the safe area, 210px wide, with DUBLIN lined up on that side.
 - **Swipe arrow**: the painted arrow sits in the bottom right corner of the safe area, 110px wide (it was drawn at 137).
 - **Colour**, for each mark: Auto, Yellow, Light or Dark. A chosen colour is used as it is. On Auto the mark is yellow wherever yellow reads: the tool checks the contrast between the mark and what is behind it (the photo as the cover shows it, darkening included). Where yellow doesn't read, the mark takes the colour that does, which on bright ground is Dark. Moving or zooming the photo can change the result. The panel says what Auto picked, and warns when the colour in use is hard to read:
   - *Nothing reads well here* (on Auto): the ground is part dark and part bright, so no colour reads on most of it, and the mark takes the one that reads on more of it. Moving the photo usually fixes it.
@@ -62,6 +62,21 @@ The tool makes the whole cover, not only the headline:
 The headline's lettering keeps clear of both marks. A headline beside a mark stays where it was put; one that would sit on a mark steps aside by the shortest way that stays inside the safe area, so a full-width headline starts under the logo at Top and stops above the arrow at Bottom. The marks are part of the PNG and full SVG exports, and left out of the cutout SVG.
 
 The marks are outlines, read from the SVG files in `src/assets`. `node scripts/prepare-mark.mjs <exported.svg> src/assets/<name>.svg` crops a mark exported from a design tool to its artwork. Sizes, spacing and the contrast a mark needs (`READS_FROM`) are set in `src/furniture.ts`.
+
+### Inside page
+
+A post is a cover and, usually, one page inside it. **Page** (in the Cover group) switches between the two; each keeps its own words, picture and marks.
+
+The inside page is a picture across the top, a title, then the story, on brand black:
+
+- **Title**: Barlow Bold, white. It takes the largest size from 70px down to 50px that fits in three lines.
+- **Text**: Barlow Medium at 38px (28.5 in Canva, whose sizes are points), light grey, lines 1.32 apart. A new line starts a new paragraph; a line starting with a dash is a bullet.
+- **Picture**: None, Short (340px), Medium (430px) or Tall (540px). It starts as the cover's photo and can be given its own; drag it inside its banner, or use the sliders, as on a cover.
+- **Marks**: the arrow is on and the logo is off to start with. The logo is small here (128px) and both sit on the page's 56px margin.
+
+The panel counts the lines of text against the room the page has, and exports are blocked while the text runs over: cut it, use a shorter picture, or none. With a Medium picture and a three-line title there is room for about seven lines.
+
+Sizes, margins and greys follow the article pages of the Alternative Dublin social templates; they are set at the top of `src/inside.ts`. The cutout SVG is for covers only.
 
 ### Video covers
 

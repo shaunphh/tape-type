@@ -748,6 +748,11 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
   cursor: pointer;
 }
 .photo-empty span { font-family: 'Barlow Condensed'; font-size: 20px; font-weight: 700; text-transform: uppercase; }
+/* The inside page's picture sits in a banner across the top, not over the whole page. */
+.photo-empty.banner { inset: 0 0 auto; }
+.toolbar-note { margin: 0; min-height: 34px; display: flex; align-items: center; color: #66635d; font-size: 11px; }
+textarea.body-input { min-height: 190px; font-family: 'Barlow', Arial, sans-serif; font-size: 14px; font-weight: 500; line-height: 1.35; }
+textarea.title-input { font-family: 'Barlow', Arial, sans-serif; font-size: 18px; font-weight: 700; line-height: 1.15; }
 .photo-empty small { color: rgba(255,255,255,.5); font-size: 10px; }
 .photo-empty input { position: absolute; opacity: 0; }
 

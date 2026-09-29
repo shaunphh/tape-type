@@ -340,6 +340,8 @@ function colourNote(ruling: Ruling, choice: ColourChoice) {
   return ruling.reads ? undefined : 'Hard to read here'
 }
 
+const TIED_NOTE = 'Takes the logo’s colour for now'
+
 function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = false, format, onChange }: {
   label: string
   value: number
@@ -421,7 +423,7 @@ function Panel({ id, title, summary, open, onToggle, children }: {
   )
 }
 
-function Segmented<T extends string>({ label, note, value, options, disabled = false, locked, onChange }: {
+function Segmented<T extends string>({ label, note, value, options, disabled = false, locked, lockedNote = LOCKED_NOTE, onChange }: {
   label: string
   /** A few words beside the label, such as what Auto settled on. */
   note?: string
@@ -430,6 +432,8 @@ function Segmented<T extends string>({ label, note, value, options, disabled = f
   disabled?: boolean
   /** Options that are switched off for now: greyed out, but still on show. */
   locked?: (value: T) => boolean
+  /** What hovering over a switched-off option says. */
+  lockedNote?: string
   onChange: (value: T) => void
 }) {
   return (
@@ -438,7 +442,7 @@ function Segmented<T extends string>({ label, note, value, options, disabled = f
       <div className="piece-toggle compact" role="group" aria-label={label} style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
         {options.map((option) => {
           const off = locked?.(option.value) ?? false
-          return <button key={option.value} aria-pressed={value === option.value} className={value === option.value ? 'active' : ''} disabled={disabled || off} title={off ? LOCKED_NOTE : undefined} onClick={() => onChange(option.value)}>{option.label}</button>
+          return <button key={option.value} aria-pressed={value === option.value} className={value === option.value ? 'active' : ''} disabled={disabled || off} title={off ? lockedNote : undefined} onClick={() => onChange(option.value)}>{option.label}</button>
         })}
       </div>
     </div>
@@ -520,13 +524,16 @@ function App() {
   const darken = cover.darken ? PHOTO_DARKEN : 0
   const markBoxes = useMemo(() => furnitureBoxes({ logo: cover.logo, arrow: cover.arrow }, frame), [cover.logo, cover.arrow, frame])
   const obstacles = useMemo(() => furnitureObstacles({ logo: cover.logo, arrow: cover.arrow }, frame), [cover.logo, cover.arrow, frame])
+  // For now the arrow takes the logo's colour whenever both are on the cover.
+  const tied = !locksOff && cover.logo !== 'off' && cover.arrow
   // Each mark is checked against what is behind it, so moving the photo can change its colour.
   const rulings = useMemo(() => {
     const flat = BACKGROUND_FILLS[previewBackground]
-    const settle = (choice: ColourChoice, box?: Box) =>
-      settleColour(choice, !box ? [] : shownPhoto ? photoGround(shownPhoto, photoView, box, darken, frame) : flat ? [fillLuminance(flat)] : [])
-    return { logo: settle(cover.logoColour, markBoxes.logo), arrow: settle(cover.arrowColour, markBoxes.arrow) }
-  }, [cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, photoView, darken, previewBackground, frame])
+    const groundUnder = (box?: Box) => (!box ? [] : shownPhoto ? photoGround(shownPhoto, photoView, box, darken, frame) : flat ? [fillLuminance(flat)] : [])
+    const logo = settleColour(cover.logoColour, groundUnder(markBoxes.logo))
+    // Tied, the arrow is drawn in the logo's colour and only checked against its own ground.
+    return { logo, arrow: settleColour(tied ? logo.colour : cover.arrowColour, groundUnder(markBoxes.arrow)) }
+  }, [tied, cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, photoView, darken, previewBackground, frame])
   const furniture = useMemo(
     () => buildFurniture({ logo: cover.logo, arrow: cover.arrow }, { logo: rulings.logo.colour, arrow: rulings.arrow.colour }, frame),
     [cover.logo, cover.arrow, rulings.logo.colour, rulings.arrow.colour, frame],
@@ -1053,10 +1060,12 @@ function App() {
             </label>
             <Segmented
               label="Arrow colour"
-              note={cover.arrow ? colourNote(rulings.arrow, cover.arrowColour) : undefined}
-              value={cover.arrowColour}
+              note={!cover.arrow ? undefined : tied ? (rulings.arrow.reads ? 'Same as the logo' : 'Same as the logo · hard to read here') : colourNote(rulings.arrow, cover.arrowColour)}
+              value={tied ? cover.logoColour : cover.arrowColour}
               options={colourOptions}
               disabled={!cover.arrow}
+              locked={() => tied}
+              lockedNote={TIED_NOTE}
               onChange={(colour) => updateCover('arrowColour', colour)}
             />
           </Panel>

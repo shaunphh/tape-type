@@ -5,7 +5,8 @@ import type { GeneratorSettings } from './types'
  * The text block's choices that are held to the cover's look for now (a post's is black words on
  * a light block of tape, left aligned; each kind of video has its own). Every other value of
  * these stays on the page, greyed out, so people can see what is coming. To open one up again,
- * take it off this list. Only the text block is held: photo, logo and arrow are free.
+ * take it off this list. Beyond the text block only one thing is held, in App: the arrow takes
+ * the logo's colour. Photo, logo and the logo's colour are free.
  */
 export const HELD = ['style', 'tone', 'perLine', 'align', 'coverFormat'] as const
 export type HeldSetting = (typeof HELD)[number]

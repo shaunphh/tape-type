@@ -55,6 +55,8 @@ The tool makes the whole cover, not only the headline:
   - *Nothing reads well here* (on Auto): the ground is part dark and part bright, so no colour reads on most of it, and the mark takes the one that reads on more of it. Moving the photo usually fixes it.
   - *Hard to read here*: the chosen colour doesn't read on this ground.
 
+  For now the arrow takes the logo's colour whenever both are on the cover, and its own colour control is greyed out. It is still checked against what is behind it, and the panel says when the logo's colour is hard to read there. With the logo off, the arrow's colour can be chosen as before.
+
   A colour reads when its contrast with the ground is 50 or more on at least three quarters of the ground under the mark. Contrast is measured the way the draft of the next accessibility guidelines does (APCA), which agrees with the eye that light marks hold up on mid tones such as a blue sky; 45 is its figure for large, heavy lettering. On the Yellow background Auto is dark, and with a see-through background, where there is nothing to check, it is yellow.
 
 The headline's lettering keeps clear of both marks. A headline beside a mark stays where it was put; one that would sit on a mark steps aside by the shortest way that stays inside the safe area, so a full-width headline starts under the logo at Top and stops above the arrow at Bottom. The marks are part of the PNG and full SVG exports, and left out of the cutout SVG.
@@ -79,7 +81,7 @@ The tag's words can be changed or switched off, and the block can be dragged any
 
 ### Locked choices
 
-For now the text block keeps to the look of what is being made. A post's is black words on a light block of tape, left aligned; each kind of video has its own (above). The other choices are greyed out rather than removed, so people can see what is coming: style, tape colour, Block or Strips, alignment and the Series format. The cut styles stay open, as do column, position, size and fine-tuning. Only the text block is locked: the photo, the logo, the arrow and their colours are free.
+For now the text block keeps to the look of what is being made. A post's is black words on a light block of tape, left aligned; each kind of video has its own (above). The other choices are greyed out rather than removed, so people can see what is coming: style, tape colour, Block or Strips, alignment and the Series format. The cut styles stay open, as do column, position, size and fine-tuning. Beyond the text block, one thing is held: the arrow takes the logo's colour. The photo, the logo and its colour are free.
 
 The settings that are held are listed in `src/locks.ts`; take one off the list to open it up. Settings saved before the locks went on, or under another look, are put into the one in use, keeping the words. Opening the tool with `?unlocked` at the end of the address lifts every lock.
 

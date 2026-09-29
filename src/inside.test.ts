@@ -360,6 +360,23 @@ describe('inside page', () => {
     expect(large.bodyRoom).toBeLessThanOrEqual(usual.bodyRoom)
   })
 
+  it('sets the story a size up when asked, leaving the highlight as it is', () => {
+    const body = 'A free evening of live music, art, storytelling and movement, with performances from *AE MAK* on the Factory Main Stage.'
+    const usual = page({ body, details: 'A date', image: 'none' })
+    const large = page({ body, details: 'A date', bodyLarge: true, image: 'none' })
+    const story = (layout: typeof large) => texts(layout.layers).filter((layer) => layer.fill === BODY.fill || layer.text === 'AE MAK')
+    expect(BODY.large).toBe(42)
+    expect(story(usual).every((layer) => layer.size === 38)).toBe(true)
+    expect(story(large).every((layer) => layer.size === 42)).toBe(true)
+    for (const layer of story(large)) expect(layer.x + measure(layer.text, layer.size, layer.weight)).toBeLessThanOrEqual(PAGE_MARGIN + TEXT_WIDTH + 0.01)
+    expect(new Set(story(large).map((layer) => layer.y)).size).toBeGreaterThanOrEqual(new Set(story(usual).map((layer) => layer.y)).size)
+    expect(texts(large.layers).find((layer) => layer.text === 'A date')!.size).toBe(38)
+    // Both can be a size up at once.
+    expect(texts(page({ body, details: 'A date', bodyLarge: true, large: true, image: 'none' }).layers).find((layer) => layer.text === 'A date')!.size).toBe(42)
+    expect(PAGE_KINDS.title.sample.bodyLarge).toBe(false)
+    expect(PAGE_KINDS.label.sample.bodyLarge).toBe(false)
+  })
+
   it('sets words in stars bold and white, in the story or the highlight', () => {
     const layout = page({ body: '*Each artist will give a short presentation.*', details: '*Ishmael Claxton*\nPhotography' })
     const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
@@ -386,7 +403,7 @@ describe('inside page', () => {
 
   it('sets the page in other sizes and weights when they are being tried', () => {
     const content = { label: 'Meet the artists', title: 'The closure follows a months-long legal dispute', body: 'The story.\n*A bold line.*\n- A bullet', details: 'A date', image: 'none' as const }
-    const tried = { title: { largest: 80, smallest: 60, weight: 800, lineHeight: 1 }, text: { size: 30, weight: 400, lineHeight: 1.5 }, details: { size: 26, large: 34, weight: 600 }, strong: { weight: 900 }, label: { size: 60, weight: 900 } }
+    const tried = { title: { largest: 80, smallest: 60, weight: 800, lineHeight: 1 }, text: { size: 30, large: 36, weight: 400, lineHeight: 1.5 }, details: { size: 26, large: 34, weight: 600 }, strong: { weight: 900 }, label: { size: 60, weight: 900 } }
     const layout = layoutInside(content, measure, {}, ink, tried)
     const lines = texts(layout.layers)
     const find = (value: string) => lines.find((layer) => layer.text === value)!
@@ -404,6 +421,7 @@ describe('inside page', () => {
     expect(find('A bullet').x).toBe(PAGE_MARGIN + Math.round(BODY.indent * 30 / BODY.size))
     expect(find('A date')).toMatchObject({ size: 26, weight: 600 })
     expect(texts(layoutInside({ ...content, large: true }, measure, {}, ink, tried).layers).find((layer) => layer.text === 'A date')).toMatchObject({ size: 34, weight: 600 })
+    expect(texts(layoutInside({ ...content, bodyLarge: true }, measure, {}, ink, tried).layers).find((layer) => layer.text === 'The story.')).toMatchObject({ size: 36, weight: 400 })
     // A title that cannot come down further than its smallest runs over, as before.
     expect(layoutInside({ ...content, title: Array(40).fill('wordy').join(' ') }, measure, {}, ink, tried)).toMatchObject({ titleSize: 60, overflow: 'title' })
     // Smaller text leaves room for more of it.
@@ -465,8 +483,8 @@ describe('inside page', () => {
 
   it('replaces invalid stored values instead of trusting them', () => {
     expect(sanitizeInside({ kind: 'poster', kept: 'all', label: 9, cut: 'jagged', seed: 'seven', title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
-    const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', large: true, bodyTone: 'light', detailsTone: 'grey', position: 'bottom' } }
-    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', large: true, bodyTone: 'light', detailsTone: 'grey', image: 'none', position: 'middle', logo: 'left', arrow: false }
+    const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', large: true, bodyLarge: true, bodyTone: 'light', detailsTone: 'grey', position: 'bottom' } }
+    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', large: true, bodyLarge: true, bodyTone: 'light', detailsTone: 'grey', image: 'none', position: 'middle', logo: 'left', arrow: false }
     expect(sanitizeInside(chosen)).toEqual(chosen)
     // What is kept is checked too, and only for the kind the page is not.
     expect(sanitizeInside({ ...chosen, kept: { title: kept.label, label: { label: 5, body: 'Names', large: 'yes', bodyTone: 'pink', position: 'sideways' } } }).kept).toEqual({ label: { ...PAGE_KINDS.label.sample, body: 'Names', details: '', large: false } })

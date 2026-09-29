@@ -17,7 +17,7 @@ describe('trying other sizes and weights', () => {
   it('starts from the tool’s own sizes and weights', () => {
     expect(PAGE_TYPE).toEqual({
       title: { largest: 52, smallest: 45, weight: 700, lineHeight: 1.07 },
-      text: { size: 38, weight: 400, lineHeight: 1.2 },
+      text: { size: 38, large: 42, weight: 400, lineHeight: 1.2 },
       details: { size: 38, large: 42, weight: 400 },
       strong: { weight: 700 },
       label: { size: 38, weight: 800 },
@@ -35,7 +35,7 @@ describe('trying other sizes and weights', () => {
       label: 'big',
     })
     expect(tried.title).toEqual({ largest: 120, smallest: 36, weight: 700, lineHeight: 1.4 })
-    expect(tried.text).toEqual({ size: 38, weight: 600, lineHeight: 1.26 })
+    expect(tried.text).toEqual({ size: 38, large: 42, weight: 600, lineHeight: 1.26 })
     expect(tried.details).toEqual({ size: 32, large: 60, weight: PAGE_TYPE.details.weight })
     expect(tried.strong).toEqual({ weight: 900 })
     expect(tried.label).toEqual(PAGE_TYPE.label)
@@ -46,7 +46,7 @@ describe('trying other sizes and weights', () => {
   it('says what is set in words, for passing on', () => {
     expect(describePageType(PAGE_TYPE)).toBe([
       'Title: 52px down to 45px, Bold 700, line height 1.07',
-      'Text: 38px, Regular 400, line height 1.2',
+      'Text: 38px or 42px, Regular 400, line height 1.2',
       'Highlight: 38px or 42px, Regular 400',
       'Words in stars: Bold 700',
       'Label: 38px, ExtraBold 800',

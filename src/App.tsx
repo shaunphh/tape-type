@@ -1203,6 +1203,7 @@ function App() {
                 <span className="field-label">Text</span>
                 <textarea aria-label="Text" className="body-input" value={inside.body} rows={7} onChange={(event) => updateInside('body', event.target.value)} />
                 <Segmented label="Text colour" value={inside.bodyTone} options={toneOptions} onChange={(tone) => updateInside('bodyTone', tone)} />
+                <Segmented label="Text size" note={inside.bodyLarge ? 'A size up' : undefined} value={inside.bodyLarge ? 'large' : 'text'} options={[{ value: 'text', label: `${pageType.text.size}px` }, { value: 'large', label: `${pageType.text.large}px` }]} onChange={(size) => updateInside('bodyLarge', size === 'large')} />
               </div>
               <div className="sub-block">
                 <div className="section-label-row">
@@ -1211,10 +1212,10 @@ function App() {
                 </div>
                 <textarea aria-label="Highlight" className="body-input details-input" value={inside.details} rows={3} placeholder={'22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite'} onChange={(event) => updateInside('details', event.target.value)} />
                 <Segmented label="Highlight colour" value={inside.detailsTone} options={toneOptions} onChange={(tone) => updateInside('detailsTone', tone)} />
-                <Segmented label="Highlight size" note={inside.large ? 'A size up' : 'The text’s size'} value={inside.large ? 'large' : 'text'} options={[{ value: 'text', label: `${pageType.details.size}px` }, { value: 'large', label: `${pageType.details.large}px` }]} onChange={(size) => updateInside('large', size === 'large')} />
+                <Segmented label="Highlight size" note={inside.large ? 'A size up' : undefined} value={inside.large ? 'large' : 'text'} options={[{ value: 'text', label: `${pageType.details.size}px` }, { value: 'large', label: `${pageType.details.large}px` }]} onChange={(size) => updateInside('large', size === 'large')} />
                 <div className="words-status">
                   <div className={`fit-line ${page.overflow === 'body' ? 'error' : ''}`}>
-                    <strong>{pageType.text.size}px</strong>
+                    <strong>{inside.bodyLarge ? pageType.text.large : pageType.text.size}px</strong>
                     <span>{page.bodyLines} / {page.bodyRoom} lines</span>
                     <span>text and highlight</span>
                   </div>
@@ -1238,6 +1239,7 @@ function App() {
               <div className="sub-block range-stack">
                 <span className="field-label">Text</span>
                 <RangeField label="Size" value={pageType.text.size} min={TYPE_RANGE.text.size.min} max={TYPE_RANGE.text.size.max} suffix="px" onChange={(size) => updateType('text', { size })} />
+                <RangeField label="A size up" value={pageType.text.large} min={TYPE_RANGE.text.size.min} max={TYPE_RANGE.text.size.max} suffix="px" onChange={(large) => updateType('text', { large })} />
                 <Segmented label="Weight" note={WEIGHT_NAMES[pageType.text.weight]} value={String(pageType.text.weight)} options={weightOptions} onChange={(weight) => updateType('text', { weight: Number(weight) })} />
                 <RangeField label="Line height" value={pageType.text.lineHeight} min={TYPE_RANGE.text.lineHeight.min} max={TYPE_RANGE.text.lineHeight.max} step={0.01} format={(value) => value.toFixed(2)} onChange={(lineHeight) => updateType('text', { lineHeight })} />
               </div>

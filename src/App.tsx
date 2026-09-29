@@ -589,7 +589,8 @@ function App() {
   const darken = cover.darken ? PHOTO_DARKEN : 0
 
   // The inside page has its own marks (a small logo, off to start with) and sets them on its own margin.
-  const marksLogo = isInside ? inside.logo : cover.logo
+  // An inside page goes without the logo for now, so its words start at the top of the page.
+  const marksLogo = isInside ? (locksOff ? inside.logo : 'off') : cover.logo
   const marksArrow = isInside ? inside.arrow : cover.arrow
   const markSizes = isInside ? INSIDE_MARKS : undefined
   const markBoxes = useMemo(() => furnitureBoxes({ logo: marksLogo, arrow: marksArrow }, frame, markSizes), [marksLogo, marksArrow, frame, markSizes])
@@ -1164,18 +1165,19 @@ function App() {
               </div>
               <div className="sub-block">
                 <div className="section-label-row">
-                  <span className="field-label">Details</span>
-                  <span className="field-hint">Dates, place, tickets</span>
+                  <span className="field-label">Highlight</span>
+                  <span className="field-hint">White · a closing line, or the date and place</span>
                 </div>
-                <textarea aria-label="Details" className="body-input details-input" value={inside.details} rows={3} placeholder={'22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite'} onChange={(event) => updateInside('details', event.target.value)} />
+                <textarea aria-label="Highlight" className="body-input details-input" value={inside.details} rows={3} placeholder={'22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite'} onChange={(event) => updateInside('details', event.target.value)} />
+                <Segmented label="Highlight size" note={inside.large ? 'A size up' : 'The text’s size'} value={inside.large ? 'large' : 'text'} options={[{ value: 'text', label: `${pageType.details.size}px` }, { value: 'large', label: `${pageType.details.large}px` }]} onChange={(size) => updateInside('large', size === 'large')} />
                 <div className="words-status">
                   <div className={`fit-line ${page.overflow === 'body' ? 'error' : ''}`}>
                     <strong>{pageType.text.size}px</strong>
                     <span>{page.bodyLines} / {page.bodyRoom} lines</span>
-                    <span>text and details</span>
+                    <span>text and highlight</span>
                   </div>
                 </div>
-                <p className="panel-note">Leave a blank line between paragraphs. Start a line with a dash for a bullet. Put words in *stars* to make them bold and white: a whole line, or a name inside one.</p>
+                <p className="panel-note">Leave a blank line between paragraphs. Start a line with a dash for a bullet. Put words in *stars* to pick them out, white and a little bolder: a whole line, or a name inside one.</p>
               </div>
               {blockedReason && !page.empty && <p className="fit-message error" role="status">{blockedReason}</p>}
             </Panel>
@@ -1198,8 +1200,9 @@ function App() {
                 <RangeField label="Line height" value={pageType.text.lineHeight} min={TYPE_RANGE.text.lineHeight.min} max={TYPE_RANGE.text.lineHeight.max} step={0.01} format={(value) => value.toFixed(2)} onChange={(lineHeight) => updateType('text', { lineHeight })} />
               </div>
               <div className="sub-block range-stack">
-                <span className="field-label">Details</span>
+                <span className="field-label">Highlight</span>
                 <RangeField label="Size" value={pageType.details.size} min={TYPE_RANGE.text.size.min} max={TYPE_RANGE.text.size.max} suffix="px" onChange={(size) => updateType('details', { size })} />
+                <RangeField label="A size up" value={pageType.details.large} min={TYPE_RANGE.text.size.min} max={TYPE_RANGE.text.size.max} suffix="px" onChange={(large) => updateType('details', { large })} />
                 <Segmented label="Weight" note={WEIGHT_NAMES[pageType.details.weight]} value={String(pageType.details.weight)} options={weightOptions} onChange={(weight) => updateType('details', { weight: Number(weight) })} />
               </div>
               <div className="sub-block range-stack">
@@ -1323,7 +1326,7 @@ function App() {
           </Panel>
 
           <Panel id="marks" title="Logo & arrow" summary={summaries.marks} open={panels.marks} onToggle={togglePanel}>
-            <Segmented label="Logo" note={isInside ? 'Small, top corner' : 'Top corner'} value={marksLogo} options={logoOptions} onChange={(logo) => (isInside ? updateInside('logo', logo) : updateCover('logo', logo))} />
+            <Segmented label="Logo" note={isInside ? (locksOff ? 'Small, top corner' : 'Not on an inside page for now') : 'Top corner'} value={marksLogo} options={logoOptions} locked={(logo) => isInside && !locksOff && logo !== 'off'} onChange={(logo) => (isInside ? updateInside('logo', logo) : updateCover('logo', logo))} />
             <Segmented
               label="Logo colour"
               note={marksLogo !== 'off' ? colourNote(rulings.logo, cover.logoColour) : undefined}

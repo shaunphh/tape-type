@@ -34,8 +34,10 @@ export interface PageWords {
   label: string
   title: string
   body: string
-  /** Dates, places, tickets: set brighter than the story. */
+  /** The highlight: a closing line, or the date and place. White, under the story. */
   details: string
+  /** The highlight is set a size up. */
+  large: boolean
   position: PicturePosition
 }
 
@@ -60,10 +62,13 @@ export const INSIDE_MARKS = { margin: PAGE_MARGIN, logoWidth: 128 }
 // The sizes and weights below are the ones Shaun settled on in the Type panel (29 September 2026).
 export const TITLE = { weight: 700, largest: 52, smallest: 45, lineHeight: 1.07, lines: 3, mostLines: 4, fill: BRAND.light }
 export const BODY = { weight: 400, size: 38, lineHeight: 1.2, paragraphGap: 26, bulletGap: 8, indent: 44, fill: '#C2C2C2' }
-/** Details are the story's size, a little heavier, and white. */
-export const DETAILS = { weight: 500, fill: BRAND.light }
-/** Words in stars are bold and white, in the story or the details: a name, a lead sentence. */
-export const STRONG = { weight: 700, fill: BRAND.light }
+/**
+ * The highlight (called the details in the code) is white, in the story's weight, at the story's
+ * size or a size up. It is not bolder of itself: words in stars are.
+ */
+export const DETAILS = { weight: 400, large: 42, fill: BRAND.light }
+/** Words in stars are white and a little bolder, in the story or the highlight: a name, a date. */
+export const STRONG = { weight: 500, fill: BRAND.light }
 /** The label is a cover's tape in small: capitals on light tape, with a cut of its own. */
 export const LABEL = { size: 38, weight: 800 }
 
@@ -71,8 +76,8 @@ export const LABEL = { size: 38, weight: 800 }
 export interface PageType {
   title: { largest: number; smallest: number; weight: number; lineHeight: number }
   text: { size: number; weight: number; lineHeight: number }
-  /** The details take the text's line height. */
-  details: { size: number; weight: number }
+  /** The highlight, at its usual size and a size up. It takes the text's line height. */
+  details: { size: number; large: number; weight: number }
   /** A line in stars. */
   strong: { weight: number }
   label: { size: number; weight: number }
@@ -82,7 +87,7 @@ export interface PageType {
 export const PAGE_TYPE: PageType = {
   title: { largest: TITLE.largest, smallest: TITLE.smallest, weight: TITLE.weight, lineHeight: TITLE.lineHeight },
   text: { size: BODY.size, weight: BODY.weight, lineHeight: BODY.lineHeight },
-  details: { size: BODY.size, weight: DETAILS.weight },
+  details: { size: BODY.size, large: DETAILS.large, weight: DETAILS.weight },
   strong: { weight: STRONG.weight },
   label: { size: LABEL.size, weight: LABEL.weight },
 }
@@ -280,7 +285,7 @@ function buildLabel(label: string, top: number, inkOf: MeasureInk, cut: ShapeMod
  * to measure it by, there is no label. `type` is for trying other sizes and weights.
  */
 export function layoutInside(
-  content: Pick<InsideOptions, 'title' | 'body' | 'image'> & Partial<Pick<InsideOptions, 'label' | 'cut' | 'seed' | 'details' | 'position'>>,
+  content: Pick<InsideOptions, 'title' | 'body' | 'image'> & Partial<Pick<InsideOptions, 'label' | 'cut' | 'seed' | 'details' | 'large' | 'position'>>,
   measure: MeasureWidth,
   marks: { logoBottom?: number; arrowTop?: number } = {},
   ink?: MeasureInk,
@@ -377,7 +382,7 @@ export function layoutInside(
     const blocks = [
       { has: titleLines.length > 0, gap: 0, labelGap: GAP.labelToTitle, set: setTitle },
       { has: story.length > 0, gap: GAP.aboveBody, labelGap: GAP.labelToText, set: () => setText(story, type.text, BODY.fill) },
-      { has: details.length > 0, gap: GAP.aboveDetails, labelGap: GAP.labelToText, set: () => setText(details, type.details, DETAILS.fill) },
+      { has: details.length > 0, gap: GAP.aboveDetails, labelGap: GAP.labelToText, set: () => setText(details, { size: content.large ? type.details.large : type.details.size, weight: type.details.weight }, DETAILS.fill) },
     ].filter((block) => block.has)
     blocks.forEach((block, index) => {
       if (after === 'words') y += block.gap
@@ -483,6 +488,7 @@ export const PAGE_KINDS: Record<PageKind, { label: string; description: string; 
       title: 'Bolands Mills is set to come alive this Culture Night',
       body: 'A free evening of live music, art, storytelling and movement, with performances from *AE MAK*, *Sorcha Richardson* and *Zaska* on the Factory Main Stage.',
       details: 'Friday 18 September · 6.30pm\nBolands Mills, Dublin 4\nFree, no ticket needed',
+      large: false,
       position: 'top',
     },
   },
@@ -494,13 +500,14 @@ export const PAGE_KINDS: Record<PageKind, { label: string; description: string; 
       title: '',
       body: '*Aoife Dooley*\nIllustration\n*Emma Rose Hanley*\nCeramics',
       details: 'Four Dublin creatives are coming together for an evening exploring their work, practice and inspiration.',
+      large: true,
       position: 'bottom',
     },
   },
 }
 export const PAGE_KIND_NAMES = Object.keys(PAGE_KINDS) as PageKind[]
 
-const wordsOf = ({ label, title, body, details, position }: PageWords): PageWords => ({ label, title, body, details, position })
+const wordsOf = ({ label, title, body, details, large, position }: PageWords): PageWords => ({ label, title, body, details, large, position })
 
 /** The page as the other kind: its own words are kept, and that kind's come back, or its example. */
 export function switchKind(inside: InsideOptions, kind: PageKind): InsideOptions {
@@ -535,6 +542,7 @@ function sanitizeWords(stored: Record<string, unknown>, sample: PageWords): Page
     body: words(stored.body, sample.body),
     // A page saved before details existed has none, not the example's.
     details: words(stored.details, typeof stored.body === 'string' ? '' : sample.details),
+    large: typeof stored.large === 'boolean' ? stored.large : typeof stored.body === 'string' ? false : sample.large,
     position: POSITIONS.includes(stored.position as PicturePosition) ? stored.position as PicturePosition : sample.position,
   }
 }

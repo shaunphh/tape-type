@@ -50,6 +50,7 @@ export function sanitizePageType(stored: Record<string, unknown>): PageType {
     },
     details: {
       size: within(details.size, TYPE_RANGE.text.size, PAGE_TYPE.details.size),
+      large: within(details.large, TYPE_RANGE.text.size, PAGE_TYPE.details.large),
       weight: weightOf(details.weight, PAGE_TYPE.details.weight),
     },
     strong: { weight: weightOf(strong.weight, PAGE_TYPE.strong.weight) },
@@ -98,7 +99,7 @@ export function describePageType(type: PageType) {
   return [
     `Title: ${type.title.largest}px down to ${type.title.smallest}px, ${named(type.title.weight)}, line height ${type.title.lineHeight}`,
     `Text: ${type.text.size}px, ${named(type.text.weight)}, line height ${type.text.lineHeight}`,
-    `Details: ${type.details.size}px, ${named(type.details.weight)}`,
+    `Highlight: ${type.details.size}px or ${type.details.large}px, ${named(type.details.weight)}`,
     `Words in stars: ${named(type.strong.weight)}`,
     `Label: ${type.label.size}px, ${named(type.label.weight)}`,
   ].join('\n')

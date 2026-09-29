@@ -115,8 +115,8 @@ describe('inside page', () => {
     expect(layout.bodyRoom).toBeGreaterThanOrEqual(atTop - 2)
 
     const untitled = page({ position: 'middle', image: 'short', title: '', details })
-    const story = texts(untitled.layers).filter((layer) => layer.weight === BODY.weight)
-    const dates = texts(untitled.layers).filter((layer) => layer.weight === DETAILS.weight)
+    const story = texts(untitled.layers).filter((layer) => layer.fill === BODY.fill)
+    const dates = texts(untitled.layers).filter((layer) => layer.fill === DETAILS.fill)
     expect(capTop(story[0])).toBeLessThan(PAGE_MARGIN + 40)
     expect(Math.max(...story.map((layer) => layer.y))).toBeLessThan(untitled.banner!.y)
     expect(capTop(dates[0])).toBeGreaterThan(untitled.banner!.y + untitled.banner!.height)
@@ -328,35 +328,51 @@ describe('inside page', () => {
     expect(long.bodyLines).toBe(page({ title: '', image: 'none', details: '', body: `A free evening with ${names} and (friends), all night` }).bodyLines)
   })
 
-  it('sets the details under the story, the same size, a little heavier, in white', () => {
-    const layout = page({ body: 'The story.', details: '22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite' })
-    const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
-    const story = lines.find((layer) => layer.text === 'The story.')!
-    const details = lines.filter((layer) => layer.weight === DETAILS.weight)
+  it('sets the highlight under the story in white, in the story’s weight and size', () => {
+    const typed = '22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite'
+    const layout = page({ body: 'The story.', details: typed })
+    const story = texts(layout.layers).find((layer) => layer.text === 'The story.')!
+    const details = texts(layout.layers).filter((layer) => layer.fill === DETAILS.fill && layer.size === BODY.size)
     expect(details.map((layer) => layer.text)).toEqual(['22 September · 6.30pm', 'This Must Be The Place, Smithfield', 'Tickets via Eventbrite'])
     expect(story).toMatchObject({ weight: BODY.weight, fill: BODY.fill })
-    expect(DETAILS.weight).toBeGreaterThan(BODY.weight)
-    expect(details.every((layer) => layer.fill === DETAILS.fill)).toBe(true)
-    expect(DETAILS.fill).toBe(TITLE.fill)
+    // It is not bolder of itself: words in stars are.
+    expect(DETAILS).toMatchObject({ weight: BODY.weight, fill: TITLE.fill })
+    expect(details.every((layer) => layer.weight === DETAILS.weight)).toBe(true)
     expect(details[0].y).toBeGreaterThan(story.y + BODY.size * BODY.lineHeight)
     expect(details[1].y - details[0].y).toBeCloseTo(BODY.size * BODY.lineHeight, 1)
     expect(layout.bodyLines).toBe(4)
-    // Details alone are a page too.
+    // A highlight alone is a page too.
     expect(page({ title: '', body: '', details: 'Tickets via Eventbrite' })).toMatchObject({ empty: false, bodyLines: 1 })
   })
 
-  it('sets a line in stars bold and white, in the story or the details', () => {
+  it('sets the highlight a size up when asked, and wraps it at that size', () => {
+    const typed = 'Four Dublin creatives are coming together for an evening exploring their work, practice and inspiration.'
+    const usual = page({ body: 'The story.', details: typed, image: 'none' })
+    const large = page({ body: 'The story.', details: typed, large: true, image: 'none' })
+    const lines = (layout: typeof large) => texts(layout.layers).filter((layer) => layer.fill === DETAILS.fill && layer.weight === DETAILS.weight)
+    expect(DETAILS.large).toBe(42)
+    expect(lines(usual).every((layer) => layer.size === BODY.size)).toBe(true)
+    expect(lines(large).every((layer) => layer.size === 42)).toBe(true)
+    expect(lines(large)[1].y - lines(large)[0].y).toBeCloseTo(42 * BODY.lineHeight, 1)
+    for (const layer of lines(large)) expect(layer.x + measure(layer.text, layer.size, layer.weight)).toBeLessThanOrEqual(PAGE_MARGIN + TEXT_WIDTH + 0.01)
+    // The story keeps its size, and the larger lines take a little more of the room.
+    expect(texts(large.layers).find((layer) => layer.text === 'The story.')!.size).toBe(BODY.size)
+    expect(large.bodyRoom).toBeLessThanOrEqual(usual.bodyRoom)
+  })
+
+  it('sets words in stars white and a little bolder, in the story or the highlight', () => {
     const layout = page({ body: '*Each artist will give a short presentation.*', details: '*Ishmael Claxton*\nPhotography' })
     const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
     expect(lines.find((layer) => layer.text === 'Each artist will give a short presentation.')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
     expect(lines.find((layer) => layer.text === 'Ishmael Claxton')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
     expect(lines.find((layer) => layer.text === 'Photography')).toMatchObject({ weight: DETAILS.weight, fill: DETAILS.fill })
-    expect(STRONG).toEqual({ weight: 700, fill: TITLE.fill })
+    expect(STRONG).toEqual({ weight: 500, fill: TITLE.fill })
+    expect(STRONG.weight).toBeGreaterThan(BODY.weight)
   })
 
   it('sets the page in other sizes and weights when they are being tried', () => {
     const content = { label: 'Meet the artists', title: 'The closure follows a months-long legal dispute', body: 'The story.\n*A bold line.*\n- A bullet', details: 'A date', image: 'none' as const }
-    const tried = { title: { largest: 80, smallest: 60, weight: 800, lineHeight: 1 }, text: { size: 30, weight: 400, lineHeight: 1.5 }, details: { size: 26, weight: 600 }, strong: { weight: 900 }, label: { size: 60, weight: 900 } }
+    const tried = { title: { largest: 80, smallest: 60, weight: 800, lineHeight: 1 }, text: { size: 30, weight: 400, lineHeight: 1.5 }, details: { size: 26, large: 34, weight: 600 }, strong: { weight: 900 }, label: { size: 60, weight: 900 } }
     const layout = layoutInside(content, measure, {}, ink, tried)
     const lines = texts(layout.layers)
     const find = (value: string) => lines.find((layer) => layer.text === value)!
@@ -373,6 +389,7 @@ describe('inside page', () => {
     // The bullet's indent is the text's, so it shrinks with it.
     expect(find('A bullet').x).toBe(PAGE_MARGIN + Math.round(BODY.indent * 30 / BODY.size))
     expect(find('A date')).toMatchObject({ size: 26, weight: 600 })
+    expect(texts(layoutInside({ ...content, large: true }, measure, {}, ink, tried).layers).find((layer) => layer.text === 'A date')).toMatchObject({ size: 34, weight: 600 })
     // A title that cannot come down further than its smallest runs over, as before.
     expect(layoutInside({ ...content, title: Array(40).fill('wordy').join(' ') }, measure, {}, ink, tried)).toMatchObject({ titleSize: 60, overflow: 'title' })
     // Smaller text leaves room for more of it.
@@ -411,8 +428,8 @@ describe('inside page', () => {
 
   it('comes in two kinds, each with its own words and its own example', () => {
     expect(insideDefaults).toMatchObject({ kind: 'title', kept: {}, ...PAGE_KINDS.title.sample })
-    expect(PAGE_KINDS.title.sample).toMatchObject({ label: '', position: 'top' })
-    expect(PAGE_KINDS.label.sample).toMatchObject({ label: 'Meet the artists', title: '', position: 'bottom' })
+    expect(PAGE_KINDS.title.sample).toMatchObject({ label: '', large: false, position: 'top' })
+    expect(PAGE_KINDS.label.sample).toMatchObject({ label: 'Meet the artists', title: '', large: true, position: 'bottom' })
     // Each example fits its page, with a picture that fills.
     for (const kind of ['title', 'label'] as const) {
       const layout = layoutInside({ ...insideDefaults, ...PAGE_KINDS[kind].sample }, measure, {}, ink)
@@ -434,11 +451,13 @@ describe('inside page', () => {
 
   it('replaces invalid stored values instead of trusting them', () => {
     expect(sanitizeInside({ kind: 'poster', kept: 'all', label: 9, cut: 'jagged', seed: 'seven', title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
-    const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', position: 'bottom' } }
-    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', image: 'none', position: 'middle', logo: 'left', arrow: false }
+    const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', large: true, position: 'bottom' } }
+    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', large: true, image: 'none', position: 'middle', logo: 'left', arrow: false }
     expect(sanitizeInside(chosen)).toEqual(chosen)
     // What is kept is checked too, and only for the kind the page is not.
-    expect(sanitizeInside({ ...chosen, kept: { title: kept.label, label: { label: 5, body: 'Names', position: 'sideways' } } }).kept).toEqual({ label: { ...PAGE_KINDS.label.sample, body: 'Names', details: '' } })
+    expect(sanitizeInside({ ...chosen, kept: { title: kept.label, label: { label: 5, body: 'Names', large: 'yes', position: 'sideways' } } }).kept).toEqual({ label: { ...PAGE_KINDS.label.sample, body: 'Names', details: '', large: false } })
+    // A page saved before the highlight could be set a size up has it at the text's size.
+    expect(sanitizeInside({ title: 'A title', body: 'A story', details: 'A date' }).large).toBe(false)
     // A page saved before there were kinds is a label page only if a label is all it opens with.
     expect(sanitizeInside({ label: 'Meet the artists', title: '', body: 'Names' }).kind).toBe('label')
     expect(sanitizeInside({ label: 'Meet the artists', title: 'A title', body: 'A story' }).kind).toBe('title')

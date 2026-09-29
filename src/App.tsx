@@ -33,6 +33,7 @@ import {
 } from './artwork'
 import { loadCover, saveCover, type CoverOptions } from './cover'
 import { embeddedFontCss, embeddedFontCssNow, preloadEmbeddedFonts } from './fonts'
+import { GRID_CROP, VIDEO_LOOKS, VIDEO_TYPES, frameFor, lookFor, type CoverKind, type Look, type VideoType } from './formats'
 import {
   buildFurniture,
   furnitureBoxes,
@@ -50,9 +51,6 @@ import { applyLocks, isLocked, unlocked } from './locks'
 import { measureInk } from './metrics'
 import { CENTRED, MAX_ZOOM, dragPhoto, photoRect, photoSlack, visiblePart, type PhotoView } from './photo'
 import {
-  ARTBOARD_HEIGHT,
-  ARTBOARD_WIDTH,
-  SAFE_MARGIN,
   TEXT_AREA_WIDTH,
   TREATMENT_KEYS,
   columnWidth,
@@ -60,6 +58,7 @@ import {
   loadSettings,
   saveSettings,
   stylePresets,
+  type Frame,
   type Treatment,
 } from './settings'
 import { displayText, isAllCaps, normaliseEyebrow, normaliseHeadline } from './text'
@@ -70,7 +69,14 @@ const styles: { value: CoverStyle; label: string; description: string }[] = [
   { value: 'feature', label: 'Feature', description: 'All caps · torn strips' },
 ]
 
-const eyebrowSuggestions = ['Breaking', 'News', 'Exclusive', 'The Big Read']
+const eyebrowSuggestions: Record<CoverKind, string[]> = {
+  post: ['Breaking', 'News', 'Exclusive', 'The Big Read'],
+  video: ['Quick watch', 'Quick guide', 'Breaking', 'News'],
+}
+const kindOptions: { value: CoverKind; label: string }[] = [
+  { value: 'post', label: 'Post 4:5' },
+  { value: 'video', label: 'Video cover 9:16' },
+]
 
 const positions: { label: string; y: number }[] = [
   { label: 'Top', y: 0 },
@@ -120,8 +126,8 @@ const modes: { value: ShapeMode; label: string; description: string }[] = [
   { value: 'rough', label: 'Rough cut', description: 'Sharper transitions' },
 ]
 
-// The largest export (PNG 3×): photos are kept at up to this size, and no larger.
-const EXPORT_COVER = { width: ARTBOARD_WIDTH * 3, height: ARTBOARD_HEIGHT * 3 }
+// The largest export is PNG 3×: photos are kept at up to the size that needs, and no larger.
+const LARGEST_EXPORT = 3
 // Phones refuse a canvas much bigger than this, and the whole photo is kept so it can be repositioned.
 const MAX_PHOTO_PIXELS = 16_000_000
 const MAX_SEED = 4294967295
@@ -246,13 +252,13 @@ const toJpeg = (canvas: HTMLCanvasElement, quality: number) =>
  * behind the cover. It is kept at no more than the 3× export needs with the photo at its widest,
  * so the preview and every export draw from the same pixels.
  */
-async function preparePhoto(file: File): Promise<Photo> {
+async function preparePhoto(file: File, frame: Frame): Promise<Photo> {
   const source = URL.createObjectURL(file)
   const canvas = document.createElement('canvas')
   try {
     const original = await loadImage(source)
-    const cover = Math.max(ARTBOARD_WIDTH / original.naturalWidth, ARTBOARD_HEIGHT / original.naturalHeight)
-    const scale = Math.min(1, EXPORT_COVER.height * cover / ARTBOARD_HEIGHT, Math.sqrt(MAX_PHOTO_PIXELS / (original.naturalWidth * original.naturalHeight)))
+    const cover = Math.max(frame.width / original.naturalWidth, frame.height / original.naturalHeight)
+    const scale = Math.min(1, LARGEST_EXPORT * cover, Math.sqrt(MAX_PHOTO_PIXELS / (original.naturalWidth * original.naturalHeight)))
     canvas.width = Math.max(1, Math.round(original.naturalWidth * scale))
     canvas.height = Math.max(1, Math.round(original.naturalHeight * scale))
     const context = canvas.getContext('2d')
@@ -278,9 +284,9 @@ async function preparePhoto(file: File): Promise<Photo> {
 }
 
 /** The part of the photo the cover shows, as a JPEG data URL for SVG exports (which stay a sensible size). */
-async function cropPhoto(photo: Photo, view: PhotoView) {
-  const part = visiblePart(photo.width, photo.height, view)
-  const scale = Math.min(1, EXPORT_COVER.height / part.height)
+async function cropPhoto(photo: Photo, view: PhotoView, frame: Frame) {
+  const part = visiblePart(photo.width, photo.height, view, frame)
+  const scale = Math.min(1, frame.height * LARGEST_EXPORT / part.height)
   const canvas = document.createElement('canvas')
   try {
     canvas.width = Math.max(1, Math.round(part.width * scale))
@@ -306,7 +312,7 @@ const SAMPLE = { width: 24, height: 12 }
 let sampler: CanvasRenderingContext2D | null | undefined
 
 /** How bright the photo is under a mark, as the cover shows it: one luminance per sample, for checking the mark reads. */
-function photoGround(photo: Photo, view: PhotoView, box: Box, darken: number) {
+function photoGround(photo: Photo, view: PhotoView, box: Box, darken: number, frame: Frame) {
   if (sampler === undefined) {
     const canvas = document.createElement('canvas')
     canvas.width = SAMPLE.width
@@ -314,7 +320,7 @@ function photoGround(photo: Photo, view: PhotoView, box: Box, darken: number) {
     sampler = canvas.getContext('2d', { willReadFrequently: true })
   }
   if (!sampler) return []
-  const rect = photoRect(photo.width, photo.height, view)
+  const rect = photoRect(photo.width, photo.height, view, frame)
   try {
     sampler.drawImage(photo.image, (box.x - rect.x) / rect.scale, (box.y - rect.y) / rect.scale, box.width / rect.scale, box.height / rect.scale, 0, 0, SAMPLE.width, SAMPLE.height)
     const { data } = sampler.getImageData(0, 0, SAMPLE.width, SAMPLE.height)
@@ -367,9 +373,9 @@ function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = 
 }
 
 const PANELS_KEY = 'tape-type-panels-v1'
-type PanelId = 'words' | 'photo' | 'marks' | 'style' | 'tape' | 'layout' | 'tune'
+type PanelId = 'cover' | 'words' | 'photo' | 'marks' | 'style' | 'tape' | 'layout' | 'tune'
 /** Which control groups start open: the everyday decisions, with layout and fine-tuning folded away. */
-const panelDefaults: Record<PanelId, boolean> = { words: true, photo: true, marks: true, style: true, tape: true, layout: false, tune: false }
+const panelDefaults: Record<PanelId, boolean> = { cover: true, words: true, photo: true, marks: true, style: true, tape: true, layout: false, tune: false }
 
 function loadPanels(): Record<PanelId, boolean> {
   try {
@@ -470,8 +476,8 @@ interface Drag {
 const GRAB_MARGIN = 14
 
 function App() {
-  const [settings, setSettings] = useState<GeneratorSettings>(() => applyLocks(loadSettings()))
   const [cover, setCover] = useState<CoverOptions>(loadCover)
+  const [settings, setSettings] = useState<GeneratorSettings>(() => applyLocks(loadSettings(), lookFor(cover.kind, cover.video)))
   const [history, setHistory] = useState<number[]>([settings.seed])
   const [historyIndex, setHistoryIndex] = useState(0)
   const [seedDraft, setSeedDraft] = useState<string | null>(null)
@@ -481,7 +487,7 @@ function App() {
   const [previewBackground, setPreviewBackground] = useState<PreviewBackground>('charcoal')
   const [photo, setPhoto] = useState<Photo | null>(null)
   const [photoView, setPhotoView] = useState<PhotoView>(CENTRED)
-  const [position, setPosition] = useState<Position>({ x: anchorX(settings.align), y: 50 })
+  const [position, setPosition] = useState<Position>(() => ({ x: anchorX(settings.align), y: lookFor(cover.kind, cover.video).position.y }))
   const [sampleOpen, setSampleOpen] = useState(false)
   const [panels, setPanels] = useState<Record<PanelId, boolean>>(loadPanels)
   const previewRef = useRef<HTMLDivElement>(null)
@@ -490,6 +496,9 @@ function App() {
   const treatments = useRef<Partial<Record<CoverStyle, Treatment>>>({})
   const cropRef = useRef<{ key: string; crop: Promise<string> } | null>(null)
   const locksOff = useMemo(unlocked, [])
+  const frame = frameFor(cover.kind)
+  const look = lookFor(cover.kind, cover.video)
+  const fileStem = cover.kind === 'video' ? 'tape-type-video-cover' : 'tape-type-instagram'
   const fonts = useFontStatus()
   const layout = useTextLayout(settings, fonts.version)
   const layoutSettings = useMemo<GeneratorSettings>(() => ({ ...settings, fontSize: layout.fontSize }), [settings, layout.fontSize])
@@ -502,25 +511,25 @@ function App() {
     { eyebrow: layout.eyebrow, tapeless: settings.tone === 'none' },
   ), [layoutSettings, layout, settings.tone])
   const layers = useMemo(
-    () => buildLayers(shape, { tone: settings.tone, background: previewBackground, weight: layout.weight }, layout.fontSize),
-    [shape, settings.tone, previewBackground, layout.weight, layout.fontSize],
+    () => buildLayers(shape, { tone: settings.tone, background: previewBackground, weight: layout.weight, tag: look.tag }, layout.fontSize),
+    [shape, settings.tone, previewBackground, layout.weight, layout.fontSize, look.tag],
   )
   const runs = useMemo(() => textRuns(layers), [layers])
-  const range = useMemo(() => placementRange(shape), [shape])
+  const range = useMemo(() => placementRange(shape, frame), [shape, frame])
   const shownPhoto = previewBackground === 'photo' ? photo : null
   const darken = cover.darken ? PHOTO_DARKEN : 0
-  const markBoxes = useMemo(() => furnitureBoxes({ logo: cover.logo, arrow: cover.arrow }), [cover.logo, cover.arrow])
-  const obstacles = useMemo(() => furnitureObstacles({ logo: cover.logo, arrow: cover.arrow }), [cover.logo, cover.arrow])
+  const markBoxes = useMemo(() => furnitureBoxes({ logo: cover.logo, arrow: cover.arrow }, frame), [cover.logo, cover.arrow, frame])
+  const obstacles = useMemo(() => furnitureObstacles({ logo: cover.logo, arrow: cover.arrow }, frame), [cover.logo, cover.arrow, frame])
   // Each mark is checked against what is behind it, so moving the photo can change its colour.
   const rulings = useMemo(() => {
     const flat = BACKGROUND_FILLS[previewBackground]
     const settle = (choice: ColourChoice, box?: Box) =>
-      settleColour(choice, !box ? [] : shownPhoto ? photoGround(shownPhoto, photoView, box, darken) : flat ? [fillLuminance(flat)] : [])
+      settleColour(choice, !box ? [] : shownPhoto ? photoGround(shownPhoto, photoView, box, darken, frame) : flat ? [fillLuminance(flat)] : [])
     return { logo: settle(cover.logoColour, markBoxes.logo), arrow: settle(cover.arrowColour, markBoxes.arrow) }
-  }, [cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, photoView, darken, previewBackground])
+  }, [cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, photoView, darken, previewBackground, frame])
   const furniture = useMemo(
-    () => buildFurniture({ logo: cover.logo, arrow: cover.arrow }, { logo: rulings.logo.colour, arrow: rulings.arrow.colour }),
-    [cover.logo, cover.arrow, rulings.logo.colour, rulings.arrow.colour],
+    () => buildFurniture({ logo: cover.logo, arrow: cover.arrow }, { logo: rulings.logo.colour, arrow: rulings.arrow.colour }, frame),
+    [cover.logo, cover.arrow, rulings.logo.colour, rulings.arrow.colour, frame],
   )
   // Rotation or a wide eyebrow can make the lettering bigger than the safe area even when every line fits its column.
   const lettersTooBig = range.x.excess > 4 || range.y.excess > 4
@@ -528,7 +537,7 @@ function App() {
     ? 'Type a headline to export.'
     : layout.overflow
       ? overflowMessage(layout, settings)
-      : lettersTooBig ? 'The lettering is bigger than the safe area. Try a narrower column, less rotation or a shorter eyebrow.' : null
+      : lettersTooBig ? `The lettering is bigger than ${cover.kind === 'video' ? 'what the profile grid shows' : 'the safe area'}. Try a narrower column, less rotation or a shorter eyebrow.` : null
   const exportDisabled = Boolean(blockedReason) || fonts.loading
 
   useEffect(() => { preloadEmbeddedFonts(runs) }, [runs])
@@ -550,8 +559,32 @@ function App() {
     setCover((current) => ({ ...current, [key]: value }))
   }, [])
 
+  /** Puts the text block into a look: its tape, case and place, and the tag it starts with. */
+  const applyLook = (next: Look) => {
+    setSettings((current) => ({
+      ...current,
+      ...next.treatment,
+      style: next.style,
+      coverFormat: next.coverFormat,
+      eyebrowEnabled: next.eyebrow !== null,
+      eyebrow: next.eyebrow ?? current.eyebrow,
+    }))
+    setPosition(next.position)
+  }
+
+  const chooseKind = (kind: CoverKind) => {
+    if (kind === cover.kind) return
+    updateCover('kind', kind)
+    applyLook(lookFor(kind, cover.video))
+  }
+
+  const chooseVideo = (video: VideoType) => {
+    updateCover('video', video)
+    applyLook(VIDEO_LOOKS[video])
+  }
+
   const chooseStyle = (style: CoverStyle) => {
-    if (style === settings.style || isLocked('style', style, locksOff)) return
+    if (style === settings.style || isLocked('style', style, look, locksOff)) return
     // Each style remembers how it was last set up in this session; a style not used yet starts from its house look.
     treatments.current[settings.style] = pickTreatment(settings)
     const treatment = treatments.current[style] ?? stylePresets[style]
@@ -560,7 +593,8 @@ function App() {
   }
 
   const resetStyle = () => {
-    const treatment = stylePresets[settings.style]
+    // With the locks on, the house look is the cover's own; with them off, the chosen style's.
+    const treatment = locksOff ? stylePresets[settings.style] : look.treatment
     setSettings((current) => ({ ...current, ...treatment }))
     setPosition((current) => ({ ...current, x: anchorX(treatment.align) }))
   }
@@ -616,14 +650,14 @@ function App() {
   }
 
   const svgFor = (artboard: boolean, fontCss: string, crop: string | null) =>
-    svgMarkup(layers, shape, { artboard, background: previewBackground, photo: crop, darken, position, fontCss, furniture, obstacles })
+    svgMarkup(layers, shape, { artboard, background: previewBackground, photo: crop, darken, position, fontCss, furniture, obstacles, frame })
 
   /** The photo as the cover shows it, for SVG exports. Made once per photo position, when first asked for. */
   const photoCrop = (): Promise<string | null> => {
     if (!shownPhoto) return Promise.resolve(null)
-    const key = [shownPhoto.url, photoView.x, photoView.y, photoView.zoom].join('|')
+    const key = [shownPhoto.url, photoView.x, photoView.y, photoView.zoom, frame.height].join('|')
     if (cropRef.current?.key !== key) {
-      const crop = cropPhoto(shownPhoto, photoView)
+      const crop = cropPhoto(shownPhoto, photoView, frame)
       cropRef.current = { key, crop }
       crop.catch(() => { if (cropRef.current?.crop === crop) cropRef.current = null })
     }
@@ -662,7 +696,7 @@ function App() {
     try {
       const [{ css, missing }, crop] = await Promise.all([embeddedFontCss(runs), artboard ? photoCrop() : null])
       if (missing) flash('Barlow couldn’t be embedded (network error), so this SVG only matches where Barlow is installed. The PNG is exact.')
-      downloadBlob(svgFor(artboard, css, crop), 'image/svg+xml', artboard ? 'tape-type-instagram.svg' : 'tape-cutout.svg')
+      downloadBlob(svgFor(artboard, css, crop), 'image/svg+xml', artboard ? `${fileStem}.svg` : 'tape-cutout.svg')
     } catch {
       flash('The photo couldn’t be added to the SVG. Try a PNG instead.')
     }
@@ -672,37 +706,37 @@ function App() {
     if (exporting) return
     setExporting(true)
     // Snapshot everything now, so edits made while the export runs cannot mix into this file.
-    const snapshot = { layers, furniture, obstacles, shape, position, background: previewBackground, photo: shownPhoto, view: photoView, darken }
+    const snapshot = { layers, furniture, obstacles, frame, shape, position, background: previewBackground, photo: shownPhoto, view: photoView, darken, fileStem }
     const canvas = document.createElement('canvas')
     try {
       const allText = snapshot.layers.map((layer) => layer.kind === 'text' ? layer.text : '').join(' ')
       const faces = [...new Set(snapshot.layers.flatMap((layer) => layer.kind === 'text' ? [fontShorthand(layer.size, layer.weight)] : []))]
       await Promise.all(faces.map((face) => document.fonts.load(face, allText)))
-      canvas.width = ARTBOARD_WIDTH * scale
-      canvas.height = ARTBOARD_HEIGHT * scale
+      canvas.width = snapshot.frame.width * scale
+      canvas.height = snapshot.frame.height * scale
       const context = canvas.getContext('2d')
       if (!context) throw new Error('this device could not create the image')
       context.scale(scale, scale)
       const fill = BACKGROUND_FILLS[snapshot.background]
       if (fill) {
         context.fillStyle = fill
-        context.fillRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT)
+        context.fillRect(0, 0, snapshot.frame.width, snapshot.frame.height)
       } else if (snapshot.photo) {
-        const rect = photoRect(snapshot.photo.width, snapshot.photo.height, snapshot.view)
+        const rect = photoRect(snapshot.photo.width, snapshot.photo.height, snapshot.view, snapshot.frame)
         context.imageSmoothingQuality = 'high'
         context.drawImage(snapshot.photo.image, rect.x, rect.y, rect.width, rect.height)
         if (snapshot.darken > 0) {
           context.fillStyle = `rgba(0,0,0,${snapshot.darken})`
-          context.fillRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT)
+          context.fillRect(0, 0, snapshot.frame.width, snapshot.frame.height)
         }
       }
       drawLayers(context, snapshot.furniture)
-      const placement = getPlacement(snapshot.shape, snapshot.position, snapshot.obstacles)
+      const placement = getPlacement(snapshot.shape, snapshot.position, snapshot.obstacles, snapshot.frame)
       context.translate(placement.x, placement.y)
       drawLayers(context, snapshot.layers)
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
       if (!blob) throw new Error('this device could not create an image that large')
-      downloadBlob(blob, 'image/png', `tape-type-instagram-${scale}x.png`)
+      downloadBlob(blob, 'image/png', `${snapshot.fileStem}-${scale}x.png`)
     } catch (error) {
       flash(`PNG export failed: ${error instanceof Error ? error.message : 'unknown error'}.${scale > 1 ? ' Try a smaller size.' : ''}`)
     } finally {
@@ -718,7 +752,7 @@ function App() {
     event.target.value = ''
     if (!file) return
     try {
-      setPhoto(await preparePhoto(file))
+      setPhoto(await preparePhoto(file, frame))
       setPhotoView(CENTRED)
       setPreviewBackground('photo')
     } catch {
@@ -742,7 +776,7 @@ function App() {
     if (event.button !== 0 || !previewRef.current) return
     const touch = event.pointerType === 'touch'
     const stage = previewRef.current.getBoundingClientRect()
-    const scale = ARTBOARD_WIDTH / stage.width
+    const scale = frame.width / stage.width
     // A press on the words moves the words; anywhere else on a photo moves the photo.
     const x = (event.clientX - stage.left) * scale - placement.x
     const y = (event.clientY - stage.top) * scale - placement.y
@@ -781,7 +815,7 @@ function App() {
     }
     if (start.target === 'photo') {
       // On touch, vertical swipes scroll the page: the Up – down slider moves the photo that way.
-      if (shownPhoto) setPhotoView(dragPhoto(shownPhoto.width, shownPhoto.height, start.fromView, dx * start.scale, start.touch ? 0 : dy * start.scale))
+      if (shownPhoto) setPhotoView(dragPhoto(shownPhoto.width, shownPhoto.height, start.fromView, dx * start.scale, start.touch ? 0 : dy * start.scale, frame))
       return
     }
     setPosition({
@@ -815,9 +849,10 @@ function App() {
     }))
   }
 
-  const placement = getPlacement(shape, position, obstacles)
-  const photoPlace = shownPhoto ? photoRect(shownPhoto.width, shownPhoto.height, photoView) : null
-  const slack = shownPhoto ? photoSlack(shownPhoto.width, shownPhoto.height, photoView) : { x: 0, y: 0 }
+  const placement = getPlacement(shape, position, obstacles, frame)
+  const photoPlace = shownPhoto ? photoRect(shownPhoto.width, shownPhoto.height, photoView, frame) : null
+  const slack = shownPhoto ? photoSlack(shownPhoto.width, shownPhoto.height, photoView, frame) : { x: 0, y: 0 }
+  const isVideo = cover.kind === 'video'
   const photoMoved = photoView.x !== CENTRED.x || photoView.y !== CENTRED.y || photoView.zoom !== CENTRED.zoom
   const isFeature = settings.style === 'feature'
   const series = settings.coverFormat === 'series'
@@ -849,6 +884,7 @@ function App() {
   const headlinePreview = settings.headline.replace(/\s+/g, ' ').trim()
   const eyebrowPreview = settings.eyebrowEnabled ? settings.eyebrow.trim() : ''
   const summaries: Record<PanelId, string> = {
+    cover: isVideo ? `Video cover · ${look.label}` : 'Post',
     words: headlinePreview ? (eyebrowPreview ? `${eyebrowPreview} · ${headlinePreview}` : headlinePreview) : 'No headline yet',
     photo: !photo
       ? 'No photo yet'
@@ -884,6 +920,23 @@ function App() {
 
       <main id="top" className="workspace">
         <aside className="controls-panel">
+          <Panel id="cover" title="Cover" summary={summaries.cover} open={panels.cover} onToggle={togglePanel}>
+            <Segmented label="Made for" note={`${frame.width} × ${frame.height}`} value={cover.kind} options={kindOptions} onChange={chooseKind} />
+            {isVideo && (
+              <>
+                <div className="look-toggle" role="group" aria-label="Kind of video">
+                  {VIDEO_TYPES.map((video) => (
+                    <button key={video} aria-pressed={cover.video === video} className={cover.video === video ? 'active' : ''} onClick={() => chooseVideo(video)}>
+                      <strong>{VIDEO_LOOKS[video].label}</strong>
+                      <small>{VIDEO_LOOKS[video].description}</small>
+                    </button>
+                  ))}
+                </div>
+                <p className="panel-note">The profile grid shows only the middle of a video cover, so the words stay inside the lines. The logo and arrow sit in the corners, outside them.</p>
+              </>
+            )}
+          </Panel>
+
           <Panel id="words" title="Words" summary={summaries.words} open={panels.words} onToggle={togglePanel}>
             <div className="section-label-row">
               <span className="field-label">Headline</span>
@@ -948,7 +1001,7 @@ function App() {
                     onChange={(event) => update('eyebrow', event.target.value)}
                   />
                   <div className="chip-row">
-                    {eyebrowSuggestions.map((suggestion) => {
+                    {eyebrowSuggestions[cover.kind].map((suggestion) => {
                       const active = settings.eyebrow.trim().toLocaleLowerCase() === suggestion.toLocaleLowerCase()
                       return <button key={suggestion} aria-pressed={active} className={active ? 'active' : ''} onClick={() => update('eyebrow', suggestion)}>{suggestion}</button>
                     })}
@@ -1011,7 +1064,7 @@ function App() {
           <Panel id="style" title="Style" summary={summaries.style} open={panels.style} onToggle={togglePanel}>
             <div className="style-toggle" role="group" aria-label="Cover style">
               {styles.map((style) => {
-                const off = isLocked('style', style.value, locksOff)
+                const off = isLocked('style', style.value, look, locksOff)
                 return (
                   <button key={style.value} aria-pressed={settings.style === style.value} className={settings.style === style.value ? 'active' : ''} disabled={off} title={off ? LOCKED_NOTE : undefined} onClick={() => chooseStyle(style.value)}>
                     <strong className={style.value === 'feature' ? 'caps' : ''}>{style.label}</strong>
@@ -1030,7 +1083,7 @@ function App() {
           <Panel id="tape" title="Tape" summary={summaries.tape} open={panels.tape} onToggle={togglePanel}>
             <div className="tone-row" role="radiogroup" aria-label="Tape colour">
               {tones.map((tone) => {
-                const off = isLocked('tone', tone.value, locksOff)
+                const off = isLocked('tone', tone.value, look, locksOff)
                 return (
                   <button
                     key={tone.value}
@@ -1049,8 +1102,10 @@ function App() {
             </div>
             {clash && <p className="tone-note" role="status">{clash}</p>}
             <div className="piece-toggle" role="group" aria-label="Tape pieces">
-              <button aria-pressed={!settings.perLine} className={!settings.perLine ? 'active' : ''} onClick={() => update('perLine', false)}>Block</button>
-              <button aria-pressed={settings.perLine} className={settings.perLine ? 'active' : ''} disabled={isLocked('perLine', true, locksOff)} title={isLocked('perLine', true, locksOff) ? LOCKED_NOTE : undefined} onClick={() => update('perLine', true)}>Strips</button>
+              {([['Block', false], ['Strips', true]] as const).map(([label, perLine]) => {
+                const off = isLocked('perLine', perLine, look, locksOff)
+                return <button key={label} aria-pressed={settings.perLine === perLine} className={settings.perLine === perLine ? 'active' : ''} disabled={off} title={off ? LOCKED_NOTE : undefined} onClick={() => update('perLine', perLine)}>{label}</button>
+              })}
             </div>
             <div className="mode-grid" role="group" aria-label="Cut style">
               {modes.map((mode) => (
@@ -1072,7 +1127,7 @@ function App() {
 
           <Panel id="layout" title="Layout" summary={summaries.layout} open={panels.layout} onToggle={togglePanel}>
             <div className="layout-grid">
-              <Segmented label="Alignment" value={settings.align} options={alignOptions} locked={(align) => isLocked('align', align, locksOff)} onChange={chooseAlign} />
+              <Segmented label="Alignment" value={settings.align} options={alignOptions} locked={(align) => isLocked('align', align, look, locksOff)} onChange={chooseAlign} />
               <Segmented
                 label="Position"
                 value={positionEntry?.label ?? null}
@@ -1083,7 +1138,7 @@ function App() {
                 }}
               />
               <Segmented label="Column" value={series ? null : settings.column} options={columnOptions} disabled={series} onChange={(column) => update('column', column)} />
-              <Segmented label="Format" value={settings.coverFormat} options={formatOptions} locked={(format) => isLocked('coverFormat', format, locksOff)} onChange={(format) => update('coverFormat', format)} />
+              <Segmented label="Format" value={settings.coverFormat} options={formatOptions} locked={(format) => isLocked('coverFormat', format, look, locksOff)} onChange={(format) => update('coverFormat', format)} />
               {!series && (
                 <>
                   <label className="toggle-row auto-size-toggle">
@@ -1143,7 +1198,11 @@ function App() {
 
           <div className="stage-wrap">
             {notice && <p className="notice" role="alert">{notice}</p>}
-            <div ref={previewRef} className={`preview-stage ${previewBackground}`}>
+            <div
+              ref={previewRef}
+              className={`preview-stage ${previewBackground}`}
+              style={{ aspectRatio: `${frame.width} / ${frame.height}`, width: `min(100cqw, ${Math.round(frame.width / frame.height * 10000) / 100}cqh)` }}
+            >
               {previewBackground === 'photo' && !photo && (
                 <label className="photo-empty"><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
               )}
@@ -1164,18 +1223,25 @@ function App() {
                 <svg
                   role="img"
                   aria-label={`Generated tape artwork: ${shape.personality}`}
-                  viewBox={`0 0 ${ARTBOARD_WIDTH} ${ARTBOARD_HEIGHT}`}
+                  viewBox={`0 0 ${frame.width} ${frame.height}`}
                 >
                   {shownPhoto && photoPlace && <image href={shownPhoto.url} x={photoPlace.x} y={photoPlace.y} width={photoPlace.width} height={photoPlace.height} preserveAspectRatio="none" />}
-                  {shownPhoto && darken > 0 && <rect width={ARTBOARD_WIDTH} height={ARTBOARD_HEIGHT} fill="#000" opacity={darken} />}
-                  <rect className="safe-guide" x={SAFE_MARGIN} y={SAFE_MARGIN} width={TEXT_AREA_WIDTH} height={ARTBOARD_HEIGHT - SAFE_MARGIN * 2} />
+                  {shownPhoto && darken > 0 && <rect width={frame.width} height={frame.height} fill="#000" opacity={darken} />}
+                  {isVideo && (
+                    <g className="grid-guide">
+                      <path d={`M0 ${GRID_CROP.top}H${frame.width}M0 ${GRID_CROP.bottom}H${frame.width}`} />
+                      <text x={frame.width / 2} y={GRID_CROP.top - 18} textAnchor="middle">Cut off on the profile grid above this line</text>
+                      <text x={frame.width / 2} y={GRID_CROP.bottom + 40} textAnchor="middle">Cut off on the profile grid below this line</text>
+                    </g>
+                  )}
+                  <rect className="safe-guide" x={frame.safe.left} y={frame.safe.top} width={frame.safe.right - frame.safe.left} height={frame.safe.bottom - frame.safe.top} />
                   <LayerList layers={furniture} />
                   <g transform={`translate(${placement.x} ${placement.y})`}>
                     <LayerList layers={layers} />
                   </g>
                 </svg>
               </div>
-              <span className="stage-coordinate top-left">1080 × 1350 · {shownPhoto ? 'drag the words or the photo' : 'drag or arrow keys to position'}</span>
+              <span className="stage-coordinate top-left">{frame.width} × {frame.height} · {shownPhoto ? 'drag the words or the photo' : 'drag or arrow keys to position'}</span>
               <span className="stage-coordinate bottom-right">{layout.fontSize}px · {layout.labels.length} lines · {shape.personality.toUpperCase()}</span>
             </div>
           </div>

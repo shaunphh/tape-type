@@ -21,9 +21,10 @@ describe('cover furniture', () => {
     expect(Math.abs(left.height - right.height)).toBeLessThan(1)
   })
 
-  it('sits the swipe arrow in the bottom right corner of the safe area, at the size it was drawn', () => {
+  it('sits the swipe arrow in the bottom right corner of the safe area, a little smaller than it was drawn', () => {
     const arrow = furnitureBoxes(both).arrow!
     expect(arrow.width).toBeCloseTo(ARROW_WIDTH, 5)
+    expect(ARROW_WIDTH).toBeLessThan(137)
     expect(arrow.x + arrow.width).toBeCloseTo(ARTBOARD_WIDTH - SAFE_MARGIN, 5)
     expect(arrow.y + arrow.height).toBeCloseTo(ARTBOARD_HEIGHT - SAFE_MARGIN, 5)
   })

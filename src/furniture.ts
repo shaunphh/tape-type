@@ -2,7 +2,7 @@ import logoLeftSvg from './assets/logo-left.svg?raw'
 import logoRightSvg from './assets/logo-right.svg?raw'
 import swipeArrowSvg from './assets/swipe-arrow.svg?raw'
 import { BRAND, type Layer, type Obstacle } from './artwork'
-import { ARTBOARD_HEIGHT, ARTBOARD_WIDTH, SAFE_MARGIN } from './settings'
+import { POST_FRAME, SAFE_MARGIN, type Frame } from './settings'
 
 export type LogoSide = 'off' | 'left' | 'right'
 export type MarkColour = 'yellow' | 'light' | 'dark'
@@ -38,8 +38,8 @@ const swipeArrow = readMark(swipeArrowSvg)
 
 // Measured from the cover mock-up: the logo is about a quarter of the cover wide.
 export const LOGO_WIDTH = 250
-/** The painted arrow is used at the size it was drawn. */
-export const ARROW_WIDTH = swipeArrow.width
+/** The painted arrow was drawn 137px wide; it is used a little smaller. */
+export const ARROW_WIDTH = 110
 /** Clear space between a mark and the headline's lettering: room for the tape and the eyebrow tag. */
 const CLEARANCE = 56
 
@@ -52,10 +52,13 @@ const draw = (mark: Mark, box: Box, fill: string): Layer[] =>
 
 const sized = (mark: Mark, width: number) => ({ width, height: mark.height * width / mark.width })
 
-/** Where each mark sits: the logo in a top corner of the safe area, the arrow in its bottom right corner. */
-export function furnitureBoxes(furniture: Pick<Furniture, 'logo' | 'arrow'>): { logo?: Box; arrow?: Box } {
-  const right = ARTBOARD_WIDTH - SAFE_MARGIN
-  const bottom = ARTBOARD_HEIGHT - SAFE_MARGIN
+/**
+ * Where each mark sits: the logo in a top corner, the arrow in the bottom right one, 80px in
+ * from the edges of the whole cover (on a video cover that is outside what the profile grid shows).
+ */
+export function furnitureBoxes(furniture: Pick<Furniture, 'logo' | 'arrow'>, frame: Frame = POST_FRAME): { logo?: Box; arrow?: Box } {
+  const right = frame.width - SAFE_MARGIN
+  const bottom = frame.height - SAFE_MARGIN
   let logo: Box | undefined
   if (furniture.logo !== 'off') {
     const size = sized(logos[furniture.logo], LOGO_WIDTH)
@@ -70,8 +73,8 @@ export function furnitureBoxes(furniture: Pick<Furniture, 'logo' | 'arrow'>): { 
 }
 
 /** The logo and swipe arrow as layers, in artboard coordinates, each in the colour settled for it. */
-export function buildFurniture(furniture: Pick<Furniture, 'logo' | 'arrow'>, colours: { logo: MarkColour; arrow: MarkColour }): Layer[] {
-  const boxes = furnitureBoxes(furniture)
+export function buildFurniture(furniture: Pick<Furniture, 'logo' | 'arrow'>, colours: { logo: MarkColour; arrow: MarkColour }, frame: Frame = POST_FRAME): Layer[] {
+  const boxes = furnitureBoxes(furniture, frame)
   return [
     ...(boxes.logo && furniture.logo !== 'off' ? draw(logos[furniture.logo], boxes.logo, MARK_FILLS[colours.logo]) : []),
     ...(boxes.arrow ? draw(swipeArrow, boxes.arrow, MARK_FILLS[colours.arrow]) : []),
@@ -79,8 +82,8 @@ export function buildFurniture(furniture: Pick<Furniture, 'logo' | 'arrow'>, col
 }
 
 /** Each mark with the clear space around it: what the headline's lettering keeps out of. */
-export function furnitureObstacles(furniture: Pick<Furniture, 'logo' | 'arrow'>): Obstacle[] {
-  const boxes = furnitureBoxes(furniture)
+export function furnitureObstacles(furniture: Pick<Furniture, 'logo' | 'arrow'>, frame: Frame = POST_FRAME): Obstacle[] {
+  const boxes = furnitureBoxes(furniture, frame)
   return [boxes.logo, boxes.arrow].flatMap((box) => (box ? [{
     left: round(box.x - CLEARANCE),
     top: round(box.y - CLEARANCE),

@@ -1,6 +1,6 @@
 # Tape Type
 
-A browser-based brand utility for creating controlled cut-paper and tape headline treatments on a production-size 1080×1350 Instagram artboard.
+A browser-based brand utility for creating controlled cut-paper and tape headline treatments on production-size Instagram artboards: 1080×1350 posts and 1080×1920 video covers.
 
 ## Run locally
 
@@ -50,7 +50,7 @@ The tool makes the whole cover, not only the headline:
 - **Photo**: choose a photo, then drag it on the cover to reposition it (a press on the words moves the words; anywhere else moves the photo). The Photo group has Zoom (100–300%), Left – right and Up – down sliders, and Reset position. On phones a sideways swipe moves the photo and the sliders do the rest, because vertical swipes scroll the page.
 - **Darken photo** lays 15% black over the photo so the words and marks read. It is on by default and can be switched off.
 - **Logo**: Off, Left or Right. The Alternative Dublin logo sits in a top corner of the safe area, 250px wide, with DUBLIN lined up on that side.
-- **Swipe arrow**: the painted arrow sits in the bottom right corner of the safe area, at the size it was drawn (137 × 119px).
+- **Swipe arrow**: the painted arrow sits in the bottom right corner of the safe area, 110px wide (it was drawn at 137).
 - **Colour**, for each mark: Auto, Yellow, Light or Dark. A chosen colour is used as it is. On Auto the mark is yellow wherever yellow reads: the tool checks the contrast between the mark and what is behind it (the photo as the cover shows it, darkening included). Where yellow doesn't read, the mark takes the colour that does, which on bright ground is Dark. Moving or zooming the photo can change the result. The panel says what Auto picked, and warns when the colour in use is hard to read:
   - *Nothing reads well here* (on Auto): the ground is part dark and part bright, so no colour reads on most of it, and the mark takes the one that reads on more of it. Moving the photo usually fixes it.
   - *Hard to read here*: the chosen colour doesn't read on this ground.
@@ -61,11 +61,27 @@ The headline's lettering keeps clear of both marks. A headline beside a mark sta
 
 The marks are outlines, read from the SVG files in `src/assets`. `node scripts/prepare-mark.mjs <exported.svg> src/assets/<name>.svg` crops a mark exported from a design tool to its artwork. Sizes, spacing and the contrast a mark needs (`READS_FROM`) are set in `src/furniture.ts`.
 
+### Video covers
+
+**Made for** (in the Cover group) switches between a post (4:5, 1080×1350) and a video cover (9:16, 1080×1920). Exports follow: a video cover's PNGs are 1080×1920, 2160×3840 and 3240×5760.
+
+The profile grid shows tiles at 3:4, so it keeps only the middle of a video cover: the top and bottom 240px are cut off there. The preview draws both lines. The words are kept inside them (80px in), so a title always survives the grid. The logo and the arrow sit in the corners of the whole cover, outside the lines, so they show on the cover itself but not on the grid.
+
+A video cover is one of three kinds, which set the text block:
+
+| Kind | Words | Tag | Starts |
+|---|---|---|---|
+| Quick report | Yellow tape, black words | "Quick watch", dark tag | Bottom left |
+| Presenter led | Dark tape, white words | "Quick guide", light tag | Top left |
+| Feature video | Capitals (Barlow Black) on light tape | None | Middle left |
+
+The tag's words can be changed or switched off, and the block can be dragged anywhere inside the lines. The kinds are set out in `src/formats.ts`.
+
 ### Locked choices
 
-For now the text block keeps to one look: black words on a light block of tape, left aligned. These choices are greyed out rather than removed, so people can see what is coming: the Feature style, Strips, the Dark, Yellow and None tapes, Centre and Right alignment, and the Series format. The cut styles stay open, as do column, position, size and fine-tuning. Only the text block is locked: the photo, the logo, the arrow and their colours are free.
+For now the text block keeps to the look of what is being made. A post's is black words on a light block of tape, left aligned; each kind of video has its own (above). The other choices are greyed out rather than removed, so people can see what is coming: style, tape colour, Block or Strips, alignment and the Series format. The cut styles stay open, as do column, position, size and fine-tuning. Only the text block is locked: the photo, the logo, the arrow and their colours are free.
 
-The list lives in `src/locks.ts`; take an entry off it to open that choice up. Settings saved before the locks went on are put back to the house look, keeping the words. Opening the tool with `?unlocked` at the end of the address lifts every lock.
+The settings that are held are listed in `src/locks.ts`; take one off the list to open it up. Settings saved before the locks went on, or under another look, are put into the one in use, keeping the words. Opening the tool with `?unlocked` at the end of the address lifts every lock.
 
 ## Cover styles
 
@@ -107,12 +123,10 @@ The most recent controls are saved in `localStorage`, and stored values are chec
 
 ## Export
 
-- Full 1080×1350 editable SVG with live text (the primary export)
+- Full editable SVG with live text (the primary export): 1080×1350 for a post, 1080×1920 for a video cover
 - Tightly cropped cutout SVG
 - Full-artboard SVG markup copied to the clipboard for Figma
-- 1080×1350 PNG at 1×
-- 2160×2700 PNG at 2×
-- 3240×4050 PNG at 3×
+- PNG at 1×, 2× and 3×: 1080×1350, 2160×2700 and 3240×4050 for a post
 
 Exports are blocked, with the reason and a suggested fix shown, while a headline is empty, doesn't fit, or its lettering (eyebrow and rotation included) is bigger than the safe area.
 

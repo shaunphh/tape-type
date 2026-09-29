@@ -1,35 +1,31 @@
-import { defaults, stylePresets } from './settings'
+import type { Look } from './formats'
 import type { GeneratorSettings } from './types'
 
 /**
- * Choices that are switched off for now, while every cover keeps to the one house look: black
- * words on a light block of tape, left aligned. They stay on the page, greyed out, so people can
- * see what is coming. To open one up again, take it off this list.
+ * The text block's choices that are held to the cover's look for now (a post's is black words on
+ * a light block of tape, left aligned; each kind of video has its own). Every other value of
+ * these stays on the page, greyed out, so people can see what is coming. To open one up again,
+ * take it off this list. Only the text block is held: photo, logo and arrow are free.
  */
-export const LOCKED = {
-  style: ['feature'],
-  tone: ['dark', 'yellow', 'none'],
-  perLine: [true],
-  align: ['center', 'right'],
-  coverFormat: ['series'],
-} as const satisfies { [K in keyof GeneratorSettings]?: readonly GeneratorSettings[K][] }
-
-export type LockedSetting = keyof typeof LOCKED
+export const HELD = ['style', 'tone', 'perLine', 'align', 'coverFormat'] as const
+export type HeldSetting = (typeof HELD)[number]
 
 /** Opening the tool with ?unlocked in the address lifts every lock. */
 export const unlocked = () => typeof location !== 'undefined' && new URLSearchParams(location.search).has('unlocked')
 
-export const isLocked = <K extends LockedSetting>(setting: K, value: GeneratorSettings[K], open = unlocked()) =>
-  !open && (LOCKED[setting] as readonly unknown[]).includes(value)
+const lookValue = <K extends HeldSetting>(look: Look, setting: K) =>
+  (setting === 'style' ? look.style : setting === 'coverFormat' ? look.coverFormat : look.treatment[setting as 'tone' | 'perLine' | 'align']) as GeneratorSettings[K]
 
-/** Settings saved before the locks went on can hold a locked choice: those go back to the house look. */
-export function applyLocks(settings: GeneratorSettings, open = unlocked()): GeneratorSettings {
+export const isLocked = <K extends HeldSetting>(setting: K, value: GeneratorSettings[K], look: Look, open = unlocked()) =>
+  !open && value !== lookValue(look, setting)
+
+/** Settings saved before the locks went on, or under another look, are put back to this one. */
+export function applyLocks(settings: GeneratorSettings, look: Look, open = unlocked()): GeneratorSettings {
   if (open) return settings
-  let next = settings
-  // A locked style takes its whole treatment (strips, centring, torn ends) with it.
-  if (isLocked('style', next.style, open)) next = { ...next, ...stylePresets[defaults.style], style: defaults.style }
-  for (const setting of Object.keys(LOCKED) as LockedSetting[]) {
-    if (isLocked(setting, next[setting], open)) next = { ...next, [setting]: defaults[setting] }
+  // A different style takes its whole treatment (strips, centring, torn ends) with it.
+  let next = settings.style === look.style ? settings : { ...settings, ...look.treatment, style: look.style }
+  for (const setting of HELD) {
+    if (next[setting] !== lookValue(look, setting)) next = { ...next, [setting]: lookValue(look, setting) }
   }
   return next
 }

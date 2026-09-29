@@ -1,54 +1,74 @@
 import { describe, expect, it } from 'vitest'
 import { coverDefaults, sanitizeCover } from './cover'
-import { LOCKED, applyLocks, isLocked } from './locks'
+import { POST_LOOK, VIDEO_LOOKS } from './formats'
+import { HELD, applyLocks, isLocked } from './locks'
 import { defaults, stylePresets } from './settings'
 import type { GeneratorSettings } from './types'
 
 describe('locked choices', () => {
-  it('switches off everything but the one house look, and leaves the cut styles open', () => {
-    expect(isLocked('style', 'feature', false)).toBe(true)
-    expect(isLocked('style', 'headline', false)).toBe(false)
-    expect((['dark', 'yellow', 'none'] as const).every((tone) => isLocked('tone', tone, false))).toBe(true)
-    expect(isLocked('tone', 'light', false)).toBe(false)
-    expect(isLocked('perLine', true, false)).toBe(true)
-    expect(isLocked('perLine', false, false)).toBe(false)
-    expect(isLocked('align', 'center', false)).toBe(true)
-    expect(isLocked('align', 'right', false)).toBe(true)
-    expect(isLocked('align', 'left', false)).toBe(false)
-    expect(isLocked('coverFormat', 'series', false)).toBe(true)
-    expect(Object.keys(LOCKED)).not.toContain('mode')
+  it('holds a post to the one house look, and leaves the cut styles open', () => {
+    expect(isLocked('style', 'feature', POST_LOOK, false)).toBe(true)
+    expect(isLocked('style', 'headline', POST_LOOK, false)).toBe(false)
+    expect((['dark', 'yellow', 'none'] as const).every((tone) => isLocked('tone', tone, POST_LOOK, false))).toBe(true)
+    expect(isLocked('tone', 'light', POST_LOOK, false)).toBe(false)
+    expect(isLocked('perLine', true, POST_LOOK, false)).toBe(true)
+    expect(isLocked('perLine', false, POST_LOOK, false)).toBe(false)
+    expect(isLocked('align', 'center', POST_LOOK, false)).toBe(true)
+    expect(isLocked('align', 'right', POST_LOOK, false)).toBe(true)
+    expect(isLocked('align', 'left', POST_LOOK, false)).toBe(false)
+    expect(isLocked('coverFormat', 'series', POST_LOOK, false)).toBe(true)
+    expect(HELD).not.toContain('mode')
   })
 
   it('never locks a default, so the house look is always reachable', () => {
-    for (const setting of Object.keys(LOCKED) as (keyof typeof LOCKED)[]) {
-      expect(isLocked(setting, defaults[setting], false), setting).toBe(false)
+    for (const setting of HELD) expect(isLocked(setting, defaults[setting], POST_LOOK, false), setting).toBe(false)
+    expect(applyLocks(defaults, POST_LOOK, false)).toEqual(defaults)
+  })
+
+  it('holds each kind of video to its own look', () => {
+    expect(isLocked('tone', 'yellow', VIDEO_LOOKS.report, false)).toBe(false)
+    expect(isLocked('tone', 'light', VIDEO_LOOKS.report, false)).toBe(true)
+    expect(isLocked('tone', 'dark', VIDEO_LOOKS.presenter, false)).toBe(false)
+    expect(isLocked('tone', 'yellow', VIDEO_LOOKS.presenter, false)).toBe(true)
+    expect(isLocked('style', 'feature', VIDEO_LOOKS.feature, false)).toBe(false)
+    expect(isLocked('style', 'headline', VIDEO_LOOKS.feature, false)).toBe(true)
+    for (const look of Object.values(VIDEO_LOOKS)) {
+      expect(isLocked('align', 'left', look, false)).toBe(false)
+      expect(isLocked('perLine', true, look, false)).toBe(true)
     }
-    expect(applyLocks(defaults, false)).toEqual(defaults)
   })
 
   it('puts settings saved before the locks back to the house look, keeping the words and the cut', () => {
     const saved: GeneratorSettings = { ...defaults, ...stylePresets.feature, style: 'feature', tone: 'yellow', coverFormat: 'series', headline: 'Kept', seed: 42 }
-    const next = applyLocks(saved, false)
+    const next = applyLocks(saved, POST_LOOK, false)
     expect(next).toMatchObject({ ...stylePresets.headline, style: 'headline', tone: 'light', coverFormat: 'regular', headline: 'Kept', seed: 42 })
     const cut: GeneratorSettings = { ...defaults, mode: 'torn', align: 'right', perLine: true, column: 'wide' }
-    expect(applyLocks(cut, false)).toMatchObject({ mode: 'torn', align: 'left', perLine: false, column: 'wide' })
+    expect(applyLocks(cut, POST_LOOK, false)).toMatchObject({ mode: 'torn', align: 'left', perLine: false, column: 'wide' })
+  })
+
+  it('puts settings saved under another look into the one in use', () => {
+    const post: GeneratorSettings = { ...defaults, mode: 'torn', headline: 'Kept' }
+    expect(applyLocks(post, VIDEO_LOOKS.report, false)).toMatchObject({ tone: 'yellow', style: 'headline', mode: 'torn', headline: 'Kept' })
+    expect(applyLocks(post, VIDEO_LOOKS.feature, false)).toMatchObject({ style: 'feature', tone: 'light', perLine: false, align: 'left' })
+    const report = applyLocks(post, VIDEO_LOOKS.report, false)
+    expect(applyLocks(report, POST_LOOK, false)).toMatchObject({ tone: 'light', mode: 'torn' })
   })
 
   it('leaves everything alone when unlocked', () => {
     const saved: GeneratorSettings = { ...defaults, style: 'feature', tone: 'dark', align: 'center' }
-    expect(applyLocks(saved, true)).toBe(saved)
-    expect(isLocked('style', 'feature', true)).toBe(false)
+    expect(applyLocks(saved, POST_LOOK, true)).toBe(saved)
+    expect(isLocked('style', 'feature', POST_LOOK, true)).toBe(false)
   })
 })
 
 describe('cover options', () => {
-  it('start with the logo, the swipe arrow and a darkened photo, colours picked automatically', () => {
-    expect(coverDefaults).toEqual({ logo: 'right', logoColour: 'auto', arrow: true, arrowColour: 'auto', darken: true })
+  it('start as a post with the logo, the swipe arrow and a darkened photo, colours picked automatically', () => {
+    expect(coverDefaults).toEqual({ kind: 'post', video: 'report', logo: 'right', logoColour: 'auto', arrow: true, arrowColour: 'auto', darken: true })
   })
 
   it('replaces invalid stored values instead of trusting them', () => {
-    expect(sanitizeCover({ logo: 'middle', logoColour: 'pink', arrow: 'yes', arrowColour: 7, darken: 0 })).toEqual(coverDefaults)
-    const chosen = { logo: 'left', logoColour: 'light', arrow: false, arrowColour: 'dark', darken: false }
+    expect(sanitizeCover({ kind: 'story', video: 'vlog', logo: 'middle', logoColour: 'pink', arrow: 'yes', arrowColour: 7, darken: 0 })).toEqual(coverDefaults)
+    const chosen = { kind: 'video', video: 'presenter', logo: 'left', logoColour: 'light', arrow: false, arrowColour: 'dark', darken: false }
     expect(sanitizeCover(chosen)).toEqual(chosen)
     expect(sanitizeCover({})).toEqual(coverDefaults)
   })

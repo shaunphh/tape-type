@@ -6,6 +6,20 @@ export const ARTBOARD_HEIGHT = 1350
 export const SAFE_MARGIN = 80
 export const TEXT_AREA_WIDTH = ARTBOARD_WIDTH - SAFE_MARGIN * 2
 
+/** A cover's size, and the part of it that lettering is kept to. */
+export interface Frame {
+  width: number
+  height: number
+  safe: { left: number; top: number; right: number; bottom: number }
+}
+
+/** The 4:5 post: lettering keeps 80px from every edge. */
+export const POST_FRAME: Frame = {
+  width: ARTBOARD_WIDTH,
+  height: ARTBOARD_HEIGHT,
+  safe: { left: SAFE_MARGIN, top: SAFE_MARGIN, right: ARTBOARD_WIDTH - SAFE_MARGIN, bottom: ARTBOARD_HEIGHT - SAFE_MARGIN },
+}
+
 // Published headline blocks mostly sit in a column about half the cover wide; features run wider.
 export const columns: { value: ColumnWidth; label: string; width: number }[] = [
   { value: 'narrow', label: 'Narrow', width: 620 },

@@ -378,6 +378,24 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
   grid-template-columns: 1fr 1fr;
   gap: 6px;
 }
+.look-toggle { display: grid; gap: 6px; }
+.look-toggle button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid #d3d0c8;
+  text-align: left;
+  cursor: pointer;
+}
+.look-toggle button:hover { border-color: #8c8982; }
+.look-toggle button.active { color: #fff; background: var(--ink); border-color: var(--ink); }
+.look-toggle strong { font-size: 14px; font-weight: 700; line-height: 1; }
+.look-toggle small { color: #6b6862; font-size: 9px; letter-spacing: .02em; }
+.look-toggle .active small { color: #b5b2ab; }
 .style-toggle button {
   display: grid;
   gap: 4px;
@@ -699,6 +717,11 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
 .artwork.draggable:focus-visible { box-shadow: inset 0 0 0 3px var(--ink), inset 0 0 0 6px #fff; }
 .safe-guide { fill: none; stroke: rgba(255,255,255,.18); stroke-width: 2; stroke-dasharray: 10 10; pointer-events: none; }
 .yellow .safe-guide, .transparent .safe-guide { stroke: rgba(0,0,0,.16); }
+/* Video covers: where the profile grid cuts. Shown in the preview only, never exported. */
+.grid-guide path { fill: none; stroke: rgba(255,255,255,.55); stroke-width: 2; }
+.grid-guide text { fill: rgba(255,255,255,.6); font-size: 22px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.yellow .grid-guide path, .transparent .grid-guide path { stroke: rgba(0,0,0,.45); }
+.yellow .grid-guide text, .transparent .grid-guide text { fill: rgba(0,0,0,.5); }
 
 .stage-coordinate {
   position: absolute;

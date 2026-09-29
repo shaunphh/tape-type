@@ -1,4 +1,4 @@
-import { ARTBOARD_HEIGHT, ARTBOARD_WIDTH, SAFE_MARGIN } from './settings'
+import { POST_FRAME, type Frame } from './settings'
 import { cleanText } from './text'
 import type { ShapeResult, TapeTone } from './types'
 
@@ -36,6 +36,8 @@ export interface LayerOptions {
   background: PreviewBackground
   /** Weight of the headline lettering (the eyebrow is always Bold). */
   weight: number
+  /** The eyebrow tag's colours, where a look sets its own instead of the usual yellow tag. */
+  tag?: { tape: string; text: string }
 }
 
 export function buildLayers(shape: ShapeResult, options: LayerOptions, fontSize: number): Layer[] {
@@ -57,9 +59,9 @@ export function buildLayers(shape: ShapeResult, options: LayerOptions, fontSize:
   if (shape.eyebrow) {
     const { eyebrow } = shape
     // A yellow label would vanish on yellow tape or a yellow background, so it turns white there.
-    const fill = options.tone === 'yellow' || options.background === 'yellow' ? BRAND.white : BRAND.yellow
+    const fill = options.tag?.tape ?? (options.tone === 'yellow' || options.background === 'yellow' ? BRAND.white : BRAND.yellow)
     layers.push({ kind: 'path', d: eyebrow.path, fill, angle: eyebrow.angle, cx: eyebrow.centerX, cy: eyebrow.centerY })
-    texts.push({ kind: 'text', text: eyebrow.text, x: eyebrow.x, y: eyebrow.baseline, size: eyebrow.fontSize, weight: 700, fill: BRAND.dark, angle: eyebrow.angle, cx: eyebrow.centerX, cy: eyebrow.centerY })
+    texts.push({ kind: 'text', text: eyebrow.text, x: eyebrow.x, y: eyebrow.baseline, size: eyebrow.fontSize, weight: 700, fill: options.tag?.text ?? BRAND.dark, angle: eyebrow.angle, cx: eyebrow.centerX, cy: eyebrow.centerY })
   }
   return [...layers, ...texts]
 }
@@ -118,19 +120,20 @@ const inkOf = (shape: ShapeResult) => {
 
 /**
  * How far the artwork can be moved on each axis (as a translation) while all lettering stays
- * inside the 80px safe area. The tape and the eyebrow tag may reach into the margin.
+ * inside the frame's safe area (80px in from the edges of a post). The tape and the eyebrow tag
+ * may reach into the margin.
  */
-export function placementRange(shape: ShapeResult) {
+export function placementRange(shape: ShapeResult, frame: Frame = POST_FRAME) {
   const ink = inkOf(shape)
-  const axis = (low: number, high: number, size: number) => {
-    const minimum = SAFE_MARGIN - low
-    const maximum = size - SAFE_MARGIN - high
+  const axis = (low: number, high: number, from: number, to: number) => {
+    const minimum = from - low
+    const maximum = to - high
     if (minimum <= maximum) return { minimum, maximum, excess: 0 }
     // Lettering bigger than the safe area can't move: centre it, and report by how much it overflows.
-    const centred = (size - low - high) / 2
+    const centred = (from + to - low - high) / 2
     return { minimum: centred, maximum: centred, excess: minimum - maximum }
   }
-  return { x: axis(ink.left, ink.right, ARTBOARD_WIDTH), y: axis(ink.top, ink.bottom, ARTBOARD_HEIGHT) }
+  return { x: axis(ink.left, ink.right, frame.safe.left, frame.safe.right), y: axis(ink.top, ink.bottom, frame.safe.top, frame.safe.bottom) }
 }
 
 /**
@@ -138,8 +141,8 @@ export function placementRange(shape: ShapeResult) {
  * lettering inside the safe area, so 0 is flush with the left (or top) margin and every drag or
  * key press moves the artwork: there is no stretch where it is stuck against a clamp.
  */
-export function getPlacement(shape: ShapeResult, position: Position, obstacles: Obstacle[] = []) {
-  const range = placementRange(shape)
+export function getPlacement(shape: ShapeResult, position: Position, obstacles: Obstacle[] = [], frame: Frame = POST_FRAME) {
+  const range = placementRange(shape, frame)
   const along = (axis: { minimum: number; maximum: number }, percent: number) =>
     axis.minimum + (axis.maximum - axis.minimum) * Math.max(0, Math.min(100, percent)) / 100
   const place = stepAside(inkOf(shape), { x: along(range.x, position.x), y: along(range.y, position.y) }, range, obstacles)
@@ -190,10 +193,12 @@ export interface SvgOptions {
   /** The logo and swipe arrow: drawn on the artboard itself, under the artwork, and left out of cutouts. */
   furniture?: Layer[]
   obstacles?: Obstacle[]
+  /** The cover's size and safe area: a post unless given. */
+  frame?: Frame
 }
 
 export function svgMarkup(layers: Layer[], shape: ShapeResult, options: SvgOptions = {}) {
-  const { artboard = true, background = 'transparent', photo = null, darken = PHOTO_DARKEN, position = { x: 50, y: 50 }, fontCss = '', furniture = [], obstacles } = options
+  const { artboard = true, background = 'transparent', photo = null, darken = PHOTO_DARKEN, position = { x: 50, y: 50 }, fontCss = '', furniture = [], obstacles, frame = POST_FRAME } = options
   // Embedding Barlow keeps the text on its tape in browsers and viewers that don't have it installed.
   const defs = fontCss ? `<defs><style>${fontCss}</style></defs>` : ''
   if (!artboard) {
@@ -202,12 +207,12 @@ export function svgMarkup(layers: Layer[], shape: ShapeResult, options: SvgOptio
   }
   let backgroundMarkup = ''
   const fill = BACKGROUND_FILLS[background]
-  if (fill) backgroundMarkup = `<rect width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}" fill="${fill}"/>`
+  if (fill) backgroundMarkup = `<rect width="${frame.width}" height="${frame.height}" fill="${fill}"/>`
   if (background === 'photo' && photo) {
     // xlink:href is read by every SVG viewer (SVG 2 browsers, Figma, Illustrator, Inkscape), so the photo is written once.
-    backgroundMarkup = `<image xlink:href="${escapeAttribute(photo)}" width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}" preserveAspectRatio="xMidYMid slice"/>`
-    if (darken > 0) backgroundMarkup += `<rect width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}" fill="#000" opacity="${darken}"/>`
+    backgroundMarkup = `<image xlink:href="${escapeAttribute(photo)}" width="${frame.width}" height="${frame.height}" preserveAspectRatio="xMidYMid slice"/>`
+    if (darken > 0) backgroundMarkup += `<rect width="${frame.width}" height="${frame.height}" fill="#000" opacity="${darken}"/>`
   }
-  const placement = getPlacement(shape, position, obstacles)
-  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${ARTBOARD_WIDTH} ${ARTBOARD_HEIGHT}" width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}">${defs}${backgroundMarkup}${layersToSvg(furniture)}<g transform="translate(${placement.x} ${placement.y})">${layersToSvg(layers)}</g></svg>`
+  const placement = getPlacement(shape, position, obstacles, frame)
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${frame.width} ${frame.height}" width="${frame.width}" height="${frame.height}">${defs}${backgroundMarkup}${layersToSvg(furniture)}<g transform="translate(${placement.x} ${placement.y})">${layersToSvg(layers)}</g></svg>`
 }

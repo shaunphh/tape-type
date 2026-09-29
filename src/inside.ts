@@ -25,18 +25,28 @@ const IMAGE_CHOICES: readonly ImageHeight[] = ['none', 'short', 'medium', 'tall'
  */
 export type PicturePosition = 'top' | 'middle' | 'bottom'
 
-export interface InsideOptions {
-  /** A small tape label above the title, set in capitals. Empty for none. */
+/** A page opens with a title or with a label: one or the other, not both. */
+export type PageKind = 'title' | 'label'
+
+/** What each kind of page keeps to itself: its words, and where its picture goes. */
+export interface PageWords {
+  /** A small tape label, set in capitals. Empty for none. */
   label: string
+  title: string
+  body: string
+  /** Dates, places, tickets: set brighter than the story. */
+  details: string
+  position: PicturePosition
+}
+
+export interface InsideOptions extends PageWords {
+  kind: PageKind
+  /** The other kind's words, kept for when the page is switched back to it. */
+  kept: Partial<Record<PageKind, PageWords>>
   /** How the label's tape is cut, and the seed of that cut. They are the label's own, not the cover's. */
   cut: ShapeMode
   seed: number
-  title: string
-  body: string
-  /** Dates, places, tickets: set lighter than the story. */
-  details: string
   image: ImageHeight
-  position: PicturePosition
   logo: LogoSide
   arrow: boolean
 }
@@ -50,10 +60,10 @@ export const INSIDE_MARKS = { margin: PAGE_MARGIN, logoWidth: 128 }
 // The sizes and weights below are the ones Shaun settled on in the Type panel (29 September 2026).
 export const TITLE = { weight: 700, largest: 52, smallest: 45, lineHeight: 1.07, lines: 3, mostLines: 4, fill: BRAND.light }
 export const BODY = { weight: 400, size: 38, lineHeight: 1.2, paragraphGap: 26, bulletGap: 8, indent: 44, fill: '#C2C2C2' }
-/** Details are the story's size, a little heavier and brighter: halfway from the story's grey to the title's white. */
-export const DETAILS = { weight: 500, fill: '#D9D9D9' }
-/** A line in stars is white, in the story or the details: a name, a lead sentence. */
-export const STRONG = { weight: 400, fill: BRAND.light }
+/** Details are the story's size, a little heavier, and white. */
+export const DETAILS = { weight: 500, fill: BRAND.light }
+/** Words in stars are bold and white, in the story or the details: a name, a lead sentence. */
+export const STRONG = { weight: 700, fill: BRAND.light }
 /** The label is a cover's tape in small: capitals on light tape, with a cut of its own. */
 export const LABEL = { size: 38, weight: 800 }
 
@@ -116,23 +126,106 @@ export interface InsideLayout {
 }
 
 const BULLET = /^\s*[-•–]\s+/
-const STARRED = /^\*{1,2}(?!\s)(.+?)\*{1,2}$/
+// Words in one star or two, the same on both sides: the stars hug the words, and stand clear of
+// the letters and figures around them ("5* hotel" and "2*3*4" are left alone).
+const STARS = /(^|[^\p{L}\p{N}*])(\*{1,2})(?!\*)(\S(?:.*?\S)?)\2(?![\p{L}\p{N}*])/gu
 
-export interface TypedLine { text: string; bullet: boolean; strong: boolean }
+/** A stretch of a line set one way. */
+export interface Run { text: string; strong: boolean }
+export interface TypedLine {
+  /** The line's words, without its stars. */
+  text: string
+  bullet: boolean
+  /** The whole line is in stars. */
+  strong: boolean
+  runs: Run[]
+}
+
+/** A line as runs: the words in stars, and the words between them. */
+function readRuns(line: string): Run[] {
+  const runs: Run[] = []
+  const add = (value: string, strong: boolean) => {
+    if (!value) return
+    const last = runs[runs.length - 1]
+    if (last && last.strong === strong) last.text += value
+    else runs.push({ text: value, strong })
+  }
+  let from = 0
+  for (const found of line.matchAll(STARS)) {
+    add(line.slice(from, found.index) + found[1], false)
+    add(found[3], true)
+    from = found.index + found[0].length
+  }
+  add(line.slice(from), false)
+  return runs
+}
 
 /**
  * What was typed, as paragraphs of lines. A blank line starts a new paragraph; a new line is a
- * new line. A dash starts a bullet, and a line in stars is bold.
+ * new line. A dash starts a bullet, and words in stars are bold: a whole line, or part of one.
  */
 export function readLines(typed: string): TypedLine[][] {
   return cleanText(typed.normalize('NFC')).replace(/\r/g, '').split(/\n[ \t]*\n/)
     .map((paragraph) => paragraph.split('\n').map((line) => {
       const bullet = BULLET.test(line)
-      const plain = line.replace(BULLET, '').replace(/\s+/g, ' ').trim()
-      const starred = STARRED.exec(plain)
-      return { text: starred ? starred[1].trim() : plain, bullet, strong: Boolean(starred) }
+      const runs = readRuns(line.replace(BULLET, '').replace(/\s+/g, ' ').trim())
+      return { text: runs.map((run) => run.text).join(''), bullet, strong: runs.length > 0 && runs.every((run) => run.strong), runs }
     }).filter((line) => line.text))
     .filter((paragraph) => paragraph.length)
+}
+
+/** A stretch of a set line, and how far along the line it starts. */
+interface Piece extends Run { x: number }
+
+/**
+ * Wraps a line of runs to the width. A line breaks at its spaces only, so a word set two ways
+ * stays whole. Words are measured one by one, each in its own weight, and placed by those
+ * measures, so what is drawn is what was fitted.
+ */
+function wrapRuns(runs: Run[], width: number, widthOf: (text: string, strong: boolean) => number, space: number): Piece[][] {
+  // The line's words, each as the parts it is set in.
+  const words: Run[][] = []
+  let open = false
+  for (const run of runs) {
+    for (const part of run.text.split(/( )/)) {
+      if (part === ' ') open = false
+      else if (part) {
+        if (open) words[words.length - 1].push({ text: part, strong: run.strong })
+        else words.push([{ text: part, strong: run.strong }])
+        open = true
+      }
+    }
+  }
+  const lines: Run[][][] = []
+  let line: Run[][] = []
+  let used = 0
+  for (const word of words) {
+    const wide = word.reduce((sum, part) => sum + widthOf(part.text, part.strong), 0)
+    if (line.length && used + space + wide > width) {
+      lines.push(line)
+      line = []
+      used = 0
+    }
+    used += (line.length ? space : 0) + wide
+    line.push(word)
+  }
+  if (line.length) lines.push(line)
+
+  return lines.map((wordsOfLine) => {
+    const pieces: Piece[] = []
+    let x = 0
+    wordsOfLine.forEach((word, index) => {
+      if (index > 0) x += space
+      word.forEach((part, partIndex) => {
+        const last = pieces[pieces.length - 1]
+        // Words set the same way, one after the other, are one piece of text.
+        if (last && last.strong === part.strong) last.text += (partIndex === 0 ? ' ' : '') + part.text
+        else pieces.push({ ...part, x })
+        x += widthOf(part.text, part.strong)
+      })
+    })
+    return pieces
+  })
 }
 
 const text = (value: string, x: number, y: number, size: number, weight: number, fill: string): Layer =>
@@ -263,13 +356,17 @@ export function layoutInside(
         if (paragraphIndex > 0) y += BODY.paragraphGap * scale
         paragraph.forEach((typed, lineIndex) => {
           if (lineIndex > 0 && typed.bullet && paragraph[lineIndex - 1].bullet) y += BODY.bulletGap * scale
-          const weight = typed.strong ? type.strong.weight : block.weight
-          const fill = typed.strong ? STRONG.fill : blockFill
+          const weightOf = (strong: boolean) => (strong ? type.strong.weight : block.weight)
+          const fillOf = (strong: boolean) => (strong ? STRONG.fill : blockFill)
           const indent = typed.bullet ? Math.round(BODY.indent * scale) : 0
-          const lines = wrapText(typed.text, TEXT_WIDTH - indent, (value) => measure(value, block.size, weight), true)
-          if (typed.bullet) layers.push(text('•', PAGE_MARGIN + Math.round(10 * scale), y + baselineIn(block.size, lineHeight), block.size, weight, fill))
+          const left = PAGE_MARGIN + indent
+          if (typed.bullet) layers.push(text('•', PAGE_MARGIN + Math.round(10 * scale), y + baselineIn(block.size, lineHeight), block.size, weightOf(typed.strong), fillOf(typed.strong)))
+          // A line set one way is wrapped and drawn whole; one with words in stars, piece by piece.
+          const lines: Piece[][] = typed.runs.length === 1
+            ? wrapText(typed.text, TEXT_WIDTH - indent, (value) => measure(value, block.size, weightOf(typed.strong)), true).map((line) => [{ text: line, strong: typed.strong, x: 0 }])
+            : wrapRuns(typed.runs, TEXT_WIDTH - indent, (value, strong) => measure(value, block.size, weightOf(strong)), measure(' ', block.size, block.weight))
           for (const line of lines) {
-            layers.push(text(line, PAGE_MARGIN + indent, y + baselineIn(block.size, lineHeight), block.size, weight, fill))
+            for (const piece of line) layers.push(text(piece.text, Math.round((left + piece.x) * 100) / 100, y + baselineIn(block.size, lineHeight), block.size, weightOf(piece.strong), fillOf(piece.strong)))
             y += block.size * lineHeight
             bodyLines += 1
           }
@@ -373,36 +470,95 @@ export function insideSvg(layout: InsideLayout, options: { photo?: string | null
   return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${defs}<rect width="${width}" height="${height}" fill="${BRAND.dark}"/>${banner}${layersToSvg(furniture)}${layersToSvg(layout.layers)}</svg>`
 }
 
+/**
+ * The two kinds of page, and what each starts with. The examples show what the page is for,
+ * and how its words are typed: stars for bold, a new line for a new line.
+ */
+export const PAGE_KINDS: Record<PageKind, { label: string; description: string; sample: PageWords }> = {
+  title: {
+    label: 'Title page',
+    description: 'A title, the story, then the details',
+    sample: {
+      label: '',
+      title: 'Bolands Mills is set to come alive this Culture Night',
+      body: 'A free evening of live music, art, storytelling and movement, with performances from *AE MAK*, *Sorcha Richardson* and *Zaska* on the Factory Main Stage.',
+      details: 'Friday 18 September · 6.30pm\nBolands Mills, Dublin 4\nFree, no ticket needed',
+      position: 'top',
+    },
+  },
+  label: {
+    label: 'Label page',
+    description: 'A label over a list: names, a line-up, what’s on',
+    sample: {
+      label: 'Meet the artists',
+      title: '',
+      body: '*Aoife Dooley*\nIllustration\n*Emma Rose Hanley*\nCeramics',
+      details: 'Four Dublin creatives are coming together for an evening exploring their work, practice and inspiration.',
+      position: 'bottom',
+    },
+  },
+}
+export const PAGE_KIND_NAMES = Object.keys(PAGE_KINDS) as PageKind[]
+
+const wordsOf = ({ label, title, body, details, position }: PageWords): PageWords => ({ label, title, body, details, position })
+
+/** The page as the other kind: its own words are kept, and that kind's come back, or its example. */
+export function switchKind(inside: InsideOptions, kind: PageKind): InsideOptions {
+  if (kind === inside.kind) return inside
+  const { [kind]: back, ...others } = inside.kept
+  return { ...inside, ...(back ?? PAGE_KINDS[kind].sample), kind, kept: { ...others, [inside.kind]: wordsOf(inside) } }
+}
+
 export const INSIDE_KEY = 'tape-type-inside-v1'
 export const insideDefaults: InsideOptions = {
-  label: '',
+  kind: 'title',
+  kept: {},
+  ...PAGE_KINDS.title.sample,
   // One quiet cut, as on the labels of the Canva pages.
   cut: 'clean',
   seed: defaults.seed,
-  title: 'Bolands Mills is set to come alive this Culture Night',
-  body: 'A free evening of live music, art, storytelling and movement, with performances from AE MAK, Sorcha Richardson and Zaska on the Factory Main Stage.',
-  details: 'Friday 18 September · 6.30pm\nBolands Mills, Dublin 4\nFree, no ticket needed',
   // The picture takes the room the words leave, so a page is full however much is typed.
   image: 'fill',
-  position: 'top',
   logo: 'off',
   // Off to start with: without it the words run down to the bottom margin.
   arrow: false,
 }
 
-/** Stored pages are untrusted, like everything else that is remembered. */
-export function sanitizeInside(stored: Record<string, unknown>): InsideOptions {
+const POSITIONS: readonly PicturePosition[] = ['top', 'middle', 'bottom']
+
+/** Stored words, against the example they fall back on. */
+function sanitizeWords(stored: Record<string, unknown>, sample: PageWords): PageWords {
   const words = (value: unknown, fallback: string) => (typeof value === 'string' ? value : fallback)
   return {
-    label: words(stored.label, insideDefaults.label),
+    label: words(stored.label, sample.label),
+    title: words(stored.title, sample.title),
+    body: words(stored.body, sample.body),
+    // A page saved before details existed has none, not the example's.
+    details: words(stored.details, typeof stored.body === 'string' ? '' : sample.details),
+    position: POSITIONS.includes(stored.position as PicturePosition) ? stored.position as PicturePosition : sample.position,
+  }
+}
+
+/** Stored pages are untrusted, like everything else that is remembered. */
+export function sanitizeInside(stored: Record<string, unknown>): InsideOptions {
+  const typed = (value: unknown) => typeof value === 'string' && value.trim() !== ''
+  // A page saved before there were kinds is a label page if a label is all it opens with.
+  const kind: PageKind = PAGE_KIND_NAMES.includes(stored.kind as PageKind)
+    ? stored.kind as PageKind
+    : typed(stored.label) && !typed(stored.title) && typeof stored.title === 'string' ? 'label' : 'title'
+  const kept: InsideOptions['kept'] = {}
+  const storedKept = stored.kept && typeof stored.kept === 'object' ? stored.kept as Record<string, unknown> : {}
+  for (const name of PAGE_KIND_NAMES) {
+    const words = storedKept[name]
+    if (name !== kind && words && typeof words === 'object') kept[name] = sanitizeWords(words as Record<string, unknown>, PAGE_KINDS[name].sample)
+  }
+  return {
+    kind,
+    kept,
+    ...sanitizeWords(stored, PAGE_KINDS[kind].sample),
     cut: CUTS.includes(stored.cut as ShapeMode) ? stored.cut as ShapeMode : insideDefaults.cut,
     seed: typeof stored.seed === 'number' && Number.isFinite(stored.seed) ? Math.min(4294967295, Math.max(1, Math.floor(stored.seed))) : insideDefaults.seed,
-    title: words(stored.title, insideDefaults.title),
-    body: words(stored.body, insideDefaults.body),
-    // A page saved before details existed has none, not the sample ones.
-    details: words(stored.details, typeof stored.body === 'string' ? '' : insideDefaults.details),
     image: IMAGE_CHOICES.includes(stored.image as ImageHeight) ? stored.image as ImageHeight : insideDefaults.image,
-    position: (['top', 'middle', 'bottom'] as const).includes(stored.position as PicturePosition) ? stored.position as PicturePosition : insideDefaults.position,
     logo: (['off', 'left', 'right'] as const).includes(stored.logo as LogoSide) ? stored.logo as LogoSide : insideDefaults.logo,
     arrow: typeof stored.arrow === 'boolean' ? stored.arrow : insideDefaults.arrow,
   }

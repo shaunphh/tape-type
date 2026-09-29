@@ -99,7 +99,7 @@ export function describePageType(type: PageType) {
     `Title: ${type.title.largest}px down to ${type.title.smallest}px, ${named(type.title.weight)}, line height ${type.title.lineHeight}`,
     `Text: ${type.text.size}px, ${named(type.text.weight)}, line height ${type.text.lineHeight}`,
     `Details: ${type.details.size}px, ${named(type.details.weight)}`,
-    `Lines in stars: ${named(type.strong.weight)}`,
+    `Words in stars: ${named(type.strong.weight)}`,
     `Label: ${type.label.size}px, ${named(type.label.weight)}`,
   ].join('\n')
 }

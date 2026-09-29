@@ -69,12 +69,14 @@ The switch above the canvas picks one of three: a post's **Cover**, its **Inside
 
 ### Inside page
 
-A post is a cover and, usually, one page inside it. The inside page is a picture, a label, a title, the story, then the details, on brand black:
+A post is a cover and, usually, a page or two inside it. An inside page is a picture, a title or a label, the story, then the details, on brand black.
+
+It comes in two kinds, chosen under **Kind of page**. A **Title page** opens with a title: a story, with its details under it. A **Label page** opens with a label over a list: names, a line-up, what's on. A page has one or the other, not both: the field it has no use for stays on show, switched off (`?unlocked` opens it). Each kind keeps its own words and its own place for the picture, so switching between them loses nothing, and each starts with an example that shows how its words are typed.
 
 - **Label**: a few words in capitals on light tape, over whatever comes first on the page ("Meet the artists"). Barlow ExtraBold at 38px, its lettering starting on the margin like the lines under it. Leave it empty for none. Its cut is its own: Label cut and Randomise cut, under the box, change the label and leave the cover's tape alone. It starts with the Clean cut, one quiet cut, like the labels on the Canva pages.
 - **Title**: Barlow Bold, white. It takes the largest size from 52px down to 45px that fits in three lines.
 - **Text**: the story, in Barlow Regular at 38px (28.5 in Canva, whose sizes are points), light grey (`#C2C2C2`), lines 1.2 apart.
-- **Details**: dates, place, tickets, under the story. The same size, a little heavier (Medium) and brighter (`#D9D9D9`, halfway from the story's grey to the title's white).
+- **Details**: dates, place, tickets, under the story. The same size, a little heavier (Medium), in the title's white.
 - **Picture**: Fill (what a new page starts with), None, Short (340px), Medium (430px) or Tall (540px). It starts as the cover's photo and can be given its own; drag it inside its banner, or use the sliders, as on a cover.
 - **Position**: where the picture goes. **Top**: above the words. **Middle**: after the first thing on the page, which is the title, or the story when there is no title. **Bottom**: under the words, on the foot of the page, with the arrow over it.
 - **Marks**: the arrow and the logo are both off to start with; Logo & arrow switches them on. With the arrow off, the words run down to the bottom margin; with it on, they end above it. The logo is small here (128px) and both sit on the page's 56px margin. With the picture in the middle or at the bottom, the words start under the logo.
@@ -85,7 +87,7 @@ Everything under the title is one size, and what matters more or less is told ap
 
 - a blank line starts a new paragraph, and a new line is a new line;
 - a line starting with a dash is a bullet;
-- a line in `*stars*` is white: a name, a lead sentence, a call to book.
+- words in `*stars*` are bold and white: a whole line (a name, a call to book) or part of one (`with *AE MAK* and *Zaska*`). One star or two, the same on both sides, hugging the words. A star that hugs nothing, or sits inside a word or a sum (`5* hotel`, `2*3*4`), is just a star.
 
 Emoji typed into either box are drawn as the device draws them.
 
@@ -95,7 +97,7 @@ Sizes, margins and greys follow the article pages of the Alternative Dublin soci
 
 #### Trying other sizes and weights
 
-Run on your own machine (`npm run dev`, or any `localhost` address), the inside page has one more panel: **Type · this machine only**. It sets the title's largest and smallest size, weight and line height; the text's size, weight and line height; the details' size and weight; the weight of lines in stars; and the label's size and weight. Weights are Barlow's 400 to 900. The preview and the exports follow, and what was tried is remembered in that browser.
+Run on your own machine (`npm run dev`, or any `localhost` address), the inside page has one more panel: **Type · this machine only**. It sets the title's largest and smallest size, weight and line height; the text's size, weight and line height; the details' size and weight; the weight of words in stars; and the label's size and weight. Weights are Barlow's 400 to 900. The preview and the exports follow, and what was tried is remembered in that browser.
 
 The published tool never shows the panel and never reads what it saved, so everyone else's pages stay in the tool's own sizes. **Copy values** puts the settings on the clipboard in words; to make them the tool's own, write them into `TITLE`, `BODY`, `DETAILS`, `STRONG` and `LABEL` at the top of `src/inside.ts`. **Back to the tool's** undoes the trial. A trial is also dropped once the tool's own values change, since it has then done its job.
 

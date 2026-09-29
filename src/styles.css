@@ -125,6 +125,8 @@ button { color: inherit; }
 
 .controls-panel {
   grid-area: panel;
+  /* Hidden inputs are placed out of the flow: this keeps them inside the panel's own scroll, not the page's. */
+  position: relative;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -287,6 +289,7 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
 .fit-message.warning { color: #6a5600; background: #f6edc8; border-left-color: #c99f00; }
 
 .toggle-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -295,7 +298,7 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
   cursor: pointer;
 }
 .quick-toggles { display: flex; align-items: center; gap: 16px; }
-.toggle-row input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle-row input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
 .switch {
   position: relative;
   width: 28px;
@@ -523,6 +526,7 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
 
 .photo-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .panel-button {
+  position: relative;
   display: inline-flex;
   height: 34px;
   align-items: center;
@@ -538,7 +542,7 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
   cursor: pointer;
 }
 .panel-button:hover { border-color: var(--ink); }
-.panel-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.panel-button input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
 .panel-note { margin: 0; color: #66635d; font-size: 10.5px; line-height: 1.4; }
 .text-button.underlined { text-decoration: underline; text-underline-offset: 2px; }
 .text-button:disabled { opacity: .4; cursor: default; text-decoration: none; }
@@ -641,6 +645,7 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
 }
 .background-switcher button,
 .background-switcher label {
+  position: relative;
   display: flex;
   min-height: 28px;
   align-items: center;
@@ -654,7 +659,7 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
   cursor: pointer;
 }
 .background-switcher .active { color: var(--ink); background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.background-switcher input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.background-switcher input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
 
 /* The artwork is as large as the space allows while keeping its 4:5 shape. */
 .stage-wrap {
@@ -774,6 +779,9 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
 textarea.details-input { min-height: 84px; font-weight: 400; }
 textarea.body-input { min-height: 150px; font-family: 'Barlow', Arial, sans-serif; font-size: 14px; font-weight: 500; line-height: 1.35; }
 textarea.title-input { font-family: 'Barlow', Arial, sans-serif; font-size: 18px; font-weight: 700; line-height: 1.15; }
+/* A field the page has no use for stays on show, switched off. */
+textarea:disabled, .eyebrow-input:disabled { background: #e9e7e1; border-style: dashed; cursor: not-allowed; }
+textarea.title-input:disabled { min-height: 0; height: 36px; resize: none; }
 .photo-empty small { color: rgba(255,255,255,.5); font-size: 10px; }
 .photo-empty input { position: absolute; opacity: 0; }
 

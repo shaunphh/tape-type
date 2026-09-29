@@ -19,7 +19,7 @@ describe('trying other sizes and weights', () => {
       title: { largest: 52, smallest: 45, weight: 700, lineHeight: 1.07 },
       text: { size: 38, weight: 400, lineHeight: 1.2 },
       details: { size: 38, weight: 500 },
-      strong: { weight: 400 },
+      strong: { weight: 700 },
       label: { size: 38, weight: 800 },
     })
     expect(sanitizePageType({})).toEqual(PAGE_TYPE)
@@ -48,7 +48,7 @@ describe('trying other sizes and weights', () => {
       'Title: 52px down to 45px, Bold 700, line height 1.07',
       'Text: 38px, Regular 400, line height 1.2',
       'Details: 38px, Medium 500',
-      'Lines in stars: Regular 400',
+      'Words in stars: Bold 700',
       'Label: 38px, ExtraBold 800',
     ].join('\n'))
   })

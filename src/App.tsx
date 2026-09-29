@@ -51,6 +51,8 @@ import { LINE_HEIGHT, applyLocks, isBarred, isLocked, lockedLineGap, unlocked } 
 import {
   BODY,
   INSIDE_MARKS,
+  PAGE_KINDS,
+  PAGE_KIND_NAMES,
   PAGE_MARGIN,
   PAGE_TYPE,
   TEXT_WIDTH as PAGE_TEXT_WIDTH,
@@ -60,6 +62,7 @@ import {
   layoutInside,
   loadInside,
   saveInside,
+  switchKind,
   type ImageHeight,
   type InsideOptions,
   type MeasureInk,
@@ -1055,8 +1058,11 @@ function App() {
   const eyebrowPreview = settings.eyebrowEnabled ? settings.eyebrow.trim() : ''
   const insideTitle = inside.title.replace(/\s+/g, ' ').trim()
   const insideLabel = normaliseEyebrow(inside.label)
+  // A page opens with a title or a label. The other stays on show, switched off, unless it already has words in it.
+  const labelOff = !locksOff && inside.kind === 'title' && !insideLabel
+  const titleOff = !locksOff && inside.kind === 'label' && !insideTitle
   const summaries: Record<PanelId, string> = {
-    cover: look.label,
+    cover: isInside ? PAGE_KINDS[inside.kind].label : look.label,
     words: isInside
       ? [insideLabel, insideTitle || 'No title yet'].filter(Boolean).join(' · ')
       : headlinePreview ? (eyebrowPreview ? `${eyebrowPreview} · ${headlinePreview}` : headlinePreview) : 'No headline yet',
@@ -1112,12 +1118,26 @@ function App() {
           )}
 
           {isInside && (
+            <Panel id="cover" title="Kind of page" summary={summaries.cover} open={panels.cover} onToggle={togglePanel}>
+              <div className="look-toggle" role="group" aria-label="Kind of page">
+                {PAGE_KIND_NAMES.map((kind) => (
+                  <button key={kind} aria-pressed={inside.kind === kind} className={inside.kind === kind ? 'active' : ''} onClick={() => setInside((current) => switchKind(current, kind))}>
+                    <strong>{PAGE_KINDS[kind].label}</strong>
+                    <small>{PAGE_KINDS[kind].description}</small>
+                  </button>
+                ))}
+              </div>
+              <p className="panel-note">A page opens with a title or with a label, not both. Each kind keeps its own words, so switching between them loses nothing.</p>
+            </Panel>
+          )}
+
+          {isInside && (
             <Panel id="words" title="Words" summary={summaries.words} open={panels.words} onToggle={togglePanel}>
               <div className="section-label-row">
                 <span className="field-label">Label</span>
-                <span className="field-hint">Capitals on tape · leave empty for none</span>
+                <span className="field-hint">{labelOff ? 'A title page has no label' : 'Capitals on tape'}</span>
               </div>
-              <input className="eyebrow-input" aria-label="Label" value={inside.label} maxLength={40} placeholder="Meet the artists" onChange={(event) => updateInside('label', event.target.value)} />
+              <input className="eyebrow-input" aria-label="Label" value={inside.label} maxLength={40} placeholder={labelOff ? '' : 'Meet the artists'} disabled={labelOff} title={labelOff ? 'Switch to a label page to use a label' : undefined} onChange={(event) => updateInside('label', event.target.value)} />
               {insideLabel && (
                 <>
                   <Segmented label="Label cut" note="The label’s own" value={inside.cut} options={cutOptions} onChange={(cut) => updateInside('cut', cut)} />
@@ -1125,8 +1145,11 @@ function App() {
                 </>
               )}
               <div className="sub-block">
-                <span className="field-label">Title</span>
-                <textarea aria-label="Title" className="title-input" value={inside.title} rows={3} onChange={(event) => updateInside('title', event.target.value)} />
+                <div className="section-label-row">
+                  <span className="field-label">Title</span>
+                  {titleOff && <span className="field-hint">A label page has no title</span>}
+                </div>
+                <textarea aria-label="Title" className="title-input" value={inside.title} rows={titleOff ? 1 : 3} disabled={titleOff} title={titleOff ? 'Switch to a title page to use a title' : undefined} onChange={(event) => updateInside('title', event.target.value)} />
                 <div className="words-status">
                   <div className={`fit-line ${page.overflow === 'title' ? 'error' : ''}`}>
                     <strong>{page.titleLines ? `${page.titleSize}px` : 'No title'}</strong>
@@ -1152,7 +1175,7 @@ function App() {
                     <span>text and details</span>
                   </div>
                 </div>
-                <p className="panel-note">Leave a blank line between paragraphs. Start a line with a dash for a bullet. Put a line in *stars* to pick it out in white.</p>
+                <p className="panel-note">Leave a blank line between paragraphs. Start a line with a dash for a bullet. Put words in *stars* to make them bold and white: a whole line, or a name inside one.</p>
               </div>
               {blockedReason && !page.empty && <p className="fit-message error" role="status">{blockedReason}</p>}
             </Panel>
@@ -1180,7 +1203,7 @@ function App() {
                 <Segmented label="Weight" note={WEIGHT_NAMES[pageType.details.weight]} value={String(pageType.details.weight)} options={weightOptions} onChange={(weight) => updateType('details', { weight: Number(weight) })} />
               </div>
               <div className="sub-block range-stack">
-                <span className="field-label">Lines in stars</span>
+                <span className="field-label">Words in stars</span>
                 <Segmented label="Weight" note={WEIGHT_NAMES[pageType.strong.weight]} value={String(pageType.strong.weight)} options={weightOptions} onChange={(weight) => updateType('strong', { weight: Number(weight) })} />
               </div>
               <div className="sub-block range-stack">

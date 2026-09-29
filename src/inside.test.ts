@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BRAND, type Layer } from './artwork'
 import { furnitureBoxes } from './furniture'
 import { wrapText } from './geometry'
-import { BODY, DETAILS, FILL_SMALLEST, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, PAGE_TYPE, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, readLines, sanitizeInside, type MeasureInk, type MeasureWidth } from './inside'
+import { BODY, DETAILS, FILL_SMALLEST, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, PAGE_TYPE, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, PAGE_KINDS, readLines, sanitizeInside, switchKind, type MeasureInk, type MeasureWidth } from './inside'
 import { POST_FRAME } from './settings'
 
 // A stand-in for canvas: every character is half an em wide.
@@ -272,32 +272,63 @@ describe('inside page', () => {
   })
 
   it('reads a blank line as a new paragraph, a dash as a bullet and stars as bold', () => {
-    expect(readLines('First.\n\n  Second   one. \nSame paragraph.\n\n- A bullet\n• Another\n\n*Ishmael Claxton*\nPhotography\n**Sean Conroy**\n')).toEqual([
+    const read = (typed: string) => readLines(typed).map((paragraph) => paragraph.map(({ text, bullet, strong }) => ({ text, bullet, strong })))
+    expect(read('First.\n\n  Second   one. \nSame paragraph.\n\n- A bullet\n• Another\n\n*Ishmael Claxton*\nPhotography\n**Sean Conroy**\n')).toEqual([
       [{ text: 'First.', bullet: false, strong: false }],
       [{ text: 'Second one.', bullet: false, strong: false }, { text: 'Same paragraph.', bullet: false, strong: false }],
       [{ text: 'A bullet', bullet: true, strong: false }, { text: 'Another', bullet: true, strong: false }],
       [{ text: 'Ishmael Claxton', bullet: false, strong: true }, { text: 'Photography', bullet: false, strong: false }, { text: 'Sean Conroy', bullet: false, strong: true }],
     ])
-    // A star inside a line is just a star.
-    expect(readLines('5* hotel\n* not bold *')[0].map((line) => line.strong)).toEqual([false, false])
   })
 
-  it('sets lines of a paragraph close, paragraphs apart and bullets in between', () => {
-    const pitch = BODY.size * BODY.lineHeight
-    const body = (typed: string) => texts(page({ body: typed }).layers).filter((layer) => layer.size === BODY.size && layer.text !== '•')
-    const [a, b] = body('A line\nAnd the next')
-    expect(b.y - a.y).toBeCloseTo(pitch, 1)
-    const [c, d] = body('A paragraph\n\nAnd the next')
-    expect(d.y - c.y).toBeCloseTo(pitch + BODY.paragraphGap, 1)
-    const layout = page({ body: 'The Dublin performance is one of the headline dates\n- Presale Monday\n- General sale Wednesday' })
-    const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
-    expect(lines.filter((layer) => layer.text === '•')).toHaveLength(2)
-    expect(lines.find((layer) => layer.text === 'Presale Monday')!.x).toBe(PAGE_MARGIN + BODY.indent)
-    const [first, second] = lines.filter((layer) => layer.text !== '•' && layer.x > PAGE_MARGIN)
-    expect(second.y - first.y).toBeCloseTo(pitch + BODY.bulletGap, 1)
+  it('reads words in stars anywhere in a line, and leaves other stars alone', () => {
+    const runs = (typed: string) => readLines(typed)[0][0].runs
+    expect(runs('When **The theatre**')).toEqual([{ text: 'When ', strong: false }, { text: 'The theatre', strong: true }])
+    expect(runs('With *AE MAK*, *Zaska* and more')).toEqual([
+      { text: 'With ', strong: false }, { text: 'AE MAK', strong: true }, { text: ', ', strong: false }, { text: 'Zaska', strong: true }, { text: ' and more', strong: false },
+    ])
+    expect(runs('- *Doors* at six')).toEqual([{ text: 'Doors', strong: true }, { text: ' at six', strong: false }])
+    expect(runs('(*free*)')).toEqual([{ text: '(', strong: false }, { text: 'free', strong: true }, { text: ')', strong: false }])
+    expect(readLines('*A whole line*')[0][0]).toMatchObject({ text: 'A whole line', strong: true, runs: [{ text: 'A whole line', strong: true }] })
+    expect(readLines('*One* and *two*')[0][0]).toMatchObject({ text: 'One and two', strong: false })
+    // Stars that hug nothing, stand in a sum or come one to a side are just stars.
+    for (const plain of ['5* hotel', '* not bold *', '2*3*4', 'A *lone star', '**two and one*', '***']) {
+      expect(readLines(plain)[0][0]).toMatchObject({ text: plain, strong: false, runs: [{ text: plain, strong: false }] })
+    }
   })
 
-  it('sets the details under the story, the same size, a little heavier and brighter', () => {
+  it('sets words in stars in their place in the line, and wraps the line as one', () => {
+    const layout = page({ title: '', image: 'none', body: 'When *The theatre* opens', details: '' })
+    const [when, theatre, opens] = texts(layout.layers)
+    expect(when).toMatchObject({ text: 'When', x: PAGE_MARGIN, weight: BODY.weight, fill: BODY.fill })
+    expect(theatre).toMatchObject({ text: 'The theatre', weight: STRONG.weight, fill: STRONG.fill, y: when.y })
+    expect(opens).toMatchObject({ text: 'opens', weight: BODY.weight, fill: BODY.fill, y: when.y })
+    // Each piece starts a space after the one before: characters are half an em wide here.
+    const wide = (value: string) => measure(value, BODY.size, 0)
+    expect(theatre.x).toBeCloseTo(PAGE_MARGIN + wide('When '), 5)
+    expect(opens.x).toBeCloseTo(PAGE_MARGIN + wide('When The theatre '), 5)
+    expect(layout.bodyLines).toBe(1)
+
+    // A long line wraps at its spaces, inside the margins, whichever way its words are set.
+    const names = Array(14).fill('Sorcha').join(' ')
+    const long = page({ title: '', image: 'none', details: '', body: `A free evening with *${names}* and (*friends*), all night` })
+    const pieces = texts(long.layers)
+    expect(long.bodyLines).toBeGreaterThan(1)
+    expect(new Set(pieces.map((layer) => layer.y)).size).toBe(long.bodyLines)
+    for (const piece of pieces) expect(piece.x + wide(piece.text)).toBeLessThanOrEqual(PAGE_MARGIN + TEXT_WIDTH + 0.01)
+    // A word set two ways stays whole: its parts touch, on one line.
+    const open = pieces.find((layer) => layer.text.endsWith('('))!
+    const friends = pieces.find((layer) => layer.text === 'friends')!
+    const close = pieces.find((layer) => layer.text.startsWith('),'))!
+    expect(friends).toMatchObject({ weight: STRONG.weight, y: open.y })
+    expect(friends.x).toBeCloseTo(open.x + wide(open.text), 5)
+    expect(close).toMatchObject({ text: '), all night', weight: BODY.weight, y: open.y })
+    expect(close.x).toBeCloseTo(friends.x + wide('friends'), 5)
+    // Words in stars count towards the room like any others.
+    expect(long.bodyLines).toBe(page({ title: '', image: 'none', details: '', body: `A free evening with ${names} and (friends), all night` }).bodyLines)
+  })
+
+  it('sets the details under the story, the same size, a little heavier, in white', () => {
     const layout = page({ body: 'The story.', details: '22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite' })
     const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
     const story = lines.find((layer) => layer.text === 'The story.')!
@@ -306,9 +337,7 @@ describe('inside page', () => {
     expect(story).toMatchObject({ weight: BODY.weight, fill: BODY.fill })
     expect(DETAILS.weight).toBeGreaterThan(BODY.weight)
     expect(details.every((layer) => layer.fill === DETAILS.fill)).toBe(true)
-    // Their grey is halfway from the story's to the title's white.
-    const grey = (fill: string) => parseInt(fill.slice(1, 3), 16)
-    expect(grey(DETAILS.fill)).toBe((grey(BODY.fill) + grey(TITLE.fill)) / 2)
+    expect(DETAILS.fill).toBe(TITLE.fill)
     expect(details[0].y).toBeGreaterThan(story.y + BODY.size * BODY.lineHeight)
     expect(details[1].y - details[0].y).toBeCloseTo(BODY.size * BODY.lineHeight, 1)
     expect(layout.bodyLines).toBe(4)
@@ -316,13 +345,13 @@ describe('inside page', () => {
     expect(page({ title: '', body: '', details: 'Tickets via Eventbrite' })).toMatchObject({ empty: false, bodyLines: 1 })
   })
 
-  it('sets a line in stars in white, in the story or the details', () => {
+  it('sets a line in stars bold and white, in the story or the details', () => {
     const layout = page({ body: '*Each artist will give a short presentation.*', details: '*Ishmael Claxton*\nPhotography' })
     const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
     expect(lines.find((layer) => layer.text === 'Each artist will give a short presentation.')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
     expect(lines.find((layer) => layer.text === 'Ishmael Claxton')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
     expect(lines.find((layer) => layer.text === 'Photography')).toMatchObject({ weight: DETAILS.weight, fill: DETAILS.fill })
-    expect(STRONG.fill).toBe(TITLE.fill)
+    expect(STRONG).toEqual({ weight: 700, fill: TITLE.fill })
   })
 
   it('sets the page in other sizes and weights when they are being tried', () => {
@@ -380,10 +409,40 @@ describe('inside page', () => {
     expect(labelled.indexOf('<path')).toBeLessThan(labelled.indexOf('MEET THE ARTISTS'))
   })
 
+  it('comes in two kinds, each with its own words and its own example', () => {
+    expect(insideDefaults).toMatchObject({ kind: 'title', kept: {}, ...PAGE_KINDS.title.sample })
+    expect(PAGE_KINDS.title.sample).toMatchObject({ label: '', position: 'top' })
+    expect(PAGE_KINDS.label.sample).toMatchObject({ label: 'Meet the artists', title: '', position: 'bottom' })
+    // Each example fits its page, with a picture that fills.
+    for (const kind of ['title', 'label'] as const) {
+      const layout = layoutInside({ ...insideDefaults, ...PAGE_KINDS[kind].sample }, measure, {}, ink)
+      expect(layout).toMatchObject({ overflow: null, empty: false })
+      expect(layout.label === null).toBe(kind === 'title')
+      expect(layout.titleLines === 0).toBe(kind === 'label')
+    }
+    // Switching keeps what was typed, and brings it back.
+    const typed = { ...insideDefaults, title: 'My own title', body: 'My own story', cut: 'torn' as const }
+    const asLabel = switchKind(typed, 'label')
+    expect(asLabel).toMatchObject({ kind: 'label', ...PAGE_KINDS.label.sample, cut: 'torn', image: 'fill' })
+    expect(asLabel.kept.title).toMatchObject({ title: 'My own title', body: 'My own story', position: 'top' })
+    const changed = { ...asLabel, label: 'Line-up', position: 'middle' as const }
+    const back = switchKind(changed, 'title')
+    expect(back).toMatchObject({ kind: 'title', title: 'My own title', body: 'My own story', label: '', position: 'top' })
+    expect(switchKind(back, 'label')).toMatchObject({ kind: 'label', label: 'Line-up', position: 'middle' })
+    expect(switchKind(back, 'title')).toBe(back)
+  })
+
   it('replaces invalid stored values instead of trusting them', () => {
-    expect(sanitizeInside({ label: 9, cut: 'jagged', seed: 'seven', title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
-    const chosen = { label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', image: 'none', position: 'middle', logo: 'left', arrow: false }
+    expect(sanitizeInside({ kind: 'poster', kept: 'all', label: 9, cut: 'jagged', seed: 'seven', title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
+    const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', position: 'bottom' } }
+    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', image: 'none', position: 'middle', logo: 'left', arrow: false }
     expect(sanitizeInside(chosen)).toEqual(chosen)
+    // What is kept is checked too, and only for the kind the page is not.
+    expect(sanitizeInside({ ...chosen, kept: { title: kept.label, label: { label: 5, body: 'Names', position: 'sideways' } } }).kept).toEqual({ label: { ...PAGE_KINDS.label.sample, body: 'Names', details: '' } })
+    // A page saved before there were kinds is a label page only if a label is all it opens with.
+    expect(sanitizeInside({ label: 'Meet the artists', title: '', body: 'Names' }).kind).toBe('label')
+    expect(sanitizeInside({ label: 'Meet the artists', title: 'A title', body: 'A story' }).kind).toBe('title')
+    expect(sanitizeInside({ title: '', body: 'A story' }).kind).toBe('title')
     expect(sanitizeInside({ ...chosen, image: 'fill' }).image).toBe('fill')
     expect(sanitizeInside({ ...chosen, seed: -3.5 }).seed).toBe(1)
     expect(sanitizeInside({ ...chosen, seed: Infinity }).seed).toBe(insideDefaults.seed)

@@ -1,6 +1,7 @@
 import { BRAND, buildLayers, drawLayers, escapeAttribute, layersToSvg, type Layer } from './artwork'
 import type { Box, LogoSide } from './furniture'
 import { buildShape, wrapText } from './geometry'
+import { EYEBROW_SCALE } from './layout'
 import { lockedLineGap } from './locks'
 import type { InkMetrics } from './metrics'
 import { photoRect, type PhotoView } from './photo'
@@ -28,6 +29,9 @@ export type PicturePosition = 'top' | 'middle' | 'bottom'
 export interface InsideOptions {
   /** A small tape label above the title, set in capitals. Empty for none. */
   label: string
+  /** How the label's tape is cut, and the seed of that cut. They are the label's own, not the cover's. */
+  cut: ShapeMode
+  seed: number
   title: string
   body: string
   /** Dates, places, tickets: set lighter than the story. */
@@ -50,8 +54,12 @@ export const BODY = { weight: 500, size: 38, lineHeight: 1.32, paragraphGap: 26,
 export const DETAILS = { weight: 400 }
 /** A line in stars is bold and white, in the story or the details: a name, a lead sentence. */
 export const STRONG = { weight: 700, fill: BRAND.light }
-/** The label is a cover's tape in small: capitals on light tape, cut the way the cover's is. */
-export const LABEL = { size: 50, weight: 700 }
+/**
+ * The label is a cover's tape in small: capitals on light tape, with a cut of its own. It is
+ * 45px: the 50 of the Canva pages, brought down by as much as a cover's eyebrow is.
+ */
+export const LABEL = { size: Math.round(50 * EYEBROW_SCALE), weight: 700 }
+const CUTS: readonly ShapeMode[] = ['plain', 'torn', 'clean', 'tape', 'cling', 'rough']
 const GAP = {
   // Under a picture at the top, and around one among the words or under them.
   underPicture: 44,
@@ -113,19 +121,15 @@ export function readLines(typed: string): TypedLine[][] {
 const text = (value: string, x: number, y: number, size: number, weight: number, fill: string): Layer =>
   ({ kind: 'text', text: value, x, y: Math.round(y * 100) / 100, size, weight, fill, angle: 0, cx: 0, cy: 0 })
 
-/** What the label needs from the cover: how to measure ink, and the cover's cut, so the two tapes match. */
-export interface LabelTools {
-  ink: (text: string, size: number, weight: number) => InkMetrics
-  mode: ShapeMode
-  seed: number
-}
+/** Measures the ink of a line, as the cover does: what the label's tape is cut around. */
+export type MeasureInk = (text: string, size: number, weight: number) => InkMetrics
 
 /** The label as tape and lettering, its lettering starting on the margin and its tape at `top`. */
-function buildLabel(label: string, top: number, tools: LabelTools) {
+function buildLabel(label: string, top: number, inkOf: MeasureInk, cut: ShapeMode, seed: number) {
   // Measured from where a line starts, not from its first letter's ink, so the label lines up
   // with the lines under it, which start on the margin too.
   const measure = (value: string) => {
-    const ink = tools.ink(value, LABEL.size, LABEL.weight)
+    const ink = inkOf(value, LABEL.size, LABEL.weight)
     return { ...ink, width: ink.width - ink.originOffset }
   }
   const lines = wrapText(label, TEXT_WIDTH - LABEL.size, (value) => measure(value).width, true, { balance: true })
@@ -139,8 +143,8 @@ function buildLabel(label: string, top: number, tools: LabelTools) {
     tone: 'light',
     perLine: false,
     align: 'left',
-    mode: tools.mode,
-    seed: tools.seed,
+    mode: cut,
+    seed,
     fontSize: LABEL.size,
     hugStrength: 1,
     rotationVariance: 0,
@@ -162,20 +166,20 @@ function buildLabel(label: string, top: number, tools: LabelTools) {
  * at the bottom, or after the first of them. The label sits over whichever comes first. The
  * title takes the largest size from 69 down to 52 that fits it in three lines; the story and
  * the details are always 38. A picture that fills takes the room the words leave. `marks` says
- * where the logo ends and the arrow starts, so the words keep clear of both. Without `tape`
- * there is no label.
+ * where the logo ends and the arrow starts, so the words keep clear of both. Without `ink`
+ * to measure it by, there is no label.
  */
 export function layoutInside(
-  content: Pick<InsideOptions, 'title' | 'body' | 'image'> & Partial<Pick<InsideOptions, 'label' | 'details' | 'position'>>,
+  content: Pick<InsideOptions, 'title' | 'body' | 'image'> & Partial<Pick<InsideOptions, 'label' | 'cut' | 'seed' | 'details' | 'position'>>,
   measure: MeasureWidth,
   marks: { logoBottom?: number; arrowTop?: number } = {},
-  tape?: LabelTools,
+  ink?: MeasureInk,
 ): InsideLayout {
   const { width, height: pageHeight } = POST_FRAME
   const fills = content.image === 'fill'
   const pictured = content.image !== 'none'
   const position = pictured ? content.position ?? 'top' : 'top'
-  const label = tape ? normaliseEyebrow(content.label ?? '') : ''
+  const label = ink ? normaliseEyebrow(content.label ?? '') : ''
   const title = normaliseHeadline(content.title)
   const story = readLines(content.body)
   const details = readLines(content.details ?? '')
@@ -218,9 +222,9 @@ export function layoutInside(
     }
 
     const setLabel = (gapUnder: number) => {
-      if (!label || !tape) return
+      if (!label || !ink) return
       y += GAP.aboveLabel
-      const made = buildLabel(label, y, tape)
+      const made = buildLabel(label, y, ink, content.cut ?? insideDefaults.cut, content.seed ?? insideDefaults.seed)
       layers.push(...made.layers)
       placed.label = made.box
       y += made.box.height + gapUnder
@@ -350,10 +354,14 @@ export function insideSvg(layout: InsideLayout, options: { photo?: string | null
 export const INSIDE_KEY = 'tape-type-inside-v1'
 export const insideDefaults: InsideOptions = {
   label: '',
+  // One quiet cut, as on the labels of the Canva pages.
+  cut: 'clean',
+  seed: defaults.seed,
   title: 'Bolands Mills is set to come alive this Culture Night',
   body: 'A free evening of live music, art, storytelling and movement, with performances from AE MAK, Sorcha Richardson and Zaska on the Factory Main Stage.',
   details: 'Friday 18 September · 6.30pm\nBolands Mills, Dublin 4\nFree, no ticket needed',
-  image: 'medium',
+  // The picture takes the room the words leave, so a page is full however much is typed.
+  image: 'fill',
   position: 'top',
   logo: 'off',
   arrow: true,
@@ -364,6 +372,8 @@ export function sanitizeInside(stored: Record<string, unknown>): InsideOptions {
   const words = (value: unknown, fallback: string) => (typeof value === 'string' ? value : fallback)
   return {
     label: words(stored.label, insideDefaults.label),
+    cut: CUTS.includes(stored.cut as ShapeMode) ? stored.cut as ShapeMode : insideDefaults.cut,
+    seed: typeof stored.seed === 'number' && Number.isFinite(stored.seed) ? Math.min(4294967295, Math.max(1, Math.floor(stored.seed))) : insideDefaults.seed,
     title: words(stored.title, insideDefaults.title),
     body: words(stored.body, insideDefaults.body),
     // A page saved before details existed has none, not the sample ones.

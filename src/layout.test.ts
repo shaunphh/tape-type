@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FEATURE_WEIGHT, HEADLINE_WEIGHT, layoutHeadline, type LayoutInput, type Measure } from './layout'
+import { EYEBROW_SCALE, FEATURE_WEIGHT, HEADLINE_WEIGHT, eyebrowSizeFor, layoutHeadline, type LayoutInput, type Measure } from './layout'
 
 // Monospace stand-in for canvas: every character is half an em wide.
 const measure: Measure = (text, size) => ({
@@ -73,14 +73,18 @@ describe('headline layout', () => {
 
   it('shrinks a long eyebrow to fit the safe area, and flags one that still cannot fit', () => {
     const long = layoutHeadline(input({ eyebrow: 'X'.repeat(60) }), measure)
-    expect(long.eyebrow!.fontSize).toBeLessThan(38)
+    expect(long.eyebrow!.fontSize).toBeLessThan(eyebrowSizeFor(72))
     expect(long.eyebrow!.width + 2 * 0.45 * long.eyebrow!.fontSize).toBeLessThanOrEqual(920)
     expect(long.overflow).toBeNull()
     const impossible = layoutHeadline(input({ eyebrow: 'X'.repeat(90) }), measure)
     expect(impossible.overflow).toBe('eyebrow')
     const normal = layoutHeadline(input({ eyebrow: 'BREAKING' }), measure)
-    expect(normal.eyebrow!.fontSize).toBeGreaterThanOrEqual(38)
-    expect(normal.eyebrow!.fontSize).toBeLessThanOrEqual(46)
+    expect(normal.eyebrow!.fontSize).toBe(eyebrowSizeFor(normal.fontSize))
+  })
+
+  it('sets the eyebrow at nine tenths of the published labels, whatever the headline size', () => {
+    expect(EYEBROW_SCALE).toBe(0.9)
+    expect([72, 80, 90, 172].map(eyebrowSizeFor)).toEqual([34, 37, 41, 41])
   })
 
   it('treats an empty headline as empty: no overflow and no eyebrow', () => {

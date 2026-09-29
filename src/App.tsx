@@ -62,7 +62,7 @@ import {
   saveInside,
   type ImageHeight,
   type InsideOptions,
-  type LabelTools,
+  type MeasureInk,
   type MeasureWidth,
   type PicturePosition,
 } from './inside'
@@ -595,19 +595,15 @@ function App() {
       return context.measureText(value).width
     }
   }, [])
-  // The inside page's label is cut like the cover's tape: the same kind of cut, from the same seed.
-  const labelTools = useMemo<LabelTools>(() => {
+  // The inside page's label is tape, cut around its ink as a cover's is.
+  const measureLabel = useMemo<MeasureInk>(() => {
     const context = document.createElement('canvas').getContext('2d')
-    return {
-      ink: (value, size, weight) => {
-        if (!context) return { width: value.length * size * 0.6, originOffset: 0, ascent: size * 0.7, descent: 0 }
-        context.font = fontShorthand(size, weight)
-        return measureInk(context, value, weight, size)
-      },
-      mode: settings.mode,
-      seed: settings.seed,
+    return (value, size, weight) => {
+      if (!context) return { width: value.length * size * 0.6, originOffset: 0, ascent: size * 0.7, descent: 0 }
+      context.font = fontShorthand(size, weight)
+      return measureInk(context, value, weight, size)
     }
-  }, [settings.mode, settings.seed])
+  }, [])
   useEffect(() => {
     if (!isInside) return
     const words = `${inside.title} ${inside.body} ${inside.details}`
@@ -616,10 +612,10 @@ function App() {
     if (label) document.fonts.load(fontShorthand(LABEL.size, LABEL.weight), label).catch(() => undefined)
   }, [isInside, inside.label, inside.title, inside.body, inside.details])
   const page = useMemo(
-    () => layoutInside(inside, measureWidth, { logoBottom: markBoxes.logo ? markBoxes.logo.y + markBoxes.logo.height : undefined, arrowTop: markBoxes.arrow?.y }, labelTools),
+    () => layoutInside(inside, measureWidth, { logoBottom: markBoxes.logo ? markBoxes.logo.y + markBoxes.logo.height : undefined, arrowTop: markBoxes.arrow?.y }, measureLabel),
     // Measured again whenever a font finishes loading.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [inside, measureWidth, markBoxes, labelTools, fonts.version],
+    [inside, measureWidth, markBoxes, measureLabel, fonts.version],
   )
   const runs = useMemo(() => textRuns(isInside ? page.layers : layers), [isInside, page.layers, layers])
 
@@ -1100,8 +1096,8 @@ function App() {
               <input className="eyebrow-input" aria-label="Label" value={inside.label} maxLength={40} placeholder="Meet the artists" onChange={(event) => updateInside('label', event.target.value)} />
               {insideLabel && (
                 <>
-                  <Segmented label="Label cut" note="Shared with the cover’s tape" value={settings.mode} options={cutOptions} onChange={(mode) => update('mode', mode)} />
-                  <button className="panel-button" disabled={plain || locked} title={plain ? 'Plain tape has no cut to vary' : locked ? 'The seed is locked on the cover' : undefined} onClick={randomise}><Sparkles size={14} aria-hidden="true" /> Randomise cut</button>
+                  <Segmented label="Label cut" note="The label’s own" value={inside.cut} options={cutOptions} onChange={(cut) => updateInside('cut', cut)} />
+                  <button className="panel-button" disabled={inside.cut === 'plain'} title={inside.cut === 'plain' ? 'Plain tape has no cut to vary' : undefined} onClick={() => updateInside('seed', nextSeed())}><Sparkles size={14} aria-hidden="true" /> Randomise cut</button>
                 </>
               )}
               <div className="sub-block">

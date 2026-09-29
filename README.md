@@ -71,11 +71,11 @@ The switch above the canvas picks one of three: a post's **Cover**, its **Inside
 
 A post is a cover and, usually, one page inside it. The inside page is a picture, a label, a title, the story, then the details, on brand black:
 
-- **Label**: a few words in capitals on light tape, over whatever comes first on the page ("Meet the artists"). Barlow Bold at 50px, its lettering starting on the margin like the lines under it. Leave it empty for none. It is cut like the cover's tape: the cut style and Randomise cut under it are the cover's own, so changing them here changes the cover too.
+- **Label**: a few words in capitals on light tape, over whatever comes first on the page ("Meet the artists"). Barlow Bold at 45px, its lettering starting on the margin like the lines under it. Leave it empty for none. Its cut is its own: Label cut and Randomise cut, under the box, change the label and leave the cover's tape alone. It starts with the Clean cut, one quiet cut, like the labels on the Canva pages.
 - **Title**: Barlow Bold, white. It takes the largest size from 69px down to 52px that fits in three lines.
 - **Text**: the story, in Barlow Medium at 38px (28.5 in Canva, whose sizes are points), light grey, lines 1.32 apart.
 - **Details**: dates, place, tickets. The same size in a lighter weight (Regular), under the story.
-- **Picture**: None, Short (340px), Medium (430px), Tall (540px) or Fill. It starts as the cover's photo and can be given its own; drag it inside its banner, or use the sliders, as on a cover.
+- **Picture**: Fill (what a new page starts with), None, Short (340px), Medium (430px) or Tall (540px). It starts as the cover's photo and can be given its own; drag it inside its banner, or use the sliders, as on a cover.
 - **Position**: where the picture goes. **Top**: above the words. **Middle**: after the first thing on the page, which is the title, or the story when there is no title. **Bottom**: under the words, on the foot of the page, with the arrow over it.
 - **Marks**: the arrow is on and the logo is off to start with. The logo is small here (128px) and both sit on the page's 56px margin. With the picture in the middle or at the bottom, the words start under the logo.
 
@@ -128,7 +128,7 @@ Each style remembers how it was last set up during a session, so switching to Fe
 
 Tape colours are the brand's: Light `#F0F0F0`, Dark `#101010` (white text), Yellow `#FFEF3A`, or None (white text straight on the photo). The Dark background is the same brand black.
 
-An optional **eyebrow** label (Breaking, News, Exclusive, The Big Read, or any text such as a date range) sits on the first line in capitals at about 40px, like the published tags. It is yellow, or white on yellow tape or a yellow background. A long label shrinks to fit the safe area, and export is blocked if it still can't.
+An optional **eyebrow** label (Breaking, News, Exclusive, The Big Read, or any text such as a date range) sits on the first line in capitals at 34 to 41px: nine tenths of the published tags, which are about 40px (`EYEBROW_SCALE` in `src/layout.ts`; the inside page's label follows it). It is yellow, or white on yellow tape or a yellow background. A long label shrinks to fit the safe area, and export is blocked if it still can't.
 
 ## How the shapes work
 

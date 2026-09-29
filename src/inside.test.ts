@@ -2,18 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { BRAND, type Layer } from './artwork'
 import { furnitureBoxes } from './furniture'
 import { wrapText } from './geometry'
-import { BODY, DETAILS, FILL_SMALLEST, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, readLines, sanitizeInside, type LabelTools, type MeasureWidth } from './inside'
+import { BODY, DETAILS, FILL_SMALLEST, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, readLines, sanitizeInside, type MeasureInk, type MeasureWidth } from './inside'
 import { POST_FRAME } from './settings'
 
 // A stand-in for canvas: every character is half an em wide.
 const measure: MeasureWidth = (text, size) => text.length * size * 0.5
-const tape: LabelTools = { ink: (text, size) => ({ width: text.length * size * 0.5, originOffset: 0, ascent: size * 0.7, descent: 0 }), mode: 'tape', seed: 1234 }
+const ink: MeasureInk = (text, size) => ({ width: text.length * size * 0.5, originOffset: 0, ascent: size * 0.7, descent: 0 })
 const texts = (layers: Layer[]) => layers.flatMap((layer) => (layer.kind === 'text' ? [layer] : []))
 const paths = (layers: Layer[]) => layers.flatMap((layer) => (layer.kind === 'path' ? [layer] : []))
 /** The top of a line of text: where its capitals start. */
 const capTop = (layer: { y: number; size: number }) => layer.y - layer.size * 0.7
 const page = (overrides: Partial<Parameters<typeof layoutInside>[0]> = {}, marks = {}) =>
-  layoutInside({ title: 'The closure follows a months-long legal dispute', body: 'One paragraph of the story.\n\nAnd a second one.', details: '', image: 'medium', ...overrides }, measure, marks, tape)
+  layoutInside({ title: 'The closure follows a months-long legal dispute', body: 'One paragraph of the story.\n\nAnd a second one.', details: '', image: 'medium', cut: 'tape', seed: 1234, ...overrides }, measure, marks, ink)
 
 describe('inside page', () => {
   it('puts the picture across the top, then the title, then the story', () => {
@@ -193,6 +193,10 @@ describe('inside page', () => {
     expect(none.layers).toEqual(page({ image: 'none', position: 'top' }).layers)
   })
 
+  it('sets the label as much smaller as a cover’s eyebrow is', () => {
+    expect(LABEL.size).toBe(45)
+  })
+
   it('sets the label in capitals on light tape, over whatever comes first', () => {
     const layout = page({ label: ' Meet  the artists ', image: 'none' })
     const [tapePath] = paths(layout.layers)
@@ -228,22 +232,36 @@ describe('inside page', () => {
     expect(story.banner!.y).toBeGreaterThan(Math.max(...texts(story.layers).filter((layer) => layer.weight === BODY.weight).map((layer) => layer.y)))
   })
 
-  it('cuts the label from the cover’s seed, and has none until one is typed', () => {
+  it('gives the label a cut and a seed of its own, and has none until one is typed', () => {
     expect(page({ label: '  ' })).toMatchObject({ label: null })
     expect(paths(page({ label: '' }).layers)).toHaveLength(0)
-    const cut = (seed: number) => layoutInside({ label: 'Meet the artists', title: '', body: '', image: 'none' }, measure, {}, { ...tape, seed })
+    const cut = (seed: number) => page({ label: 'Meet the artists', title: '', body: '', image: 'none', seed })
     expect(paths(cut(7).layers)[0].d).toBe(paths(cut(7).layers)[0].d)
     expect(new Set([1, 2, 3, 4, 5, 6].map((seed) => paths(cut(seed).layers)[0].d)).size).toBeGreaterThan(1)
     // A label alone is a page; a plain cut is a plain rectangle.
     expect(cut(7)).toMatchObject({ empty: false, bodyLines: 0, overflow: null })
-    const plain = layoutInside({ label: 'Meet the artists', title: '', body: '', image: 'none' }, measure, {}, { ...tape, mode: 'plain' })
+    const plain = page({ label: 'Meet the artists', title: '', body: '', image: 'none', cut: 'plain' })
     expect(paths(plain.layers)[0].d.match(/[ML]/g)).toHaveLength(4)
-    // Without the cover's tools there is no label to cut.
+    expect(paths(page({ label: 'Meet the artists', image: 'none', cut: 'rough' }).layers)[0].d).not.toBe(paths(plain.layers)[0].d)
+    // Left out, the cut and the seed are the page's defaults: one quiet cut.
+    const unset = layoutInside({ label: 'Meet the artists', title: '', body: '', image: 'none' }, measure, {}, ink)
+    const quiet = layoutInside({ label: 'Meet the artists', title: '', body: '', image: 'none', cut: insideDefaults.cut, seed: insideDefaults.seed }, measure, {}, ink)
+    expect(insideDefaults.cut).toBe('clean')
+    expect(paths(unset.layers)[0].d).toBe(paths(quiet.layers)[0].d)
+    // With nothing to measure its ink by, there is no label to cut.
     expect(layoutInside({ label: 'Meet the artists', title: 'A title', body: '', image: 'none' }, measure).label).toBeNull()
   })
 
+  it('starts a new page with a picture that fills, at the top', () => {
+    expect(insideDefaults).toMatchObject({ image: 'fill', position: 'top', label: '' })
+    const layout = layoutInside(insideDefaults, measure, {}, ink)
+    expect(layout.banner!.y).toBe(0)
+    expect(layout.banner!.height).toBeGreaterThan(FILL_SMALLEST)
+    expect(layout.overflow).toBeNull()
+  })
+
   it('wraps a long label inside the margins', () => {
-    const layout = page({ label: 'Everything you need to know before you go', image: 'none' })
+    const layout = page({ label: 'Everything you need to know before you go out tonight', image: 'none' })
     const lettering = texts(layout.layers).filter((layer) => layer.size === LABEL.size)
     expect(lettering.length).toBeGreaterThan(1)
     expect(layout.label!.x + layout.label!.width).toBeLessThan(POST_FRAME.width - PAGE_MARGIN + 1)
@@ -327,12 +345,14 @@ describe('inside page', () => {
   })
 
   it('replaces invalid stored values instead of trusting them', () => {
-    expect(sanitizeInside({ label: 9, title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
-    const chosen = { label: 'Meet the artists', title: 'A title', body: 'A story', details: 'A date', image: 'none', position: 'middle', logo: 'left', arrow: false }
+    expect(sanitizeInside({ label: 9, cut: 'jagged', seed: 'seven', title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
+    const chosen = { label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', image: 'none', position: 'middle', logo: 'left', arrow: false }
     expect(sanitizeInside(chosen)).toEqual(chosen)
     expect(sanitizeInside({ ...chosen, image: 'fill' }).image).toBe('fill')
-    // A page saved before the label and the position existed has no label, and its picture at the top.
-    expect(sanitizeInside({ title: 'A title', body: 'A story', details: '', image: 'tall' })).toMatchObject({ label: '', position: 'top', image: 'tall' })
+    expect(sanitizeInside({ ...chosen, seed: -3.5 }).seed).toBe(1)
+    expect(sanitizeInside({ ...chosen, seed: Infinity }).seed).toBe(insideDefaults.seed)
+    // A page saved before the label and the position existed keeps its picture, at the top, with no label.
+    expect(sanitizeInside({ title: 'A title', body: 'A story', details: '', image: 'tall' })).toMatchObject({ label: '', cut: 'clean', position: 'top', image: 'tall' })
     // A page saved before details existed gets none, not the sample ones.
     expect(sanitizeInside({ title: 'A title', body: 'A story' }).details).toBe('')
   })

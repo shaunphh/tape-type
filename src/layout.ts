@@ -15,8 +15,9 @@ const MIN_SIZE = 72
 const MAX_SIZE = 90
 const SERIES_SIZE = 172
 const EYEBROW_MIN_SIZE = 26
-/** The published labels are set at about 40px whatever the headline size. */
-export const eyebrowSizeFor = (headlineSize: number) => Math.round(Math.min(46, Math.max(38, headlineSize * 0.52)))
+/** Labels are set at nine tenths of the published ones, which are about 40px whatever the headline size. */
+export const EYEBROW_SCALE = 0.9
+export const eyebrowSizeFor = (headlineSize: number) => Math.round(Math.min(46, Math.max(38, headlineSize * 0.52)) * EYEBROW_SCALE)
 
 export type Measure = (text: string, size: number, weight: number) => InkMetrics
 export type OverflowReason = 'lines' | 'width' | 'eyebrow'

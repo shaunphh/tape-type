@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { coverDefaults, sanitizeCover } from './cover'
 import { POST_LOOK, VIDEO_LOOKS } from './formats'
-import { HELD, applyLocks, isLocked } from './locks'
+import { HELD, applyLocks, isBarred, isLocked } from './locks'
 import { defaults, stylePresets } from './settings'
 import type { GeneratorSettings } from './types'
 
@@ -20,9 +20,9 @@ describe('locked choices', () => {
     expect(HELD).not.toContain('mode')
   })
 
-  it('never locks a default, so the house look is always reachable', () => {
+  it('never locks a default of the settings it holds, so the house look is always reachable', () => {
     for (const setting of HELD) expect(isLocked(setting, defaults[setting], POST_LOOK, false), setting).toBe(false)
-    expect(applyLocks(defaults, POST_LOOK, false)).toEqual(defaults)
+    expect(applyLocks(defaults, POST_LOOK, false)).toEqual({ ...defaults, column: 'medium' })
   })
 
   it('holds each kind of video to its own look', () => {
@@ -41,7 +41,7 @@ describe('locked choices', () => {
   it('puts settings saved before the locks back to the house look, keeping the words and the cut', () => {
     const saved: GeneratorSettings = { ...defaults, ...stylePresets.feature, style: 'feature', tone: 'yellow', coverFormat: 'series', headline: 'Kept', seed: 42 }
     const next = applyLocks(saved, POST_LOOK, false)
-    expect(next).toMatchObject({ ...stylePresets.headline, style: 'headline', tone: 'light', coverFormat: 'regular', headline: 'Kept', seed: 42 })
+    expect(next).toMatchObject({ ...stylePresets.headline, column: 'medium', style: 'headline', tone: 'light', coverFormat: 'regular', headline: 'Kept', seed: 42 })
     const cut: GeneratorSettings = { ...defaults, mode: 'torn', align: 'right', perLine: true, column: 'wide' }
     expect(applyLocks(cut, POST_LOOK, false)).toMatchObject({ mode: 'torn', align: 'left', perLine: false, column: 'wide' })
   })
@@ -52,6 +52,20 @@ describe('locked choices', () => {
     expect(applyLocks(post, VIDEO_LOOKS.feature, false)).toMatchObject({ style: 'feature', tone: 'light', perLine: false, align: 'left' })
     const report = applyLocks(post, VIDEO_LOOKS.report, false)
     expect(applyLocks(report, POST_LOOK, false)).toMatchObject({ tone: 'light', mode: 'torn' })
+  })
+
+  it('switches off the narrow column, and moves covers saved in it to the medium one', () => {
+    expect(isBarred('column', 'narrow', false)).toBe(true)
+    expect(isBarred('column', 'medium', false)).toBe(false)
+    expect(isBarred('column', 'wide', false)).toBe(false)
+    expect(isBarred('column', 'narrow', true)).toBe(false)
+    for (const look of [POST_LOOK, ...Object.values(VIDEO_LOOKS)]) {
+      expect(look.treatment.column).toBe('medium')
+      expect(applyLocks({ ...defaults, style: look.style, column: 'narrow' }, look, false).column).toBe('medium')
+      // A wider column that was chosen is kept.
+      expect(applyLocks({ ...defaults, style: look.style, column: 'wide' }, look, false).column).toBe('wide')
+    }
+    expect(applyLocks({ ...defaults, column: 'narrow' }, POST_LOOK, true).column).toBe('narrow')
   })
 
   it('leaves everything alone when unlocked', () => {

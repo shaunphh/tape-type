@@ -47,7 +47,7 @@ import {
 } from './furniture'
 import { buildShape, nextSeed } from './geometry'
 import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type HeadlineLayout, type Measure } from './layout'
-import { LINE_HEIGHT, applyLocks, isLocked, lockedLineGap, unlocked } from './locks'
+import { LINE_HEIGHT, applyLocks, isBarred, isLocked, lockedLineGap, unlocked } from './locks'
 import { measureInk } from './metrics'
 import { CENTRED, MAX_ZOOM, dragPhoto, photoRect, photoSlack, visiblePart, type PhotoView } from './photo'
 import {
@@ -1154,7 +1154,7 @@ function App() {
                   if (entry) setPosition({ x: anchorX(settings.align), y: entry.y })
                 }}
               />
-              <Segmented label="Column" value={series ? null : settings.column} options={columnOptions} disabled={series} onChange={(column) => update('column', column)} />
+              <Segmented label="Column" value={series ? null : settings.column} options={columnOptions} disabled={series} locked={(column) => isBarred('column', column, locksOff)} onChange={(column) => update('column', column)} />
               <Segmented label="Format" value={settings.coverFormat} options={formatOptions} locked={(format) => isLocked('coverFormat', format, look, locksOff)} onChange={(format) => update('coverFormat', format)} />
               {!series && (
                 <>

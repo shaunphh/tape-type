@@ -36,13 +36,16 @@ export interface Look {
   position: Position
 }
 
+// The narrow column is switched off for now, so every look starts in the medium one.
+const house: Treatment = { ...stylePresets.headline, column: 'medium' }
+
 /** Posts: black words on a light block of tape, left aligned. */
 export const POST_LOOK: Look = {
   label: 'Post',
   description: 'Light tape · black words',
   style: 'headline',
   coverFormat: 'regular',
-  treatment: stylePresets.headline,
+  treatment: house,
   eyebrow: 'Breaking',
   position: { x: 0, y: 50 },
 }
@@ -54,7 +57,7 @@ export const VIDEO_LOOKS: Record<VideoType, Look> = {
     description: 'Yellow tape · bottom left',
     style: 'headline',
     coverFormat: 'regular',
-    treatment: { ...stylePresets.headline, tone: 'yellow' },
+    treatment: { ...house, tone: 'yellow' },
     tag: { tape: BRAND.dark, text: BRAND.light },
     eyebrow: 'Quick watch',
     position: { x: 0, y: 100 },
@@ -64,7 +67,7 @@ export const VIDEO_LOOKS: Record<VideoType, Look> = {
     description: 'Dark tape · top left',
     style: 'headline',
     coverFormat: 'regular',
-    treatment: { ...stylePresets.headline, tone: 'dark' },
+    treatment: { ...house, tone: 'dark' },
     tag: { tape: BRAND.light, text: BRAND.dark },
     eyebrow: 'Quick guide',
     position: { x: 0, y: 0 },
@@ -74,7 +77,7 @@ export const VIDEO_LOOKS: Record<VideoType, Look> = {
     description: 'Capitals · light tape',
     style: 'feature',
     coverFormat: 'regular',
-    treatment: { ...stylePresets.headline, column: 'medium' },
+    treatment: house,
     eyebrow: null,
     position: { x: 0, y: 50 },
   },

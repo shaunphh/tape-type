@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BRAND, getPlacement, type Layer } from './artwork'
-import { ARROW_WIDTH, LOGO_WIDTH, buildFurniture, furnitureBoxes, furnitureObstacles, lightnessOf, pickMarkColour } from './furniture'
+import { ARROW_WIDTH, LOGO_WIDTH, READS_FROM, buildFurniture, contrast, furnitureBoxes, furnitureObstacles, luminanceOf, settleColour, type ColourChoice } from './furniture'
 import { buildShape } from './geometry'
 import { ARTBOARD_HEIGHT, ARTBOARD_WIDTH, SAFE_MARGIN, defaults } from './settings'
 
@@ -96,35 +96,70 @@ describe('headline and marks', () => {
 })
 
 describe('mark colour', () => {
-  const ground = (red: number, green: number, blue: number, darken = 0.15) => [lightnessOf(red, green, blue, darken)]
+  const ground = (red: number, green: number, blue: number, darken = 0.15) => [luminanceOf(red, green, blue, darken)]
+  const settled = (samples: number[], choice: ColourChoice = 'auto', free = false) => settleColour(choice, samples, free)
+  const marks = { yellow: luminanceOf(255, 239, 58), light: luminanceOf(240, 240, 240), dark: luminanceOf(16, 16, 16) }
 
-  it('measures lightness from black to white, darker under the photo’s black', () => {
-    expect(lightnessOf(0, 0, 0)).toBeCloseTo(0, 5)
-    expect(lightnessOf(255, 255, 255)).toBeCloseTo(100, 1)
-    expect(lightnessOf(119, 119, 119)).toBeCloseTo(50, 0)
-    expect(lightnessOf(200, 200, 200, 0.15)).toBeLessThan(lightnessOf(200, 200, 200))
+  it('measures contrast from none to black on white, the same either way up', () => {
+    expect(contrast(luminanceOf(0, 0, 0), luminanceOf(255, 255, 255))).toBeCloseTo(106, 0)
+    expect(contrast(luminanceOf(255, 255, 255), luminanceOf(0, 0, 0))).toBeCloseTo(108, 0)
+    expect(contrast(marks.yellow, marks.yellow)).toBe(0)
+    expect(contrast(marks.light, marks.yellow)).toBe(0) // too close to tell apart
+    expect(luminanceOf(200, 200, 200, 0.15)).toBeLessThan(luminanceOf(200, 200, 200))
   })
 
-  it('is yellow on dark ground, light on mid tones and dark on bright ground', () => {
-    expect(pickMarkColour(ground(16, 16, 16, 0))).toBe('yellow') // the Dark background
-    expect(pickMarkColour(ground(40, 24, 20))).toBe('yellow') // a dim interior
-    expect(pickMarkColour(ground(160, 82, 45))).toBe('yellow') // red brick
-    expect(pickMarkColour(ground(74, 144, 217))).toBe('light') // blue sky, as on the mock-up
-    expect(pickMarkColour(ground(138, 138, 138))).toBe('light') // grey stone
-    expect(pickMarkColour(ground(200, 212, 224))).toBe('dark') // overcast sky
-    expect(pickMarkColour(ground(255, 239, 58, 0))).toBe('dark') // the Yellow background
-    expect(pickMarkColour(ground(255, 255, 255))).toBe('dark')
+  it('agrees with the eye that light marks hold up on a blue sky', () => {
+    const sky = luminanceOf(74, 144, 217)
+    expect(contrast(marks.light, sky)).toBeGreaterThan(contrast(marks.dark, sky))
+    expect(contrast(marks.yellow, sky)).toBeGreaterThan(READS_FROM)
+  })
+
+  it('keeps marks yellow wherever yellow reads, with nothing else to choose', () => {
+    const reads = [
+      ground(16, 16, 16, 0), // the Dark background
+      ground(40, 24, 20), // a dim interior
+      ground(160, 82, 45), // red brick
+      ground(74, 144, 217), // blue sky
+      ground(138, 138, 138), // grey stone
+    ]
+    for (const samples of reads) {
+      expect(settled(samples)).toEqual({ colour: 'yellow', allowed: ['yellow'], yellowReads: true, reads: true })
+      expect(settled(samples, 'dark').colour).toBe('yellow')
+    }
+  })
+
+  it('turns dark where the ground is too bright for yellow', () => {
+    for (const samples of [ground(200, 212, 224), ground(255, 255, 255), ground(255, 239, 58, 0)]) {
+      expect(settled(samples)).toEqual({ colour: 'dark', allowed: ['dark'], yellowReads: false, reads: true })
+      // Light is no better than yellow there, so it can't be chosen.
+      expect(settled(samples, 'light').colour).toBe('dark')
+    }
   })
 
   it('goes by most of the ground, not a bright or dark corner of it', () => {
-    const mostlyDark = [...Array(80).fill(15), ...Array(20).fill(90)]
-    const mostlyBright = [...Array(20).fill(15), ...Array(80).fill(90)]
-    expect(pickMarkColour(mostlyDark)).toBe('yellow')
-    expect(pickMarkColour(mostlyBright)).toBe('dark')
-    expect(['light', 'dark']).toContain(pickMarkColour([...Array(50).fill(15), ...Array(50).fill(90)]))
+    const [dim] = ground(40, 24, 20)
+    const [bright] = ground(255, 255, 255)
+    expect(settled([...Array(80).fill(dim), ...Array(20).fill(bright)]).colour).toBe('yellow')
+    expect(settled([...Array(20).fill(dim), ...Array(80).fill(bright)]).colour).toBe('dark')
   })
 
-  it('is yellow when there is nothing behind the mark to go on', () => {
-    expect(pickMarkColour([])).toBe('yellow')
+  it('opens every colour, to be picked by eye, where nothing reads', () => {
+    const [dim] = ground(40, 24, 20)
+    const [bright] = ground(255, 255, 255)
+    const split = [...Array(60).fill(dim), ...Array(40).fill(bright)]
+    expect(settled(split)).toEqual({ colour: 'yellow', allowed: ['yellow', 'light', 'dark'], yellowReads: false, reads: false })
+    expect(settled(split, 'light').colour).toBe('light')
+    expect(settled(split, 'dark').colour).toBe('dark')
+  })
+
+  it('is yellow when there is nothing behind the mark to check', () => {
+    expect(settled([])).toEqual({ colour: 'yellow', allowed: ['yellow'], yellowReads: true, reads: true })
+  })
+
+  it('lets any colour be set once the locks are lifted, and says when it is hard to read', () => {
+    const bright = ground(255, 255, 255)
+    expect(settled(bright, 'auto', true)).toMatchObject({ colour: 'dark', allowed: ['yellow', 'light', 'dark'], reads: true })
+    expect(settled(bright, 'yellow', true)).toMatchObject({ colour: 'yellow', reads: false })
+    expect(settled(ground(40, 24, 20), 'light', true)).toMatchObject({ colour: 'light', reads: true })
   })
 })

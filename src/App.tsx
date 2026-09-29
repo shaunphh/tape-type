@@ -37,12 +37,13 @@ import {
   buildFurniture,
   furnitureBoxes,
   furnitureObstacles,
-  lightnessOf,
-  pickMarkColour,
+  luminanceOf,
+  settleColour,
   type Box,
   type ColourChoice,
   type LogoSide,
   type MarkColour,
+  type Ruling,
 } from './furniture'
 import { buildShape, nextSeed } from './geometry'
 import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type HeadlineLayout, type Measure } from './layout'
@@ -94,12 +95,13 @@ const logoOptions: { value: LogoSide; label: string }[] = [
   { value: 'left', label: 'Left' },
   { value: 'right', label: 'Right' },
 ]
-const colourOptions: { value: ColourChoice; label: string }[] = [
-  { value: 'auto', label: 'Auto' },
+const colourOptions: { value: MarkColour; label: string }[] = [
   { value: 'yellow', label: 'Yellow' },
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
 ]
+// With the locks lifted a colour can be forced, so there is an Auto to go back to.
+const freeColourOptions: { value: ColourChoice; label: string }[] = [{ value: 'auto', label: 'Auto' }, ...colourOptions]
 const LOCKED_NOTE = 'Switched off for now'
 
 const samples = [
@@ -305,7 +307,7 @@ async function cropPhoto(photo: Photo, view: PhotoView) {
 const SAMPLE = { width: 24, height: 12 }
 let sampler: CanvasRenderingContext2D | null | undefined
 
-/** How light the photo is under a mark, as the cover shows it: one L* value per sample, for picking the mark's colour. */
+/** How bright the photo is under a mark, as the cover shows it: one luminance per sample, for checking the mark reads. */
 function photoGround(photo: Photo, view: PhotoView, box: Box, darken: number) {
   if (sampler === undefined) {
     const canvas = document.createElement('canvas')
@@ -319,14 +321,27 @@ function photoGround(photo: Photo, view: PhotoView, box: Box, darken: number) {
     sampler.drawImage(photo.image, (box.x - rect.x) / rect.scale, (box.y - rect.y) / rect.scale, box.width / rect.scale, box.height / rect.scale, 0, 0, SAMPLE.width, SAMPLE.height)
     const { data } = sampler.getImageData(0, 0, SAMPLE.width, SAMPLE.height)
     const ground: number[] = []
-    for (let index = 0; index < data.length; index += 4) ground.push(lightnessOf(data[index], data[index + 1], data[index + 2], darken))
+    for (let index = 0; index < data.length; index += 4) ground.push(luminanceOf(data[index], data[index + 1], data[index + 2], darken))
     return ground
   } catch {
     return []
   }
 }
 
-const fillLightness = (fill: string) => lightnessOf(parseInt(fill.slice(1, 3), 16), parseInt(fill.slice(3, 5), 16), parseInt(fill.slice(5, 7), 16))
+const fillLuminance = (fill: string) => luminanceOf(parseInt(fill.slice(1, 3), 16), parseInt(fill.slice(3, 5), 16), parseInt(fill.slice(5, 7), 16))
+
+/** A few words on how a mark's colour was settled, shown beside its control. */
+function colourNote(ruling: Ruling, choice: ColourChoice, free: boolean) {
+  if (!ruling.reads) return free && choice !== 'auto' ? 'Hard to read here' : 'Nothing reads well here'
+  if (free) return choice === 'auto' ? `Picked ${ruling.colour}` : undefined
+  return ruling.yellowReads ? 'Yellow reads here' : 'Yellow is hard to read here'
+}
+
+/** Why a colour can't be chosen for a mark, or false when it can. */
+function colourLock(ruling: Ruling, colour: MarkColour) {
+  if (ruling.allowed.includes(colour)) return false
+  return ruling.yellowReads ? 'Yellow reads here, so the mark stays yellow' : 'Too little contrast with what is behind it'
+}
 
 function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = false, format, onChange }: {
   label: string
@@ -416,8 +431,8 @@ function Segmented<T extends string>({ label, note, value, options, disabled = f
   value: T | null
   options: { value: T; label: string }[]
   disabled?: boolean
-  /** Options that are switched off for now: greyed out, but still on show. */
-  locked?: (value: T) => boolean
+  /** Options that are switched off: greyed out, but still on show. A string says why. */
+  locked?: (value: T) => boolean | string
   onChange: (value: T) => void
 }) {
   return (
@@ -426,7 +441,7 @@ function Segmented<T extends string>({ label, note, value, options, disabled = f
       <div className="piece-toggle compact" role="group" aria-label={label} style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
         {options.map((option) => {
           const off = locked?.(option.value) ?? false
-          return <button key={option.value} aria-pressed={value === option.value} className={value === option.value ? 'active' : ''} disabled={disabled || off} title={off ? LOCKED_NOTE : undefined} onClick={() => onChange(option.value)}>{option.label}</button>
+          return <button key={option.value} aria-pressed={value === option.value} className={value === option.value ? 'active' : ''} disabled={disabled || Boolean(off)} title={off ? (typeof off === 'string' ? off : LOCKED_NOTE) : undefined} onClick={() => onChange(option.value)}>{option.label}</button>
         })}
       </div>
     </div>
@@ -505,19 +520,16 @@ function App() {
   const darken = cover.darken ? PHOTO_DARKEN : 0
   const markBoxes = useMemo(() => furnitureBoxes({ logo: cover.logo, arrow: cover.arrow }), [cover.logo, cover.arrow])
   const obstacles = useMemo(() => furnitureObstacles({ logo: cover.logo, arrow: cover.arrow }), [cover.logo, cover.arrow])
-  // On Auto, each mark takes the colour that reads on what is behind it, so moving the photo can change it.
-  const markColours = useMemo(() => {
+  // Each mark is checked against what is behind it, so moving the photo can change its colour.
+  const rulings = useMemo(() => {
     const flat = BACKGROUND_FILLS[previewBackground]
-    const settle = (choice: ColourChoice, box?: Box): MarkColour => {
-      if (choice !== 'auto') return choice
-      if (!box) return 'yellow'
-      return pickMarkColour(shownPhoto ? photoGround(shownPhoto, photoView, box, darken) : flat ? [fillLightness(flat)] : [])
-    }
+    const settle = (choice: ColourChoice, box?: Box) =>
+      settleColour(choice, !box ? [] : shownPhoto ? photoGround(shownPhoto, photoView, box, darken) : flat ? [fillLuminance(flat)] : [], locksOff)
     return { logo: settle(cover.logoColour, markBoxes.logo), arrow: settle(cover.arrowColour, markBoxes.arrow) }
-  }, [cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, photoView, darken, previewBackground])
+  }, [cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, photoView, darken, previewBackground, locksOff])
   const furniture = useMemo(
-    () => buildFurniture({ logo: cover.logo, arrow: cover.arrow }, { logo: markColours.logo, arrow: markColours.arrow }),
-    [cover.logo, cover.arrow, markColours.logo, markColours.arrow],
+    () => buildFurniture({ logo: cover.logo, arrow: cover.arrow }, { logo: rulings.logo.colour, arrow: rulings.arrow.colour }),
+    [cover.logo, cover.arrow, rulings.logo.colour, rulings.arrow.colour],
   )
   // Rotation or a wide eyebrow can make the lettering bigger than the safe area even when every line fits its column.
   const lettersTooBig = range.x.excess > 4 || range.y.excess > 4
@@ -850,7 +862,7 @@ function App() {
     photo: !photo
       ? 'No photo yet'
       : [shownPhoto ? (photoMoved ? `Zoom ${Math.round(photoView.zoom * 100)}%` : 'Centred') : 'Hidden', cover.darken ? 'Darkened' : 'As shot'].join(' · '),
-    marks: [cover.logo === 'off' ? 'No logo' : `Logo ${cover.logo}, ${markColours.logo}`, cover.arrow ? `Arrow, ${markColours.arrow}` : 'No arrow'].join(' · '),
+    marks: [cover.logo === 'off' ? 'No logo' : `Logo ${cover.logo}, ${rulings.logo.colour}`, cover.arrow ? `Arrow, ${rulings.arrow.colour}` : 'No arrow'].join(' · '),
     style: `${isFeature ? 'Feature' : 'Headline'} · Barlow ${isFeature ? 'Black' : 'Bold'}`,
     tape: noTape ? 'No tape' : `${toneLabel} · ${settings.perLine ? 'Strips' : 'Block'} · ${modeLabel}`,
     layout: [
@@ -982,12 +994,13 @@ function App() {
 
           <Panel id="marks" title="Logo & arrow" summary={summaries.marks} open={panels.marks} onToggle={togglePanel}>
             <Segmented label="Logo" note="Top corner" value={cover.logo} options={logoOptions} onChange={(logo) => updateCover('logo', logo)} />
-            <Segmented
+            <Segmented<ColourChoice>
               label="Logo colour"
-              note={cover.logo !== 'off' && cover.logoColour === 'auto' ? `Picked ${markColours.logo}` : undefined}
-              value={cover.logoColour}
-              options={colourOptions}
+              note={cover.logo !== 'off' ? colourNote(rulings.logo, cover.logoColour, locksOff) : undefined}
+              value={locksOff ? cover.logoColour : rulings.logo.colour}
+              options={locksOff ? freeColourOptions : colourOptions}
               disabled={cover.logo === 'off'}
+              locked={(colour) => colour !== 'auto' && colourLock(rulings.logo, colour)}
               onChange={(colour) => updateCover('logoColour', colour)}
             />
             <label className="toggle-row spread">
@@ -995,12 +1008,13 @@ function App() {
               <input type="checkbox" checked={cover.arrow} onChange={(event) => updateCover('arrow', event.target.checked)} />
               <span className="switch" />
             </label>
-            <Segmented
+            <Segmented<ColourChoice>
               label="Arrow colour"
-              note={cover.arrow && cover.arrowColour === 'auto' ? `Picked ${markColours.arrow}` : undefined}
-              value={cover.arrowColour}
-              options={colourOptions}
+              note={cover.arrow ? colourNote(rulings.arrow, cover.arrowColour, locksOff) : undefined}
+              value={locksOff ? cover.arrowColour : rulings.arrow.colour}
+              options={locksOff ? freeColourOptions : colourOptions}
               disabled={!cover.arrow}
+              locked={(colour) => colour !== 'auto' && colourLock(rulings.arrow, colour)}
               onChange={(colour) => updateCover('arrowColour', colour)}
             />
           </Panel>

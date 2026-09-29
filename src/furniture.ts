@@ -89,38 +89,76 @@ export function furnitureObstacles(furniture: Pick<Furniture, 'logo' | 'arrow'>)
   }] : []))
 }
 
-/** How light an sRGB colour looks (CIE L*, 0 black to 100 white) once `darken` of black is laid over it. */
-export function lightnessOf(red: number, green: number, blue: number, darken = 0) {
-  const linear = (channel: number) => {
-    const value = channel * (1 - darken) / 255
-    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
-  }
-  const luminance = 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
-  return luminance > 0.008856 ? 116 * Math.cbrt(luminance) - 16 : 903.3 * luminance
+/** How bright an sRGB colour is on screen (0 black to 1 white) once `darken` of black is laid over it. */
+export function luminanceOf(red: number, green: number, blue: number, darken = 0) {
+  const channel = (value: number) => (value * (1 - darken) / 255) ** 2.4
+  const luminance = 0.2126729 * channel(red) + 0.7151522 * channel(green) + 0.072175 * channel(blue)
+  // Near-black is lifted a little: neither screens nor eyes tell the darkest tones apart.
+  return luminance < 0.022 ? luminance + (0.022 - luminance) ** 1.414 : luminance
 }
 
-// Yellow is the brand's first choice, and is kept for dark ground, where it is strongest. Mid
-// tones (a blue sky, grey stone) take the light mark, as on the mock-up. Bright ground takes the dark one.
-const YELLOW_UP_TO = 42
-const LIGHT_UP_TO = 62
-const DARK_FROM = 50
-/** The share of the ground under a mark that has to suit a colour for it to be picked. */
-const ENOUGH = 0.75
+const fillLuminance = (fill: string) => luminanceOf(parseInt(fill.slice(1, 3), 16), parseInt(fill.slice(3, 5), 16), parseInt(fill.slice(5, 7), 16))
 
 /**
- * Picks a mark's colour from how light the ground under it is (one L* value per sample of that
- * ground): the first of yellow, light and dark that suits enough of it. With nothing to go on
- * (a see-through background) it is yellow.
+ * How strongly a mark stands out from the ground behind it, from 0 (not at all) to about 106
+ * (black on white), both given as luminance. This is the perceptual contrast measure drafted for
+ * the next accessibility guidelines (APCA). Unlike the older contrast ratio it agrees with the
+ * eye that light marks hold up on mid tones such as a blue sky.
  */
-export function pickMarkColour(ground: number[]): MarkColour {
-  if (!ground.length) return 'yellow'
-  const share = (suits: (lightness: number) => boolean) => ground.filter(suits).length / ground.length
-  const shares: Record<MarkColour, number> = {
-    yellow: share((lightness) => lightness <= YELLOW_UP_TO),
-    light: share((lightness) => lightness <= LIGHT_UP_TO),
-    dark: share((lightness) => lightness >= DARK_FROM),
+export function contrast(mark: number, ground: number) {
+  if (Math.abs(ground - mark) < 0.0005) return 0
+  const raw = ground > mark ? (ground ** 0.56 - mark ** 0.57) * 1.14 : (ground ** 0.65 - mark ** 0.62) * 1.14
+  return Math.abs(raw) < 0.1 ? 0 : (Math.abs(raw) - 0.027) * 100
+}
+
+/** The contrast a mark needs to read: the guideline figure for large, heavy lettering is 45. */
+export const READS_FROM = 50
+/** The share of the ground under a mark that a colour has to read on. */
+const ENOUGH = 0.75
+
+const COLOURS: readonly MarkColour[] = ['yellow', 'light', 'dark']
+const FALLBACKS: readonly MarkColour[] = ['light', 'dark']
+const MARK_LUMINANCE = Object.fromEntries(COLOURS.map((colour) => [colour, fillLuminance(MARK_FILLS[colour])])) as Record<MarkColour, number>
+
+/** What was settled for a mark's colour, and what may be chosen instead. */
+export interface Ruling {
+  /** The colour the mark is drawn in. */
+  colour: MarkColour
+  /** The colours that can be chosen for it on this ground. */
+  allowed: MarkColour[]
+  /** Whether the brand's yellow reads on this ground. */
+  yellowReads: boolean
+  /** Whether the colour in use reads on this ground. */
+  reads: boolean
+}
+
+/**
+ * Settles a mark's colour from the ground under it (one luminance per sample, as the cover shows
+ * it). Marks are yellow wherever yellow reads. Where it doesn't, the mark takes the colour that
+ * does read there; where nothing reads (ground that is part dark, part bright) it takes whatever
+ * reads on most of it, and any colour can be chosen by eye instead. `free` lifts all that: any
+ * colour can be set, and Auto follows the same rule. With nothing behind the mark to check (a
+ * see-through background) it is yellow.
+ */
+export function settleColour(choice: ColourChoice, ground: number[], free = false): Ruling {
+  const measure = (colour: MarkColour) => {
+    const values = ground.map((sample) => contrast(MARK_LUMINANCE[colour], sample))
+    return {
+      share: values.length ? values.filter((value) => value >= READS_FROM).length / values.length : 1,
+      strength: values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0,
+    }
   }
-  const suited = (['yellow', 'light', 'dark'] as const).find((colour) => shares[colour] >= ENOUGH)
-  // Ground that is part dark and part bright suits nothing well: take whichever covers more of it.
-  return suited ?? (shares.dark > shares.light ? 'dark' : 'light')
+  const measured = { yellow: measure('yellow'), light: measure('light'), dark: measure('dark') }
+  const reads = (colour: MarkColour) => measured[colour].share >= ENOUGH
+  // Ties go to the colour listed first, so yellow is kept whenever it does as well as another.
+  const most = (colours: readonly MarkColour[], by: 'share' | 'strength') =>
+    colours.reduce((held, colour) => (measured[colour][by] > measured[held][by] ? colour : held))
+  const open = FALLBACKS.filter(reads)
+  const automatic = reads('yellow') ? 'yellow' : open.length ? most(open, 'strength') : most(COLOURS, 'share')
+  const ruling = (colour: MarkColour, allowed: MarkColour[]): Ruling => ({ colour, allowed, yellowReads: reads('yellow'), reads: reads(colour) })
+
+  if (free) return ruling(choice === 'auto' ? automatic : choice, [...COLOURS])
+  if (reads('yellow')) return ruling('yellow', ['yellow'])
+  const allowed = open.length ? open : [...COLOURS]
+  return ruling(choice !== 'auto' && allowed.includes(choice) ? choice : automatic, allowed)
 }

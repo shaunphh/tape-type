@@ -46,10 +46,12 @@ describe('headline layout', () => {
     }
   })
 
-  it('starts features at full size in Black and only shrinks them to fit', () => {
+  it('starts features at full size, in the same Bold as headlines, and only shrinks them to fit', () => {
     const short = layoutHeadline(input({ style: 'feature', text: 'THE BIG WHEEL', column: 'wide' }), measure)
     expect(short.fontSize).toBe(90)
     expect(short.weight).toBe(FEATURE_WEIGHT)
+    expect(FEATURE_WEIGHT).toBe(HEADLINE_WEIGHT)
+    expect(HEADLINE_WEIGHT).toBe(700)
     // Seven lines at 90px (20 characters a line), so it has to come down to fit six.
     const text = 'ONE OF DUBLIN’S BEST-KNOWN INDEPENDENT CINEMAS HAS ANNOUNCED IT’S CLOSING AFTER THIRTY YEARS OF LATE SHOWS AND DOUBLE BILLS'
     const long = layoutHeadline(input({ style: 'feature', column: 'wide', text }), measure)

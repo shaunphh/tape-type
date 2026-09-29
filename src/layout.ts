@@ -4,10 +4,10 @@ import { TEXT_AREA_WIDTH, columnWidth } from './settings'
 import { startsLowercase } from './text'
 import type { ColumnWidth, CoverFormat, CoverStyle, EyebrowMetrics } from './types'
 
+// Every cover is set in Barlow Bold: one weight across posts, videos and both styles. (The
+// published feature covers measured as Black: stems 0.27 of the cap height, where Bold is 0.20.)
 export const HEADLINE_WEIGHT = 700
-// Measured from the published feature covers: their stems are 0.27 of the cap height, which is
-// Barlow Black (Bold is 0.20, ExtraBold 0.24). The headline covers measure as Bold.
-export const FEATURE_WEIGHT = 900
+export const FEATURE_WEIGHT = 700
 export const EYEBROW_WEIGHT = 700
 export const weightFor = (style: CoverStyle) => (style === 'feature' ? FEATURE_WEIGHT : HEADLINE_WEIGHT)
 

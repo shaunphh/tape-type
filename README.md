@@ -75,13 +75,13 @@ A video cover is one of three kinds, which set the text block:
 |---|---|---|---|
 | Quick report | Yellow tape, black words | "Quick watch", dark tag | Bottom left |
 | Presenter led | Dark tape, white words | "Quick guide", light tag | Top left |
-| Feature video | Capitals (Barlow Black) on light tape | None | Middle left |
+| Feature video | Capitals on light tape | None | Middle left |
 
 The tag's words can be changed or switched off, and the block can be dragged anywhere inside the lines. The kinds are set out in `src/formats.ts`.
 
 ### Locked choices
 
-For now the text block keeps to the look of what is being made. A post's is black words on a light block of tape, left aligned; each kind of video has its own (above). The other choices are greyed out rather than removed, so people can see what is coming: style, tape colour, Block or Strips, alignment and the Series format. The cut styles stay open, as do column, position, size and fine-tuning. Beyond the text block, one thing is held: the arrow takes the logo's colour. The photo, the logo and its colour are free.
+For now the text block keeps to the look of what is being made. A post's is black words on a light block of tape, left aligned; each kind of video has its own (above). The other choices are greyed out rather than removed, so people can see what is coming: style, tape colour, Block or Strips, alignment and the Series format. The line height is held at 0.94 of the type size, so the Line gap slider is greyed out too. The cut styles stay open, as do column, position, size, tape cling and rotation. Beyond the text block, one thing is held: the arrow takes the logo's colour. The photo, the logo and its colour are free.
 
 The settings that are held are listed in `src/locks.ts`; take one off the list to open it up. Settings saved before the locks went on, or under another look, are put into the one in use, keeping the words. Opening the tool with `?unlocked` at the end of the address lifts every lock.
 
@@ -90,7 +90,9 @@ The settings that are held are listed in `src/locks.ts`; take one off the list t
 Two house styles, each a preset that can be adjusted afterwards (**Reset style** puts it back):
 
 - **Headline**: Barlow Bold (700) in Title Case, left aligned, on one plain rectangle of tape, or on one strip per line stacked flush. Title case is applied automatically (short words such as "to", "the" and "of" stay lowercase and are moved to the end of a line rather than starting one, giving up a few pixels of size when that is what it takes); it only ever capitalises, so deliberate capitals like "iPhone" or "RTÉ" survive, and "3rd" or "1990s" stay as typed.
-- **Feature**: Barlow Black (900) in ALL CAPS on roomier strips with hand-torn ends, centred and slightly turned, with gaps between. The weight was measured from the published feature covers (stem 0.27 of cap height; Bold is 0.20).
+- **Feature**: Barlow Bold (700) in ALL CAPS on roomier strips with hand-torn ends, centred and slightly turned, with gaps between.
+
+Every cover is set in the one weight, Barlow Bold, whatever its style or kind. (The published feature covers measured as Black: stem 0.27 of cap height, where Bold is 0.20. Both weights are set in `src/layout.ts`.)
 
 Each style remembers how it was last set up during a session, so switching to Feature and back keeps your Headline choices.
 
@@ -132,4 +134,4 @@ The most recent controls are saved in `localStorage`, and stored values are chec
 
 Exports are blocked, with the reason and a suggested fix shown, while a headline is empty, doesn't fit, or its lettering (eyebrow and rotation included) is bigger than the safe area.
 
-SVG text stays editable and embeds the Barlow subsets it uses (latin, latin-ext, Vietnamese; Bold and Black), so it renders correctly in browsers and viewers without Barlow installed. Design tools that ignore embedded fonts (Figma, Illustrator) use their own Barlow instead; if a font file can't be fetched the app says so, and the PNG is always exact.
+SVG text stays editable and embeds the Barlow subsets it uses (latin, latin-ext, Vietnamese), so it renders correctly in browsers and viewers without Barlow installed. Design tools that ignore embedded fonts (Figma, Illustrator) use their own Barlow instead; if a font file can't be fetched the app says so, and the PNG is always exact.

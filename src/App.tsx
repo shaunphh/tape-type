@@ -47,7 +47,7 @@ import {
 } from './furniture'
 import { buildShape, nextSeed } from './geometry'
 import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type HeadlineLayout, type Measure } from './layout'
-import { applyLocks, isLocked, unlocked } from './locks'
+import { LINE_HEIGHT, applyLocks, isLocked, lockedLineGap, unlocked } from './locks'
 import { measureInk } from './metrics'
 import { CENTRED, MAX_ZOOM, dragPhoto, photoRect, photoSlack, visiblePart, type PhotoView } from './photo'
 import {
@@ -107,6 +107,7 @@ const colourOptions: { value: ColourChoice; label: string }[] = [
   { value: 'dark', label: 'Dark' },
 ]
 const LOCKED_NOTE = 'Switched off for now'
+const WEIGHT_NAMES: Record<number, string> = { 700: 'Bold', 800: 'ExtraBold', 900: 'Black' }
 
 const samples = [
   'What’s new in Dublin',
@@ -342,7 +343,7 @@ function colourNote(ruling: Ruling, choice: ColourChoice) {
 
 const TIED_NOTE = 'Takes the logo’s colour for now'
 
-function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = false, format, onChange }: {
+function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = false, title, format, onChange }: {
   label: string
   value: number
   min: number
@@ -350,13 +351,15 @@ function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = 
   step?: number
   suffix?: string
   disabled?: boolean
+  /** What hovering over the field says, such as why it is switched off. */
+  title?: string
   format?: (value: number) => string
   onChange: (value: number) => void
 }) {
   const progress = ((value - min) / (max - min)) * 100
   const shown = format ? format(value) : `${Math.round(value * 100) / 100}${suffix}`
   return (
-    <label className="range-field">
+    <label className="range-field" title={title}>
       <span className="field-heading"><span>{label}</span><output>{shown}</output></span>
       <input
         type="range"
@@ -505,7 +508,12 @@ function App() {
   const fileStem = cover.kind === 'video' ? 'tape-type-video-cover' : 'tape-type-instagram'
   const fonts = useFontStatus()
   const layout = useTextLayout(settings, fonts.version)
-  const layoutSettings = useMemo<GeneratorSettings>(() => ({ ...settings, fontSize: layout.fontSize }), [settings, layout.fontSize])
+  const layoutSettings = useMemo<GeneratorSettings>(() => ({
+    ...settings,
+    fontSize: layout.fontSize,
+    // Locked, the line height is fixed, whatever gap was saved.
+    lineGap: locksOff ? settings.lineGap : lockedLineGap(layout.fontSize, layout.ascent + layout.descent),
+  }), [settings, layout.fontSize, layout.ascent, layout.descent, locksOff])
   const shape = useMemo(() => buildShape(
     layoutSettings,
     layout.labels,
@@ -897,7 +905,7 @@ function App() {
       ? 'No photo yet'
       : [shownPhoto ? (photoMoved ? `Zoom ${Math.round(photoView.zoom * 100)}%` : 'Centred') : 'Hidden', cover.darken ? 'Darkened' : 'As shot'].join(' · '),
     marks: [cover.logo === 'off' ? 'No logo' : `Logo ${cover.logo}, ${rulings.logo.colour}`, cover.arrow ? `Arrow, ${rulings.arrow.colour}` : 'No arrow'].join(' · '),
-    style: `${isFeature ? 'Feature' : 'Headline'} · Barlow ${isFeature ? 'Black' : 'Bold'}`,
+    style: `${isFeature ? 'Feature' : 'Headline'} · Barlow ${WEIGHT_NAMES[layout.weight] ?? layout.weight}`,
     tape: noTape ? 'No tape' : `${toneLabel} · ${settings.perLine ? 'Strips' : 'Block'} · ${modeLabel}`,
     layout: [
       alignLabel,
@@ -905,7 +913,7 @@ function App() {
       series ? 'Series cover' : `${columnLabel} column`,
       series ? '172px' : settings.autoSize ? `Auto ${layout.fontSize}px` : `${layout.fontSize}px`,
     ].join(' · '),
-    tune: `Cling ${Math.round(settings.hugStrength * 100)}% · Gap ${settings.lineGap}px · Turn ${settings.rotationVariance.toFixed(1)}°`,
+    tune: `Cling ${Math.round(settings.hugStrength * 100)}% · ${locksOff ? `Gap ${settings.lineGap}px` : `Line height ${LINE_HEIGHT}`} · Turn ${settings.rotationVariance.toFixed(1)}°`,
   }
   const fitTone = blockedReason && !layout.empty ? 'error' : layout.caseWarning ? 'warning' : ''
   const exportBlocked = blockedReason ?? (fonts.loading ? 'Loading fonts…' : null)
@@ -1084,7 +1092,7 @@ function App() {
             </div>
             <div className="style-caption">
               <Lock size={12} aria-hidden="true" />
-              <span>Barlow {isFeature ? 'Black' : 'Bold'} {layout.weight} · {isFeature ? 'ALL CAPS' : settings.titleCase ? 'Title Case' : 'as typed'} · {series ? TEXT_AREA_WIDTH : columnWidth(settings.column)}px column</span>
+              <span>Barlow {WEIGHT_NAMES[layout.weight] ?? ''} {layout.weight} · {isFeature ? 'ALL CAPS' : settings.titleCase ? 'Title Case' : 'as typed'} · {series ? TEXT_AREA_WIDTH : columnWidth(settings.column)}px column</span>
               <button className="text-button" onClick={resetStyle} title="Put this style's tape, colour, cut and layout back to the house look">Reset style</button>
             </div>
           </Panel>
@@ -1164,7 +1172,9 @@ function App() {
           <Panel id="tune" title="Fine-tune" summary={summaries.tune} open={panels.tune} onToggle={togglePanel}>
             <div className="range-stack">
               <RangeField label="Tape cling" value={settings.hugStrength} min={0.82} max={1.16} step={0.01} disabled={noTape} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => update('hugStrength', value)} />
-              <RangeField label="Line gap" value={settings.lineGap} min={-8} max={20} suffix="px" onChange={(value) => update('lineGap', value)} />
+              {locksOff
+                ? <RangeField label="Line gap" value={settings.lineGap} min={-8} max={20} suffix="px" onChange={(value) => update('lineGap', value)} />
+                : <RangeField label="Line gap" value={Math.max(-8, Math.min(20, layoutSettings.lineGap))} min={-8} max={20} disabled title={`${LOCKED_NOTE}: lines are set ${LINE_HEIGHT} of the type size apart`} format={() => `Line height ${LINE_HEIGHT}`} onChange={() => undefined} />}
               <RangeField label="Rotation variance" value={settings.rotationVariance} min={0} max={2} step={0.1} disabled={!settings.perLine} format={(value) => `${value.toFixed(1)}°`} onChange={(value) => update('rotationVariance', value)} />
             </div>
           </Panel>

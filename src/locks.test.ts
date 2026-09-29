@@ -73,3 +73,24 @@ describe('cover options', () => {
     expect(sanitizeCover({})).toEqual(coverDefaults)
   })
 })
+
+describe('line height', () => {
+  it('sets lines 0.94 of the type size apart, whatever the letters measure', async () => {
+    const { LINE_HEIGHT, lockedLineGap } = await import('./locks')
+    const { buildShape } = await import('./geometry')
+    expect(LINE_HEIGHT).toBe(0.94)
+    const cases = [
+      { fontSize: 76, bounds: { ascent: 54, descent: 15 }, style: 'headline' as const },
+      { fontSize: 90, bounds: { ascent: 65, descent: 18 }, style: 'headline' as const },
+      // Capitals have no descenders, so their letters are shorter: the lines still sit 0.94 apart.
+      { fontSize: 88, bounds: { ascent: 62, descent: 2 }, style: 'feature' as const },
+    ]
+    for (const { fontSize, bounds, style } of cases) {
+      const lineGap = lockedLineGap(fontSize, bounds.ascent + bounds.descent)
+      const shape = buildShape({ ...defaults, style, fontSize, lineGap }, ['One Line', 'And Another', 'And a Third'], [300, 420, 380], [], bounds)
+      const baselines = shape.lines.map((line) => line.baseline)
+      expect(baselines[1] - baselines[0]).toBeCloseTo(fontSize * 0.94, 6)
+      expect(baselines[2] - baselines[1]).toBeCloseTo(fontSize * 0.94, 6)
+    }
+  })
+})

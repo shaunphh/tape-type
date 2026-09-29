@@ -17,10 +17,12 @@ import {
   BACKGROUND_FILLS,
   BRAND,
   FONT_FAMILY,
+  PHOTO_DARKEN,
   buildLayers,
   drawLayers,
   fontShorthand,
   getPlacement,
+  layerTransform,
   placementRange,
   svgMarkup,
   textRuns,
@@ -28,11 +30,16 @@ import {
   type Layer,
   type Position,
   type PreviewBackground,
+  type Reserve,
 } from './artwork'
+import { loadCover, saveCover, type CoverOptions } from './cover'
 import { embeddedFontCss, embeddedFontCssNow, preloadEmbeddedFonts } from './fonts'
+import { buildFurniture, furnitureReserve, type LogoSide } from './furniture'
 import { buildShape, nextSeed } from './geometry'
 import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type HeadlineLayout, type Measure } from './layout'
+import { applyLocks, isLocked, unlocked } from './locks'
 import { measureInk } from './metrics'
+import { CENTRED, MAX_ZOOM, dragPhoto, photoRect, photoSlack, visiblePart, type PhotoView } from './photo'
 import {
   ARTBOARD_HEIGHT,
   ARTBOARD_WIDTH,
@@ -73,6 +80,12 @@ const formatOptions: { value: GeneratorSettings['coverFormat']; label: string }[
   { value: 'regular', label: 'Regular' },
   { value: 'series', label: 'Series' },
 ]
+const logoOptions: { value: LogoSide; label: string }[] = [
+  { value: 'off', label: 'Off' },
+  { value: 'left', label: 'Left' },
+  { value: 'right', label: 'Right' },
+]
+const LOCKED_NOTE = 'Switched off for now'
 
 const samples = [
   'What’s new in Dublin',
@@ -94,6 +107,8 @@ const modes: { value: ShapeMode; label: string; description: string }[] = [
 
 // The largest export (PNG 3×): photos are kept at up to this size, and no larger.
 const EXPORT_COVER = { width: ARTBOARD_WIDTH * 3, height: ARTBOARD_HEIGHT * 3 }
+// Phones refuse a canvas much bigger than this, and the whole photo is kept so it can be repositioned.
+const MAX_PHOTO_PIXELS = 16_000_000
 const MAX_SEED = 4294967295
 const anchorX = (align: TextAlign) => align === 'left' ? 0 : align === 'center' ? 50 : 100
 const clampPercent = (value: number) => Math.max(0, Math.min(100, value))
@@ -201,32 +216,65 @@ function loadImage(src: string) {
   })
 }
 
+interface Photo {
+  url: string
+  image: HTMLImageElement
+  width: number
+  height: number
+}
+
+const toJpeg = (canvas: HTMLCanvasElement, quality: number) =>
+  new Promise<Blob>((resolve, reject) => canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('unreadable'))), 'image/jpeg', quality))
+
 /**
- * Decodes an uploaded photo and re-encodes the part the cover shows (the centred 4:5 crop every
- * output uses) as sRGB JPEG, at no more than the 3× export needs. The preview, PNG and SVG then
- * share the same pixels, and SVG exports stay a sensible size.
+ * Decodes an uploaded photo and re-encodes all of it as sRGB JPEG, so it can be moved and zoomed
+ * behind the cover. It is kept at no more than the 3× export needs with the photo at its widest,
+ * so the preview and every export draw from the same pixels.
  */
-async function preparePhoto(file: File) {
+async function preparePhoto(file: File): Promise<Photo> {
   const source = URL.createObjectURL(file)
+  const canvas = document.createElement('canvas')
   try {
-    const image = await loadImage(source)
-    const cover = Math.max(ARTBOARD_WIDTH / image.naturalWidth, ARTBOARD_HEIGHT / image.naturalHeight)
-    const cropWidth = ARTBOARD_WIDTH / cover
-    const cropHeight = ARTBOARD_HEIGHT / cover
-    const scale = Math.min(1, EXPORT_COVER.height / cropHeight)
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.max(1, Math.round(cropWidth * scale))
-    canvas.height = Math.max(1, Math.round(cropHeight * scale))
+    const original = await loadImage(source)
+    const cover = Math.max(ARTBOARD_WIDTH / original.naturalWidth, ARTBOARD_HEIGHT / original.naturalHeight)
+    const scale = Math.min(1, EXPORT_COVER.height * cover / ARTBOARD_HEIGHT, Math.sqrt(MAX_PHOTO_PIXELS / (original.naturalWidth * original.naturalHeight)))
+    canvas.width = Math.max(1, Math.round(original.naturalWidth * scale))
+    canvas.height = Math.max(1, Math.round(original.naturalHeight * scale))
     const context = canvas.getContext('2d')
     if (!context) throw new Error('unreadable')
     // JPEG has no transparency: see-through areas of a PNG sit on brand black.
     context.fillStyle = BRAND.dark
     context.fillRect(0, 0, canvas.width, canvas.height)
-    context.drawImage(image, (image.naturalWidth - cropWidth) / 2, (image.naturalHeight - cropHeight) / 2, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height)
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.88))
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(original, 0, 0, canvas.width, canvas.height)
+    const url = URL.createObjectURL(await toJpeg(canvas, 0.9))
+    try {
+      const image = await loadImage(url)
+      return { url, image, width: image.naturalWidth, height: image.naturalHeight }
+    } catch (error) {
+      URL.revokeObjectURL(url)
+      throw error
+    }
+  } finally {
     canvas.width = 0
     canvas.height = 0
-    if (!blob) throw new Error('unreadable')
+    URL.revokeObjectURL(source)
+  }
+}
+
+/** The part of the photo the cover shows, as a JPEG data URL for SVG exports (which stay a sensible size). */
+async function cropPhoto(photo: Photo, view: PhotoView) {
+  const part = visiblePart(photo.width, photo.height, view)
+  const scale = Math.min(1, EXPORT_COVER.height / part.height)
+  const canvas = document.createElement('canvas')
+  try {
+    canvas.width = Math.max(1, Math.round(part.width * scale))
+    canvas.height = Math.max(1, Math.round(part.height * scale))
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('unreadable')
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(photo.image, part.x, part.y, part.width, part.height, 0, 0, canvas.width, canvas.height)
+    const blob = await toJpeg(canvas, 0.88)
     return await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(String(reader.result))
@@ -234,7 +282,8 @@ async function preparePhoto(file: File) {
       reader.readAsDataURL(blob)
     })
   } finally {
-    URL.revokeObjectURL(source)
+    canvas.width = 0
+    canvas.height = 0
   }
 }
 
@@ -271,9 +320,9 @@ function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = 
 }
 
 const PANELS_KEY = 'tape-type-panels-v1'
-type PanelId = 'words' | 'style' | 'tape' | 'layout' | 'tune'
+type PanelId = 'words' | 'photo' | 'marks' | 'style' | 'tape' | 'layout' | 'tune'
 /** Which control groups start open: the everyday decisions, with layout and fine-tuning folded away. */
-const panelDefaults: Record<PanelId, boolean> = { words: true, style: true, tape: true, layout: false, tune: false }
+const panelDefaults: Record<PanelId, boolean> = { words: true, photo: true, marks: true, style: true, tape: true, layout: false, tune: false }
 
 function loadPanels(): Record<PanelId, boolean> {
   try {
@@ -319,40 +368,61 @@ function Panel({ id, title, summary, open, onToggle, children }: {
   )
 }
 
-function Segmented<T extends string>({ label, value, options, disabled = false, onChange }: {
+function Segmented<T extends string>({ label, value, options, disabled = false, locked, onChange }: {
   label: string
   value: T | null
   options: { value: T; label: string }[]
   disabled?: boolean
+  /** Options that are switched off for now: greyed out, but still on show. */
+  locked?: (value: T) => boolean
   onChange: (value: T) => void
 }) {
   return (
     <div className="position-field">
       <span>{label}</span>
       <div className="piece-toggle compact" role="group" aria-label={label} style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
-        {options.map((option) => (
-          <button key={option.value} aria-pressed={value === option.value} className={value === option.value ? 'active' : ''} disabled={disabled} onClick={() => onChange(option.value)}>{option.label}</button>
-        ))}
+        {options.map((option) => {
+          const off = locked?.(option.value) ?? false
+          return <button key={option.value} aria-pressed={value === option.value} className={value === option.value ? 'active' : ''} disabled={disabled || off} title={off ? LOCKED_NOTE : undefined} onClick={() => onChange(option.value)}>{option.label}</button>
+        })}
       </div>
     </div>
   )
 }
 
+/** The preview draws the same layers the exports do. */
+function LayerList({ layers }: { layers: Layer[] }) {
+  return (
+    <>
+      {layers.map((layer, index) => (layer.kind === 'path'
+        ? <path key={`path-${index}`} d={layer.d} fill={layer.fill} transform={layerTransform(layer)} />
+        : <text key={`text-${index}`} x={layer.x} y={layer.y} fill={layer.fill} fontFamily={FONT_FAMILY} fontWeight={layer.weight} fontSize={layer.size} transform={layerTransform(layer)}>{layer.text}</text>))}
+    </>
+  )
+}
+
 interface Drag {
   pointerId: number
+  /** What was picked up: the words, or the photo behind them. */
+  target: 'artwork' | 'photo'
   touch: boolean
   /** Touch drags start only once the finger clearly moves sideways; until then it may be a scroll. */
   active: boolean
   startX: number
   startY: number
   from: Position
+  fromView: PhotoView
   /** Artboard pixels per screen pixel. */
   scale: number
   span: { x: number; y: number }
 }
 
+/** How close to the words a press still picks them up, in artboard pixels. */
+const GRAB_MARGIN = 14
+
 function App() {
-  const [settings, setSettings] = useState<GeneratorSettings>(loadSettings)
+  const [settings, setSettings] = useState<GeneratorSettings>(() => applyLocks(loadSettings()))
+  const [cover, setCover] = useState<CoverOptions>(loadCover)
   const [history, setHistory] = useState<number[]>([settings.seed])
   const [historyIndex, setHistoryIndex] = useState(0)
   const [seedDraft, setSeedDraft] = useState<string | null>(null)
@@ -360,7 +430,8 @@ function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [previewBackground, setPreviewBackground] = useState<PreviewBackground>('charcoal')
-  const [photo, setPhoto] = useState<string | null>(null)
+  const [photo, setPhoto] = useState<Photo | null>(null)
+  const [photoView, setPhotoView] = useState<PhotoView>(CENTRED)
   const [position, setPosition] = useState<Position>({ x: anchorX(settings.align), y: 50 })
   const [sampleOpen, setSampleOpen] = useState(false)
   const [panels, setPanels] = useState<Record<PanelId, boolean>>(loadPanels)
@@ -368,6 +439,8 @@ function App() {
   const dragRef = useRef<Drag | null>(null)
   const noticeTimer = useRef<number | undefined>(undefined)
   const treatments = useRef<Partial<Record<CoverStyle, Treatment>>>({})
+  const cropRef = useRef<{ key: string; crop: Promise<string> } | null>(null)
+  const locksOff = useMemo(unlocked, [])
   const fonts = useFontStatus()
   const layout = useTextLayout(settings, fonts.version)
   const layoutSettings = useMemo<GeneratorSettings>(() => ({ ...settings, fontSize: layout.fontSize }), [settings, layout.fontSize])
@@ -384,19 +457,29 @@ function App() {
     [shape, settings.tone, previewBackground, layout.weight, layout.fontSize],
   )
   const runs = useMemo(() => textRuns(layers), [layers])
-  const range = useMemo(() => placementRange(shape), [shape])
+  const furniture = useMemo(
+    () => buildFurniture({ logo: cover.logo, swipe: cover.swipe }, previewBackground),
+    [cover.logo, cover.swipe, previewBackground],
+  )
+  const reserve = useMemo<Reserve>(() => furnitureReserve({ logo: cover.logo, swipe: cover.swipe }), [cover.logo, cover.swipe])
+  const range = useMemo(() => placementRange(shape, reserve), [shape, reserve])
+  const shownPhoto = previewBackground === 'photo' ? photo : null
+  const darken = cover.darken ? PHOTO_DARKEN : 0
   // Rotation or a wide eyebrow can make the lettering bigger than the safe area even when every line fits its column.
   const lettersTooBig = range.x.excess > 4 || range.y.excess > 4
   const blockedReason = layout.empty
     ? 'Type a headline to export.'
     : layout.overflow
       ? overflowMessage(layout, settings)
-      : lettersTooBig ? 'The lettering is bigger than the safe area. Try a narrower column, less rotation or a shorter eyebrow.' : null
+      : lettersTooBig ? `The lettering is bigger than the ${reserve.top || reserve.bottom ? 'room between the logo and the swipe prompt' : 'safe area'}. Try a narrower column, less rotation or a shorter eyebrow.` : null
   const exportDisabled = Boolean(blockedReason) || fonts.loading
 
   useEffect(() => { preloadEmbeddedFonts(runs) }, [runs])
   useEffect(() => { saveSettings(settings) }, [settings])
+  useEffect(() => { saveCover(cover) }, [cover])
   useEffect(() => { savePanels(panels) }, [panels])
+  // A replaced photo is let go; its address only has to last while it is on show.
+  useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url) }, [photo])
 
   const update = useCallback(<K extends keyof GeneratorSettings>(key: K, value: GeneratorSettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }))
@@ -406,8 +489,12 @@ function App() {
     setPanels((current) => (current[id] === open ? current : { ...current, [id]: open }))
   }, [])
 
+  const updateCover = useCallback(<K extends keyof CoverOptions>(key: K, value: CoverOptions[K]) => {
+    setCover((current) => ({ ...current, [key]: value }))
+  }, [])
+
   const chooseStyle = (style: CoverStyle) => {
-    if (style === settings.style) return
+    if (style === settings.style || isLocked('style', style, locksOff)) return
     // Each style remembers how it was last set up in this session; a style not used yet starts from its house look.
     treatments.current[settings.style] = pickTreatment(settings)
     const treatment = treatments.current[style] ?? stylePresets[style]
@@ -471,8 +558,20 @@ function App() {
     noticeTimer.current = window.setTimeout(() => setNotice(null), 7000)
   }
 
-  const svgFor = (artboard: boolean, fontCss: string) =>
-    svgMarkup(layers, shape, { artboard, background: previewBackground, photo, position, fontCss })
+  const svgFor = (artboard: boolean, fontCss: string, crop: string | null) =>
+    svgMarkup(layers, shape, { artboard, background: previewBackground, photo: crop, darken, position, fontCss, furniture, reserve })
+
+  /** The photo as the cover shows it, for SVG exports. Made once per photo position, when first asked for. */
+  const photoCrop = (): Promise<string | null> => {
+    if (!shownPhoto) return Promise.resolve(null)
+    const key = [shownPhoto.url, photoView.x, photoView.y, photoView.zoom].join('|')
+    if (cropRef.current?.key !== key) {
+      const crop = cropPhoto(shownPhoto, photoView)
+      cropRef.current = { key, crop }
+      crop.catch(() => { if (cropRef.current?.crop === crop) cropRef.current = null })
+    }
+    return cropRef.current.crop
+  }
 
   const copy = async (kind: 'svg' | 'seed') => {
     try {
@@ -480,13 +579,13 @@ function App() {
         await navigator.clipboard.writeText(String(settings.seed))
       } else {
         const ready = embeddedFontCssNow(runs)
-        if (ready !== null) {
-          await navigator.clipboard.writeText(svgFor(true, ready))
+        if (ready !== null && !shownPhoto) {
+          await navigator.clipboard.writeText(svgFor(true, ready, null))
         } else {
           // Safari only allows clipboard writes during the click, so it gets a promise of the text.
-          const text = embeddedFontCss(runs).then(({ css, missing }) => {
+          const text = Promise.all([embeddedFontCss(runs), photoCrop()]).then(([{ css, missing }, crop]) => {
             if (missing) flash('Barlow couldn’t be embedded (network error), so the copied SVG only matches where Barlow is installed.')
-            return new Blob([svgFor(true, css)], { type: 'text/plain' })
+            return new Blob([svgFor(true, css, crop)], { type: 'text/plain' })
           })
           if (typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
             await navigator.clipboard.write([new ClipboardItem({ 'text/plain': text })])
@@ -503,17 +602,20 @@ function App() {
   }
 
   const downloadSvg = async (artboard: boolean) => {
-    const build = (css: string) => svgFor(artboard, css)
-    const { css, missing } = await embeddedFontCss(runs)
-    if (missing) flash('Barlow couldn’t be embedded (network error), so this SVG only matches where Barlow is installed. The PNG is exact.')
-    downloadBlob(build(css), 'image/svg+xml', artboard ? 'tape-type-instagram.svg' : 'tape-cutout.svg')
+    try {
+      const [{ css, missing }, crop] = await Promise.all([embeddedFontCss(runs), artboard ? photoCrop() : null])
+      if (missing) flash('Barlow couldn’t be embedded (network error), so this SVG only matches where Barlow is installed. The PNG is exact.')
+      downloadBlob(svgFor(artboard, css, crop), 'image/svg+xml', artboard ? 'tape-type-instagram.svg' : 'tape-cutout.svg')
+    } catch {
+      flash('The photo couldn’t be added to the SVG. Try a PNG instead.')
+    }
   }
 
   const downloadPng = async (scale: 1 | 2 | 3) => {
     if (exporting) return
     setExporting(true)
     // Snapshot everything now, so edits made while the export runs cannot mix into this file.
-    const snapshot: { layers: Layer[]; shape: typeof shape; position: Position; background: PreviewBackground; photo: string | null } = { layers, shape, position, background: previewBackground, photo }
+    const snapshot = { layers, furniture, reserve, shape, position, background: previewBackground, photo: shownPhoto, view: photoView, darken }
     const canvas = document.createElement('canvas')
     try {
       const allText = snapshot.layers.map((layer) => layer.kind === 'text' ? layer.text : '').join(' ')
@@ -528,16 +630,17 @@ function App() {
       if (fill) {
         context.fillStyle = fill
         context.fillRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT)
-      } else if (snapshot.background === 'photo' && snapshot.photo) {
-        const image = await loadImage(snapshot.photo)
-        const imageScale = Math.max(ARTBOARD_WIDTH / image.naturalWidth, ARTBOARD_HEIGHT / image.naturalHeight)
-        const width = image.naturalWidth * imageScale
-        const height = image.naturalHeight * imageScale
-        context.drawImage(image, (ARTBOARD_WIDTH - width) / 2, (ARTBOARD_HEIGHT - height) / 2, width, height)
-        context.fillStyle = 'rgba(0,0,0,.12)'
-        context.fillRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT)
+      } else if (snapshot.photo) {
+        const rect = photoRect(snapshot.photo.width, snapshot.photo.height, snapshot.view)
+        context.imageSmoothingQuality = 'high'
+        context.drawImage(snapshot.photo.image, rect.x, rect.y, rect.width, rect.height)
+        if (snapshot.darken > 0) {
+          context.fillStyle = `rgba(0,0,0,${snapshot.darken})`
+          context.fillRect(0, 0, ARTBOARD_WIDTH, ARTBOARD_HEIGHT)
+        }
       }
-      const placement = getPlacement(snapshot.shape, snapshot.position)
+      drawLayers(context, snapshot.furniture)
+      const placement = getPlacement(snapshot.shape, snapshot.position, snapshot.reserve)
       context.translate(placement.x, placement.y)
       drawLayers(context, snapshot.layers)
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
@@ -559,6 +662,7 @@ function App() {
     if (!file) return
     try {
       setPhoto(await preparePhoto(file))
+      setPhotoView(CENTRED)
       setPreviewBackground('photo')
     } catch {
       flash('That file couldn’t be opened as an image. If it’s an iPhone HEIC photo, convert it to JPEG first.')
@@ -580,14 +684,24 @@ function App() {
   const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !previewRef.current) return
     const touch = event.pointerType === 'touch'
+    const stage = previewRef.current.getBoundingClientRect()
+    const scale = ARTBOARD_WIDTH / stage.width
+    // A press on the words moves the words; anywhere else on a photo moves the photo.
+    const x = (event.clientX - stage.left) * scale - placement.x
+    const y = (event.clientY - stage.top) * scale - placement.y
+    const { viewBox } = shape
+    const onWords = x >= viewBox.x - GRAB_MARGIN && x <= viewBox.x + viewBox.width + GRAB_MARGIN
+      && y >= viewBox.y - GRAB_MARGIN && y <= viewBox.y + viewBox.height + GRAB_MARGIN
     dragRef.current = {
       pointerId: event.pointerId,
+      target: shownPhoto && !onWords ? 'photo' : 'artwork',
       touch,
       active: !touch,
       startX: event.clientX,
       startY: event.clientY,
       from: position,
-      scale: ARTBOARD_WIDTH / previewRef.current.getBoundingClientRect().width,
+      fromView: photoView,
+      scale,
       span: spans(),
     }
     if (!touch) event.currentTarget.setPointerCapture(event.pointerId)
@@ -608,6 +722,11 @@ function App() {
       start.active = true
       event.currentTarget.setPointerCapture(event.pointerId)
     }
+    if (start.target === 'photo') {
+      // On touch, vertical swipes scroll the page: the Up – down slider moves the photo that way.
+      if (shownPhoto) setPhotoView(dragPhoto(shownPhoto.width, shownPhoto.height, start.fromView, dx * start.scale, start.touch ? 0 : dy * start.scale))
+      return
+    }
     setPosition({
       x: clampPercent(start.from.x + percentOf(dx * start.scale, start.span.x)),
       // On touch, vertical swipes scroll the page: height is set with Top, Middle and Bottom.
@@ -619,7 +738,10 @@ function App() {
 
   const cancelDrag = () => {
     // The browser took the gesture over (usually to scroll): undo anything it moved.
-    if (dragRef.current?.active) setPosition(dragRef.current.from)
+    if (dragRef.current?.active) {
+      if (dragRef.current.target === 'photo') setPhotoView(dragRef.current.fromView)
+      else setPosition(dragRef.current.from)
+    }
     dragRef.current = null
   }
 
@@ -636,7 +758,10 @@ function App() {
     }))
   }
 
-  const placement = getPlacement(shape, position)
+  const placement = getPlacement(shape, position, reserve)
+  const photoPlace = shownPhoto ? photoRect(shownPhoto.width, shownPhoto.height, photoView) : null
+  const slack = shownPhoto ? photoSlack(shownPhoto.width, shownPhoto.height, photoView) : { x: 0, y: 0 }
+  const photoMoved = photoView.x !== CENTRED.x || photoView.y !== CENTRED.y || photoView.zoom !== CENTRED.zoom
   const isFeature = settings.style === 'feature'
   const series = settings.coverFormat === 'series'
   const locked = settings.seedLocked
@@ -668,6 +793,10 @@ function App() {
   const eyebrowPreview = settings.eyebrowEnabled ? settings.eyebrow.trim() : ''
   const summaries: Record<PanelId, string> = {
     words: headlinePreview ? (eyebrowPreview ? `${eyebrowPreview} · ${headlinePreview}` : headlinePreview) : 'No headline yet',
+    photo: !photo
+      ? 'No photo yet'
+      : [shownPhoto ? (photoMoved ? `Zoom ${Math.round(photoView.zoom * 100)}%` : 'Centred') : 'Hidden', cover.darken ? 'Darkened' : 'As shot'].join(' · '),
+    marks: [cover.logo === 'off' ? 'No logo' : `Logo ${cover.logo}`, cover.swipe ? 'Swipe prompt' : 'No swipe prompt'].join(' · '),
     style: `${isFeature ? 'Feature' : 'Headline'} · Barlow ${isFeature ? 'Black' : 'Bold'}`,
     tape: noTape ? 'No tape' : `${toneLabel} · ${settings.perLine ? 'Strips' : 'Block'} · ${modeLabel}`,
     layout: [
@@ -772,14 +901,51 @@ function App() {
             </div>
           </Panel>
 
+          <Panel id="photo" title="Photo" summary={summaries.photo} open={panels.photo} onToggle={togglePanel}>
+            <div className="photo-actions">
+              <label className="panel-button upload-button" onClick={clickPhoto}>
+                <input type="file" accept="image/*" onChange={choosePhoto} />
+                {photo ? <ImageIcon size={14} aria-hidden="true" /> : <Upload size={14} aria-hidden="true" />}
+                {!photo ? 'Choose photo' : shownPhoto ? 'Replace photo' : 'Show photo'}
+              </label>
+              {shownPhoto && <button className="text-button underlined" disabled={!photoMoved} onClick={() => setPhotoView(CENTRED)}>Reset position</button>}
+            </div>
+            {shownPhoto ? (
+              <div className="range-stack">
+                <RangeField label="Zoom" value={photoView.zoom} min={1} max={MAX_ZOOM} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(zoom) => setPhotoView((current) => ({ ...current, zoom }))} />
+                <RangeField label="Left – right" value={photoView.x} min={0} max={100} disabled={slack.x < 1} format={(value) => (slack.x < 1 ? 'Fits' : value === 50 ? 'Centre' : `${Math.round(value)}%`)} onChange={(x) => setPhotoView((current) => ({ ...current, x }))} />
+                <RangeField label="Up – down" value={photoView.y} min={0} max={100} disabled={slack.y < 1} format={(value) => (slack.y < 1 ? 'Fits' : value === 50 ? 'Centre' : `${Math.round(value)}%`)} onChange={(y) => setPhotoView((current) => ({ ...current, y }))} />
+              </div>
+            ) : (
+              <p className="panel-note">{photo ? 'The photo is hidden while another background is showing.' : 'Photos stay in your browser. Once one is in, drag it on the cover to reposition it.'}</p>
+            )}
+            <label className="toggle-row spread">
+              <span>Darken photo <small>{Math.round(PHOTO_DARKEN * 100)}% black, so the words read</small></span>
+              <input type="checkbox" checked={cover.darken} onChange={(event) => updateCover('darken', event.target.checked)} />
+              <span className="switch" />
+            </label>
+          </Panel>
+
+          <Panel id="marks" title="Logo & swipe" summary={summaries.marks} open={panels.marks} onToggle={togglePanel}>
+            <Segmented label="Logo" value={cover.logo} options={logoOptions} onChange={(logo) => updateCover('logo', logo)} />
+            <label className="toggle-row spread">
+              <span>Swipe for more <small>Prompt and arrow, bottom right</small></span>
+              <input type="checkbox" checked={cover.swipe} onChange={(event) => updateCover('swipe', event.target.checked)} />
+              <span className="switch" />
+            </label>
+          </Panel>
+
           <Panel id="style" title="Style" summary={summaries.style} open={panels.style} onToggle={togglePanel}>
             <div className="style-toggle" role="group" aria-label="Cover style">
-              {styles.map((style) => (
-                <button key={style.value} aria-pressed={settings.style === style.value} className={settings.style === style.value ? 'active' : ''} onClick={() => chooseStyle(style.value)}>
-                  <strong className={style.value === 'feature' ? 'caps' : ''}>{style.label}</strong>
-                  <small>{style.description}</small>
-                </button>
-              ))}
+              {styles.map((style) => {
+                const off = isLocked('style', style.value, locksOff)
+                return (
+                  <button key={style.value} aria-pressed={settings.style === style.value} className={settings.style === style.value ? 'active' : ''} disabled={off} title={off ? LOCKED_NOTE : undefined} onClick={() => chooseStyle(style.value)}>
+                    <strong className={style.value === 'feature' ? 'caps' : ''}>{style.label}</strong>
+                    <small>{style.description}</small>
+                  </button>
+                )
+              })}
             </div>
             <div className="style-caption">
               <Lock size={12} aria-hidden="true" />
@@ -790,23 +956,28 @@ function App() {
 
           <Panel id="tape" title="Tape" summary={summaries.tape} open={panels.tape} onToggle={togglePanel}>
             <div className="tone-row" role="radiogroup" aria-label="Tape colour">
-              {tones.map((tone) => (
-                <button
-                  key={tone.value}
-                  role="radio"
-                  aria-checked={settings.tone === tone.value}
-                  className={settings.tone === tone.value ? 'active' : ''}
-                  onClick={() => update('tone', tone.value)}
-                >
-                  <i className={`tone-swatch ${tone.value}`} aria-hidden="true" style={tone.tape ? { background: tone.tape, color: tone.text } : undefined}>Aa</i>
-                  <span>{tone.label}</span>
-                </button>
-              ))}
+              {tones.map((tone) => {
+                const off = isLocked('tone', tone.value, locksOff)
+                return (
+                  <button
+                    key={tone.value}
+                    role="radio"
+                    aria-checked={settings.tone === tone.value}
+                    className={settings.tone === tone.value ? 'active' : ''}
+                    disabled={off}
+                    title={off ? LOCKED_NOTE : undefined}
+                    onClick={() => update('tone', tone.value)}
+                  >
+                    <i className={`tone-swatch ${tone.value}`} aria-hidden="true" style={tone.tape ? { background: tone.tape, color: tone.text } : undefined}>Aa</i>
+                    <span>{tone.label}</span>
+                  </button>
+                )
+              })}
             </div>
             {clash && <p className="tone-note" role="status">{clash}</p>}
             <div className="piece-toggle" role="group" aria-label="Tape pieces">
               <button aria-pressed={!settings.perLine} className={!settings.perLine ? 'active' : ''} onClick={() => update('perLine', false)}>Block</button>
-              <button aria-pressed={settings.perLine} className={settings.perLine ? 'active' : ''} onClick={() => update('perLine', true)}>Strips</button>
+              <button aria-pressed={settings.perLine} className={settings.perLine ? 'active' : ''} disabled={isLocked('perLine', true, locksOff)} title={isLocked('perLine', true, locksOff) ? LOCKED_NOTE : undefined} onClick={() => update('perLine', true)}>Strips</button>
             </div>
             <div className="mode-grid" role="group" aria-label="Cut style">
               {modes.map((mode) => (
@@ -828,7 +999,7 @@ function App() {
 
           <Panel id="layout" title="Layout" summary={summaries.layout} open={panels.layout} onToggle={togglePanel}>
             <div className="layout-grid">
-              <Segmented label="Alignment" value={settings.align} options={alignOptions} onChange={chooseAlign} />
+              <Segmented label="Alignment" value={settings.align} options={alignOptions} locked={(align) => isLocked('align', align, locksOff)} onChange={chooseAlign} />
               <Segmented
                 label="Position"
                 value={positionEntry?.label ?? null}
@@ -839,7 +1010,7 @@ function App() {
                 }}
               />
               <Segmented label="Column" value={series ? null : settings.column} options={columnOptions} disabled={series} onChange={(column) => update('column', column)} />
-              <Segmented label="Format" value={settings.coverFormat} options={formatOptions} onChange={(format) => update('coverFormat', format)} />
+              <Segmented label="Format" value={settings.coverFormat} options={formatOptions} locked={(format) => isLocked('coverFormat', format, locksOff)} onChange={(format) => update('coverFormat', format)} />
               {!series && (
                 <>
                   <label className="toggle-row auto-size-toggle">
@@ -862,6 +1033,7 @@ function App() {
           </Panel>
 
           <p className="automatic-note panel-footer"><Sparkles size={13} aria-hidden="true" /> Size, fit and cut depth stay inside the brand system</p>
+          {!locksOff && <p className="automatic-note panel-footer locked-note"><Lock size={12} aria-hidden="true" /> Greyed-out choices are switched off for now</p>}
         </aside>
 
         <section className="stage-column">
@@ -898,11 +1070,7 @@ function App() {
 
           <div className="stage-wrap">
             {notice && <p className="notice" role="alert">{notice}</p>}
-            <div
-              ref={previewRef}
-              className={`preview-stage ${previewBackground}`}
-              style={photo && previewBackground === 'photo' ? { backgroundImage: `linear-gradient(rgba(0,0,0,.12),rgba(0,0,0,.12)), url(${photo})` } : undefined}
-            >
+            <div ref={previewRef} className={`preview-stage ${previewBackground}`}>
               {previewBackground === 'photo' && !photo && (
                 <label className="photo-empty"><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
               )}
@@ -910,7 +1078,7 @@ function App() {
                 className="artwork draggable"
                 tabIndex={0}
                 role="application"
-                aria-label="Artwork position. Drag, or use the arrow keys (Shift for bigger steps)."
+                aria-label={`Artwork position. Drag, or use the arrow keys (Shift for bigger steps).${shownPhoto ? ' Drag the photo behind the words to reposition it.' : ''}`}
                 onPointerDown={startDrag}
                 onPointerMove={drag}
                 onPointerUp={endDrag}
@@ -925,18 +1093,16 @@ function App() {
                   aria-label={`Generated tape artwork: ${shape.personality}`}
                   viewBox={`0 0 ${ARTBOARD_WIDTH} ${ARTBOARD_HEIGHT}`}
                 >
+                  {shownPhoto && photoPlace && <image href={shownPhoto.url} x={photoPlace.x} y={photoPlace.y} width={photoPlace.width} height={photoPlace.height} preserveAspectRatio="none" />}
+                  {shownPhoto && darken > 0 && <rect width={ARTBOARD_WIDTH} height={ARTBOARD_HEIGHT} fill="#000" opacity={darken} />}
                   <rect className="safe-guide" x={SAFE_MARGIN} y={SAFE_MARGIN} width={TEXT_AREA_WIDTH} height={ARTBOARD_HEIGHT - SAFE_MARGIN * 2} />
+                  <LayerList layers={furniture} />
                   <g transform={`translate(${placement.x} ${placement.y})`}>
-                    {layers.map((layer, index) => {
-                      const transform = layer.angle ? `rotate(${layer.angle} ${layer.cx} ${layer.cy})` : undefined
-                      return layer.kind === 'path'
-                        ? <path key={`path-${index}`} d={layer.d} fill={layer.fill} transform={transform} />
-                        : <text key={`text-${index}`} x={layer.x} y={layer.y} fill={layer.fill} fontFamily={FONT_FAMILY} fontWeight={layer.weight} fontSize={layer.size} transform={transform}>{layer.text}</text>
-                    })}
+                    <LayerList layers={layers} />
                   </g>
                 </svg>
               </div>
-              <span className="stage-coordinate top-left">1080 × 1350 · drag or arrow keys to position</span>
+              <span className="stage-coordinate top-left">1080 × 1350 · {shownPhoto ? 'drag the words or the photo' : 'drag or arrow keys to position'}</span>
               <span className="stage-coordinate bottom-right">{layout.fontSize}px · {layout.labels.length} lines · {shape.personality.toUpperCase()}</span>
             </div>
           </div>

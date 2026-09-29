@@ -43,6 +43,30 @@ If the repository is renamed, update the Pages base path in `vite.config.ts`.
 
 The regular `npm run build` output can also be deployed to Vercel or another static host. It uses `/` as its base path and writes the site to `dist/`.
 
+## Finished covers
+
+The tool makes the whole cover, not only the headline:
+
+- **Photo**: choose a photo, then drag it on the cover to reposition it (a press on the words moves the words; anywhere else moves the photo). The Photo group has Zoom (100–300%), Left – right and Up – down sliders, and Reset position. On phones a sideways swipe moves the photo and the sliders do the rest, because vertical swipes scroll the page.
+- **Darken photo** lays 15% black over the photo so the words and marks read. It is on by default and can be switched off.
+- **Logo**: Off, Left or Right. The Alternative Dublin logo sits in a top corner of the safe area, 250px wide, with DUBLIN lined up on that side.
+- **Swipe for more**: the prompt and painted arrow sit in the bottom right corner of the safe area, the words standing on its bottom line.
+
+The logo and prompt are yellow (black on the Yellow background). The headline's lettering keeps clear of both: Top starts under the logo and Bottom stops above the prompt. They are part of the PNG and full SVG exports, and left out of the cutout SVG.
+
+The marks are outlines, read from the SVG files in `src/assets`:
+
+- `node scripts/prepare-mark.mjs <exported.svg> src/assets/<name>.svg` crops a mark exported from a design tool to its artwork. The logo and arrow were made this way.
+- `node scripts/outline-text.mjs "SWIPE FOR MORE" barlow-condensed 800 40 src/assets/swipe-for-more.svg` draws the prompt's words as outlines (Barlow Condensed ExtraBold at 40px, kerning included), so they need no font in any export.
+
+Sizes and spacing are set at the top of `src/furniture.ts`.
+
+### Locked choices
+
+For now every cover keeps to one look: black words on a light block of tape, left aligned. These choices are greyed out rather than removed, so people can see what is coming: the Feature style, Strips, the Dark, Yellow and None tapes, Centre and Right alignment, and the Series format. The cut styles stay open, as do column, position, size and fine-tuning.
+
+The list lives in `src/locks.ts`; take an entry off it to open that choice up. Settings saved before the locks went on are put back to the house look, keeping the words. Opening the tool with `?unlocked` at the end of the address lifts every lock.
+
 ## Cover styles
 
 Two house styles, each a preset that can be adjusted afterwards (**Reset style** puts it back):
@@ -75,10 +99,11 @@ An optional **eyebrow** label (Breaking, News, Exclusive, The Big Read, or any t
 - Cut style: Plain, Torn, Clean cut, Tape, Cling, Rough cut (Randomise is off for Plain and for no tape, where there is no cut to vary)
 - Alignment, Top / Middle / Bottom position, column width, regular or series format, automatic or manual size
 - Drag (or arrow keys, Shift for bigger steps) to position the artwork. All lettering stays inside the 80px safe area; the tape and eyebrow tag may reach into the margin. On phones, vertical swipes scroll the page and height is set with Top / Middle / Bottom.
+- Photo position, zoom and darkening; logo side; swipe prompt (see Finished covers)
 
 The preview, SVG exports and PNG exports are all drawn from the same layer list, so they match. Backgrounds render before all text layers so tucked or overlapping strips remain legible. On desktop the preview stays in view while the controls scroll.
 
-The most recent controls are saved in `localStorage`, and stored values are checked on load. Uploaded photos stay in the browser; the centred 4:5 part the cover shows is kept (as sRGB JPEG, at up to the 3× export size) and used in the preview and in full-artboard SVG and PNG exports.
+The most recent controls are saved in `localStorage`, and stored values are checked on load. Uploaded photos stay in the browser. The whole photo is kept (as sRGB JPEG, at up to the 3× export size and no more than 16 megapixels) so it can be repositioned; the preview and PNG exports draw from it, and SVG exports embed only the part the cover shows.
 
 ## Export
 

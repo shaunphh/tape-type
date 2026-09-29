@@ -6,8 +6,10 @@ import { POST_FRAME } from './settings'
 import { cleanText, normaliseHeadline } from './text'
 
 /**
- * The inside page of a post: a picture across the top, a title, then the story. It follows the
- * article pages of the Alternative Dublin social templates: the same margins, sizes and greys.
+ * The inside page of a post: a picture across the top, a title, the story, then the details
+ * (dates, place, tickets). It follows the article pages of the Alternative Dublin social
+ * templates: the same margins, sizes and greys. Everything under the title is one size, and
+ * what matters more or less is told apart by weight alone.
  */
 export type ImageHeight = 'none' | 'short' | 'medium' | 'tall'
 export const IMAGE_HEIGHTS: Record<ImageHeight, number> = { none: 0, short: 340, medium: 430, tall: 540 }
@@ -15,6 +17,8 @@ export const IMAGE_HEIGHTS: Record<ImageHeight, number> = { none: 0, short: 340,
 export interface InsideOptions {
   title: string
   body: string
+  /** Dates, places, tickets: set lighter than the story. */
+  details: string
   image: ImageHeight
   logo: LogoSide
   arrow: boolean
@@ -26,9 +30,13 @@ export const TEXT_WIDTH = POST_FRAME.width - PAGE_MARGIN * 2
 /** The logo is small on an inside page, and the marks sit on the page's own margin. */
 export const INSIDE_MARKS = { margin: PAGE_MARGIN, logoWidth: 128 }
 
-export const TITLE = { weight: 700, largest: 70, smallest: 50, lineHeight: 1.08, lines: 3, mostLines: 4, fill: BRAND.light }
+export const TITLE = { weight: 700, largest: 72, smallest: 50, lineHeight: 1.08, lines: 3, mostLines: 4, fill: BRAND.light }
 export const BODY = { weight: 500, size: 38, lineHeight: 1.32, paragraphGap: 26, bulletGap: 8, indent: 44, fill: '#C2C2C2' }
-const GAP = { aboveTitle: 44, aboveBody: 34, aboveArrow: 24, underLogo: 48 }
+/** Details are the story's size in a lighter weight. */
+export const DETAILS = { weight: 400 }
+/** A line in stars is bold and white, in the story or the details: a name, a lead sentence. */
+export const STRONG = { weight: 700, fill: BRAND.light }
+const GAP = { aboveTitle: 44, aboveBody: 34, aboveDetails: 40, aboveArrow: 24, underLogo: 48 }
 
 // Barlow's own line is 1.2 of the type size (1.0 above the baseline, 0.2 below). A browser
 // centres that in the line height, and the pages are set the way the templates' pages were.
@@ -42,34 +50,46 @@ export interface InsideLayout {
   layers: Layer[]
   titleSize: number
   titleLines: number
+  /** Lines of story and details together, as set. */
   bodyLines: number
-  /** How many lines of body text the page has room for under this title. */
+  /** How many of those lines the page has room for under this title. */
   bodyRoom: number
   overflow: 'title' | 'body' | null
-  /** How many lines too long the body is. */
+  /** How many lines too long the story and details are. */
   over: number
   empty: boolean
 }
 
-const BULLET = /^\s*[-•*–]\s+/
+const BULLET = /^\s*[-•–]\s+/
+const STARRED = /^\*{1,2}(?!\s)(.+?)\*{1,2}$/
 
-/** The story as paragraphs: one per typed line, bullets marked, spaces tidied. */
-export function readBody(body: string) {
-  return cleanText(body.normalize('NFC')).replace(/\r/g, '').split('\n')
-    .map((line) => ({ bullet: BULLET.test(line), text: line.replace(BULLET, '').replace(/\s+/g, ' ').trim() }))
-    .filter((paragraph) => paragraph.text)
+export interface TypedLine { text: string; bullet: boolean; strong: boolean }
+
+/**
+ * What was typed, as paragraphs of lines. A blank line starts a new paragraph; a new line is a
+ * new line. A dash starts a bullet, and a line in stars is bold.
+ */
+export function readLines(typed: string): TypedLine[][] {
+  return cleanText(typed.normalize('NFC')).replace(/\r/g, '').split(/\n[ \t]*\n/)
+    .map((paragraph) => paragraph.split('\n').map((line) => {
+      const bullet = BULLET.test(line)
+      const plain = line.replace(BULLET, '').replace(/\s+/g, ' ').trim()
+      const starred = STARRED.exec(plain)
+      return { text: starred ? starred[1].trim() : plain, bullet, strong: Boolean(starred) }
+    }).filter((line) => line.text))
+    .filter((paragraph) => paragraph.length)
 }
 
 const text = (value: string, x: number, y: number, size: number, weight: number, fill: string): Layer =>
   ({ kind: 'text', text: value, x, y: Math.round(y * 100) / 100, size, weight, fill, angle: 0, cx: 0, cy: 0 })
 
 /**
- * Sets the page. The title takes the largest size from 70 down to 50 that fits it in three
- * lines; the body is always 38. `marks` says where the logo ends and the arrow starts, so the
- * words keep clear of both.
+ * Sets the page. The title takes the largest size from 72 down to 50 that fits it in three
+ * lines; the story and the details are always 38. `marks` says where the logo ends and the
+ * arrow starts, so the words keep clear of both.
  */
 export function layoutInside(
-  content: Pick<InsideOptions, 'title' | 'body' | 'image'>,
+  content: Pick<InsideOptions, 'title' | 'body' | 'image'> & { details?: string },
   measure: MeasureWidth,
   marks: { logoBottom?: number; arrowTop?: number } = {},
 ): InsideLayout {
@@ -79,7 +99,10 @@ export function layoutInside(
   const bottom = marks.arrowTop !== undefined ? marks.arrowTop - GAP.aboveArrow : POST_FRAME.height - PAGE_MARGIN
 
   const title = normaliseHeadline(content.title)
-  const paragraphs = readBody(content.body)
+  const blocks = [
+    { paragraphs: readLines(content.body), weight: BODY.weight },
+    { paragraphs: readLines(content.details ?? ''), weight: DETAILS.weight },
+  ].filter((block) => block.paragraphs.length)
   const layers: Layer[] = []
 
   const wrapTitle = (size: number) => wrapText(title, TEXT_WIDTH, (value) => measure(value, size, TITLE.weight), true, { balance: true })
@@ -98,16 +121,24 @@ export function layoutInside(
   const bodyTop = title ? top + titleLines.length * titlePitch + GAP.aboveBody : top
   let y = bodyTop
   let bodyLines = 0
-  paragraphs.forEach((paragraph, index) => {
-    if (index > 0) y += paragraph.bullet && paragraphs[index - 1].bullet ? BODY.bulletGap : BODY.paragraphGap
-    const indent = paragraph.bullet ? BODY.indent : 0
-    const lines = wrapText(paragraph.text, TEXT_WIDTH - indent, (value) => measure(value, BODY.size, BODY.weight), true)
-    if (paragraph.bullet) layers.push(text('•', PAGE_MARGIN + 10, y + baselineIn(BODY.size, BODY.lineHeight), BODY.size, BODY.weight, BODY.fill))
-    for (const line of lines) {
-      layers.push(text(line, PAGE_MARGIN + indent, y + baselineIn(BODY.size, BODY.lineHeight), BODY.size, BODY.weight, BODY.fill))
-      y += pitch
-      bodyLines += 1
-    }
+  blocks.forEach((block, blockIndex) => {
+    if (blockIndex > 0) y += GAP.aboveDetails
+    block.paragraphs.forEach((paragraph, paragraphIndex) => {
+      if (paragraphIndex > 0) y += BODY.paragraphGap
+      paragraph.forEach((typed, lineIndex) => {
+        if (lineIndex > 0 && typed.bullet && paragraph[lineIndex - 1].bullet) y += BODY.bulletGap
+        const weight = typed.strong ? STRONG.weight : block.weight
+        const fill = typed.strong ? STRONG.fill : BODY.fill
+        const indent = typed.bullet ? BODY.indent : 0
+        const lines = wrapText(typed.text, TEXT_WIDTH - indent, (value) => measure(value, BODY.size, weight), true)
+        if (typed.bullet) layers.push(text('•', PAGE_MARGIN + 10, y + baselineIn(BODY.size, BODY.lineHeight), BODY.size, weight, fill))
+        for (const line of lines) {
+          layers.push(text(line, PAGE_MARGIN + indent, y + baselineIn(BODY.size, BODY.lineHeight), BODY.size, weight, fill))
+          y += pitch
+          bodyLines += 1
+        }
+      })
+    })
   })
 
   // The gaps between paragraphs take room too, so the body's room is counted in whole lines of what is left.
@@ -116,7 +147,7 @@ export function layoutInside(
   const over = Math.max(0, bodyLines - bodyRoom)
   const overflow = titleLines.length > TITLE.mostLines ? 'title' : over > 0 ? 'body' : null
 
-  return { banner, layers, titleSize, titleLines: titleLines.length, bodyLines, bodyRoom, overflow, over, empty: !title && !paragraphs.length }
+  return { banner, layers, titleSize, titleLines: titleLines.length, bodyLines, bodyRoom, overflow, over, empty: !title && !blocks.length }
 }
 
 interface Picture {
@@ -168,7 +199,8 @@ export function insideSvg(layout: InsideLayout, options: { photo?: string | null
 export const INSIDE_KEY = 'tape-type-inside-v1'
 export const insideDefaults: InsideOptions = {
   title: 'Bolands Mills is set to come alive this Culture Night',
-  body: 'A free evening of live music, art, storytelling and movement takes place on Friday, September 18th from 6.30pm to 9.30pm.\nThe Factory Main Stage will host performances from AE MAK, Sorcha Richardson and Zaska.',
+  body: 'A free evening of live music, art, storytelling and movement, with performances from AE MAK, Sorcha Richardson and Zaska on the Factory Main Stage.',
+  details: 'Friday 18 September · 6.30pm\nBolands Mills, Dublin 4\nFree, no ticket needed',
   image: 'medium',
   logo: 'off',
   arrow: true,
@@ -180,6 +212,8 @@ export function sanitizeInside(stored: Record<string, unknown>): InsideOptions {
   return {
     title: words(stored.title, insideDefaults.title),
     body: words(stored.body, insideDefaults.body),
+    // A page saved before details existed has none, not the sample ones.
+    details: words(stored.details, typeof stored.body === 'string' ? '' : insideDefaults.details),
     image: Object.keys(IMAGE_HEIGHTS).includes(stored.image as string) ? stored.image as ImageHeight : insideDefaults.image,
     logo: (['off', 'left', 'right'] as const).includes(stored.logo as LogoSide) ? stored.logo as LogoSide : insideDefaults.logo,
     arrow: typeof stored.arrow === 'boolean' ? stored.arrow : insideDefaults.arrow,

@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { BRAND, type Layer } from './artwork'
 import { furnitureBoxes } from './furniture'
-import { BODY, IMAGE_HEIGHTS, INSIDE_MARKS, PAGE_MARGIN, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, readBody, sanitizeInside, type MeasureWidth } from './inside'
+import { BODY, DETAILS, IMAGE_HEIGHTS, INSIDE_MARKS, PAGE_MARGIN, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, readLines, sanitizeInside, type MeasureWidth } from './inside'
 import { POST_FRAME } from './settings'
 
 // A stand-in for canvas: every character is half an em wide.
 const measure: MeasureWidth = (text, size) => text.length * size * 0.5
 const texts = (layers: Layer[]) => layers.flatMap((layer) => (layer.kind === 'text' ? [layer] : []))
 const page = (overrides: Partial<Parameters<typeof layoutInside>[0]> = {}, marks = {}) =>
-  layoutInside({ title: 'The closure follows a months-long legal dispute', body: 'One paragraph of the story.\nAnd a second one.', image: 'medium', ...overrides }, measure, marks)
+  layoutInside({ title: 'The closure follows a months-long legal dispute', body: 'One paragraph of the story.\n\nAnd a second one.', details: '', image: 'medium', ...overrides }, measure, marks)
 
 describe('inside page', () => {
   it('puts the picture across the top, then the title, then the story', () => {
@@ -24,11 +24,11 @@ describe('inside page', () => {
     expect(layout.overflow).toBeNull()
   })
 
-  it('sets the title as large as fits in three lines, between 50 and 70', () => {
-    expect(page({ title: 'Ireland Music Week is back' }).titleSize).toBe(70)
-    // 110 characters: three lines of 27 characters at 70 won't hold it, so it comes down.
+  it('sets the title as large as fits in three lines, between 50 and 72', () => {
+    expect(page({ title: 'Ireland Music Week is back' }).titleSize).toBe(72)
+    // 100 characters: three lines of 26 characters at 72 won't hold it, so it comes down.
     const long = page({ title: 'Bolands Mills is set to come alive this Culture Night with Milling About and Culture in Every Corner' })
-    expect(long.titleSize).toBeLessThan(70)
+    expect(long.titleSize).toBeLessThan(72)
     expect(long.titleSize).toBeGreaterThanOrEqual(50)
     expect(long.titleLines).toBeLessThanOrEqual(TITLE.mostLines)
     const tooLong = page({ title: Array(40).fill('wordy').join(' ') })
@@ -69,24 +69,57 @@ describe('inside page', () => {
     expect(Math.min(...texts(underLogo.layers).map((layer) => layer.y - layer.size))).toBeGreaterThan(marks.logo!.y + marks.logo!.height)
   })
 
-  it('reads typed lines as paragraphs and dashes as bullets', () => {
-    expect(readBody('First.\n\n  Second   one. \n- A bullet\n• Another\n')).toEqual([
-      { bullet: false, text: 'First.' },
-      { bullet: false, text: 'Second one.' },
-      { bullet: true, text: 'A bullet' },
-      { bullet: true, text: 'Another' },
+  it('reads a blank line as a new paragraph, a dash as a bullet and stars as bold', () => {
+    expect(readLines('First.\n\n  Second   one. \nSame paragraph.\n\n- A bullet\n• Another\n\n*Ishmael Claxton*\nPhotography\n**Sean Conroy**\n')).toEqual([
+      [{ text: 'First.', bullet: false, strong: false }],
+      [{ text: 'Second one.', bullet: false, strong: false }, { text: 'Same paragraph.', bullet: false, strong: false }],
+      [{ text: 'A bullet', bullet: true, strong: false }, { text: 'Another', bullet: true, strong: false }],
+      [{ text: 'Ishmael Claxton', bullet: false, strong: true }, { text: 'Photography', bullet: false, strong: false }, { text: 'Sean Conroy', bullet: false, strong: true }],
     ])
+    // A star inside a line is just a star.
+    expect(readLines('5* hotel\n* not bold *')[0].map((line) => line.strong)).toEqual([false, false])
+  })
+
+  it('sets lines of a paragraph close, paragraphs apart and bullets in between', () => {
+    const pitch = BODY.size * BODY.lineHeight
+    const body = (typed: string) => texts(page({ body: typed }).layers).filter((layer) => layer.size === BODY.size && layer.text !== '•')
+    const [a, b] = body('A line\nAnd the next')
+    expect(b.y - a.y).toBeCloseTo(pitch, 1)
+    const [c, d] = body('A paragraph\n\nAnd the next')
+    expect(d.y - c.y).toBeCloseTo(pitch + BODY.paragraphGap, 1)
     const layout = page({ body: 'The Dublin performance is one of the headline dates\n- Presale Monday\n- General sale Wednesday' })
-    const body = texts(layout.layers).filter((layer) => layer.weight === BODY.weight)
-    expect(body.filter((layer) => layer.text === '•')).toHaveLength(2)
-    expect(body.find((layer) => layer.text === 'Presale Monday')!.x).toBe(PAGE_MARGIN + BODY.indent)
-    // Bullets sit closer together than paragraphs.
-    const [first, second] = body.filter((layer) => layer.text !== '•' && layer.x > PAGE_MARGIN)
-    expect(second.y - first.y).toBeCloseTo(BODY.size * BODY.lineHeight + BODY.bulletGap, 1)
+    const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
+    expect(lines.filter((layer) => layer.text === '•')).toHaveLength(2)
+    expect(lines.find((layer) => layer.text === 'Presale Monday')!.x).toBe(PAGE_MARGIN + BODY.indent)
+    const [first, second] = lines.filter((layer) => layer.text !== '•' && layer.x > PAGE_MARGIN)
+    expect(second.y - first.y).toBeCloseTo(pitch + BODY.bulletGap, 1)
+  })
+
+  it('sets the details under the story, the same size in a lighter weight', () => {
+    const layout = page({ body: 'The story.', details: '22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite' })
+    const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
+    const story = lines.find((layer) => layer.text === 'The story.')!
+    const details = lines.filter((layer) => layer.weight === DETAILS.weight)
+    expect(details.map((layer) => layer.text)).toEqual(['22 September · 6.30pm', 'This Must Be The Place, Smithfield', 'Tickets via Eventbrite'])
+    expect(story.weight).toBe(BODY.weight)
+    expect(DETAILS.weight).toBeLessThan(BODY.weight)
+    expect(details[0].y).toBeGreaterThan(story.y + BODY.size * BODY.lineHeight)
+    expect(details[1].y - details[0].y).toBeCloseTo(BODY.size * BODY.lineHeight, 1)
+    expect(layout.bodyLines).toBe(4)
+    // Details alone are a page too.
+    expect(page({ title: '', body: '', details: 'Tickets via Eventbrite' })).toMatchObject({ empty: false, bodyLines: 1 })
+  })
+
+  it('sets a line in stars bold and white, in the story or the details', () => {
+    const layout = page({ body: '*Each artist will give a short presentation.*', details: '*Ishmael Claxton*\nPhotography' })
+    const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
+    expect(lines.find((layer) => layer.text === 'Each artist will give a short presentation.')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
+    expect(lines.find((layer) => layer.text === 'Ishmael Claxton')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
+    expect(lines.find((layer) => layer.text === 'Photography')).toMatchObject({ weight: DETAILS.weight, fill: BODY.fill })
   })
 
   it('is empty until something is typed', () => {
-    expect(page({ title: ' ', body: '\n' })).toMatchObject({ empty: true, overflow: null })
+    expect(page({ title: ' ', body: '\n', details: ' ' })).toMatchObject({ empty: true, overflow: null })
     expect(page({ title: '', body: 'Only a story.' })).toMatchObject({ empty: false, titleLines: 0 })
   })
 
@@ -104,8 +137,10 @@ describe('inside page', () => {
   })
 
   it('replaces invalid stored values instead of trusting them', () => {
-    expect(sanitizeInside({ title: 4, body: null, image: 'huge', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
-    const chosen = { title: 'A title', body: 'A story', image: 'none', logo: 'left', arrow: false }
+    expect(sanitizeInside({ title: 4, body: null, details: 7, image: 'huge', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
+    const chosen = { title: 'A title', body: 'A story', details: 'A date', image: 'none', logo: 'left', arrow: false }
     expect(sanitizeInside(chosen)).toEqual(chosen)
+    // A page saved before details existed gets none, not the sample ones.
+    expect(sanitizeInside({ title: 'A title', body: 'A story' }).details).toBe('')
   })
 })

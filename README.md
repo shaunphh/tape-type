@@ -63,24 +63,35 @@ The headline's lettering keeps clear of both marks. A headline beside a mark sta
 
 The marks are outlines, read from the SVG files in `src/assets`. `node scripts/prepare-mark.mjs <exported.svg> src/assets/<name>.svg` crops a mark exported from a design tool to its artwork. Sizes, spacing and the contrast a mark needs (`READS_FROM`) are set in `src/furniture.ts`.
 
+### What is being made
+
+The switch above the canvas picks one of three: a post's **Cover**, its **Inside page**, or a **Video cover**. It is always in view, and each keeps its own words, picture and marks.
+
 ### Inside page
 
-A post is a cover and, usually, one page inside it. **Page** (in the Cover group) switches between the two; each keeps its own words, picture and marks.
+A post is a cover and, usually, one page inside it. The inside page is a picture across the top, a title, the story, then the details, on brand black:
 
-The inside page is a picture across the top, a title, then the story, on brand black:
-
-- **Title**: Barlow Bold, white. It takes the largest size from 70px down to 50px that fits in three lines.
-- **Text**: Barlow Medium at 38px (28.5 in Canva, whose sizes are points), light grey, lines 1.32 apart. A new line starts a new paragraph; a line starting with a dash is a bullet.
+- **Title**: Barlow Bold, white. It takes the largest size from 72px down to 50px that fits in three lines.
+- **Text**: the story, in Barlow Medium at 38px (28.5 in Canva, whose sizes are points), light grey, lines 1.32 apart.
+- **Details**: dates, place, tickets. The same size in a lighter weight (Regular), under the story.
 - **Picture**: None, Short (340px), Medium (430px) or Tall (540px). It starts as the cover's photo and can be given its own; drag it inside its banner, or use the sliders, as on a cover.
 - **Marks**: the arrow is on and the logo is off to start with. The logo is small here (128px) and both sit on the page's 56px margin.
 
-The panel counts the lines of text against the room the page has, and exports are blocked while the text runs over: cut it, use a shorter picture, or none. With a Medium picture and a three-line title there is room for about seven lines.
+Everything under the title is one size, and what matters more or less is told apart by weight alone. In the text and the details:
+
+- a blank line starts a new paragraph, and a new line is a new line;
+- a line starting with a dash is a bullet;
+- a line in `*stars*` is bold and white: a name, a lead sentence, a call to book.
+
+Emoji typed into either box are drawn as the device draws them.
+
+The panel counts the lines of text and details against the room the page has, and exports are blocked while they run over: cut them, use a shorter picture, or none. With a Medium picture and a three-line title there is room for about seven lines.
 
 Sizes, margins and greys follow the article pages of the Alternative Dublin social templates; they are set at the top of `src/inside.ts`. The cutout SVG is for covers only.
 
 ### Video covers
 
-**Made for** (in the Cover group) switches between a post (4:5, 1080×1350) and a video cover (9:16, 1080×1920). Exports follow: a video cover's PNGs are 1080×1920, 2160×3840 and 3240×5760.
+A video cover is 9:16 (1080×1920), where a post's pages are 4:5 (1080×1350). Exports follow: a video cover's PNGs are 1080×1920, 2160×3840 and 3240×5760.
 
 The profile grid shows tiles at 3:4, so it keeps only the middle of a video cover: the top and bottom 240px are cut off there. The preview draws both lines. The words are kept inside them (80px in), so a title always survives the grid. The logo and the arrow sit in the corners of the whole cover, outside the lines, so they show on the cover itself but not on the grid.
 

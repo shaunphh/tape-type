@@ -1,3 +1,6 @@
+import regular from '@fontsource/barlow/files/barlow-latin-400-normal.woff2?url'
+import regularExt from '@fontsource/barlow/files/barlow-latin-ext-400-normal.woff2?url'
+import regularVietnamese from '@fontsource/barlow/files/barlow-vietnamese-400-normal.woff2?url'
 import medium from '@fontsource/barlow/files/barlow-latin-500-normal.woff2?url'
 import mediumExt from '@fontsource/barlow/files/barlow-latin-ext-500-normal.woff2?url'
 import mediumVietnamese from '@fontsource/barlow/files/barlow-vietnamese-500-normal.woff2?url'
@@ -18,6 +21,9 @@ const RANGES = {
 type Subset = keyof typeof RANGES
 
 const FACES: { weight: number; subset: Subset; url: string }[] = [
+  { weight: 400, subset: 'latin', url: regular },
+  { weight: 400, subset: 'latin-ext', url: regularExt },
+  { weight: 400, subset: 'vietnamese', url: regularVietnamese },
   { weight: 500, subset: 'latin', url: medium },
   { weight: 500, subset: 'latin-ext', url: mediumExt },
   { weight: 500, subset: 'vietnamese', url: mediumVietnamese },

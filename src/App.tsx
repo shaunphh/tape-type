@@ -88,13 +88,12 @@ const eyebrowSuggestions: Record<CoverKind, string[]> = {
   post: ['Breaking', 'News', 'Exclusive', 'The Big Read'],
   video: ['Quick watch', 'Quick guide', 'Breaking', 'News'],
 }
-const kindOptions: { value: CoverKind; label: string }[] = [
-  { value: 'post', label: 'Post 4:5' },
-  { value: 'video', label: 'Video cover 9:16' },
-]
-const pageOptions: { value: CoverOptions['page']; label: string }[] = [
-  { value: 'cover', label: '1 · Cover' },
-  { value: 'inside', label: '2 · Inside page' },
+/** What is being made: the two pages of a post, or the cover of a video. */
+type Making = 'cover' | 'inside' | 'video'
+const makingOptions: { value: Making; label: string; note: string }[] = [
+  { value: 'cover', label: 'Cover', note: 'Post · page 1' },
+  { value: 'inside', label: 'Inside page', note: 'Post · page 2' },
+  { value: 'video', label: 'Video cover', note: '9:16' },
 ]
 const imageOptions: { value: ImageHeight; label: string }[] = [
   { value: 'none', label: 'None' },
@@ -578,9 +577,9 @@ function App() {
   }, [])
   useEffect(() => {
     if (!isInside) return
-    document.fonts.load(fontShorthand(70, 700), inside.title || ' ').catch(() => undefined)
-    document.fonts.load(fontShorthand(BODY.size, BODY.weight), inside.body || ' ').catch(() => undefined)
-  }, [isInside, inside.title, inside.body])
+    const words = `${inside.title} ${inside.body} ${inside.details}`
+    for (const weight of [400, 500, 700]) document.fonts.load(fontShorthand(BODY.size, weight), words).catch(() => undefined)
+  }, [isInside, inside.title, inside.body, inside.details])
   const page = useMemo(
     () => layoutInside(inside, measureWidth, { logoBottom: markBoxes.logo ? markBoxes.logo.y + markBoxes.logo.height : undefined, arrowTop: markBoxes.arrow?.y }),
     // Measured again whenever a font finishes loading.
@@ -674,6 +673,13 @@ function App() {
   const chooseVideo = (video: VideoType) => {
     updateCover('video', video)
     applyLook(VIDEO_LOOKS[video])
+  }
+
+  const making: Making = cover.kind === 'video' ? 'video' : isInside ? 'inside' : 'cover'
+  const chooseMaking = (next: Making) => {
+    if (next === making) return
+    chooseKind(next === 'video' ? 'video' : 'post')
+    if (next !== 'video') updateCover('page', next)
   }
 
   const chooseStyle = (style: CoverStyle) => {
@@ -993,7 +999,7 @@ function App() {
   const eyebrowPreview = settings.eyebrowEnabled ? settings.eyebrow.trim() : ''
   const insideTitle = inside.title.replace(/\s+/g, ' ').trim()
   const summaries: Record<PanelId, string> = {
-    cover: isVideo ? `Video cover · ${look.label}` : isInside ? 'Post · inside page' : 'Post · cover',
+    cover: look.label,
     words: isInside
       ? insideTitle || 'No title yet'
       : headlinePreview ? (eyebrowPreview ? `${eyebrowPreview} · ${headlinePreview}` : headlinePreview) : 'No headline yet',
@@ -1031,28 +1037,19 @@ function App() {
 
       <main id="top" className="workspace">
         <aside className="controls-panel">
-          <Panel id="cover" title="Cover" summary={summaries.cover} open={panels.cover} onToggle={togglePanel}>
-            <Segmented label="Made for" note={`${frame.width} × ${frame.height}`} value={cover.kind} options={kindOptions} onChange={chooseKind} />
-            {!isVideo && (
-              <>
-                <Segmented label="Page" value={cover.page} options={pageOptions} onChange={(page) => updateCover('page', page)} />
-                {isInside && <p className="panel-note">The page inside the post: a picture across the top, a title, then the story.</p>}
-              </>
-            )}
-            {isVideo && (
-              <>
-                <div className="look-toggle" role="group" aria-label="Kind of video">
-                  {VIDEO_TYPES.map((video) => (
-                    <button key={video} aria-pressed={cover.video === video} className={cover.video === video ? 'active' : ''} onClick={() => chooseVideo(video)}>
-                      <strong>{VIDEO_LOOKS[video].label}</strong>
-                      <small>{VIDEO_LOOKS[video].description}</small>
-                    </button>
-                  ))}
-                </div>
-                <p className="panel-note">The profile grid shows only the middle of a video cover, so the words stay inside the lines. The logo and arrow sit in the corners, outside them.</p>
-              </>
-            )}
-          </Panel>
+          {isVideo && (
+            <Panel id="cover" title="Kind of video" summary={summaries.cover} open={panels.cover} onToggle={togglePanel}>
+              <div className="look-toggle" role="group" aria-label="Kind of video">
+                {VIDEO_TYPES.map((video) => (
+                  <button key={video} aria-pressed={cover.video === video} className={cover.video === video ? 'active' : ''} onClick={() => chooseVideo(video)}>
+                    <strong>{VIDEO_LOOKS[video].label}</strong>
+                    <small>{VIDEO_LOOKS[video].description}</small>
+                  </button>
+                ))}
+              </div>
+              <p className="panel-note">The profile grid shows only the middle of a video cover, so the words stay inside the lines. The logo and arrow sit in the corners, outside them.</p>
+            </Panel>
+          )}
 
           {isInside && (
             <Panel id="words" title="Words" summary={summaries.words} open={panels.words} onToggle={togglePanel}>
@@ -1062,19 +1059,27 @@ function App() {
                 <div className={`fit-line ${page.overflow === 'title' ? 'error' : ''}`}>
                   <strong>{page.titleSize}px</strong>
                   <span>{page.titleLines} / 3 lines</span>
-                  <span>sized 50–70</span>
+                  <span>sized 50–72</span>
                 </div>
               </div>
               <div className="sub-block">
                 <span className="field-label">Text</span>
-                <textarea aria-label="Text" className="body-input" value={inside.body} rows={9} onChange={(event) => updateInside('body', event.target.value)} />
+                <textarea aria-label="Text" className="body-input" value={inside.body} rows={7} onChange={(event) => updateInside('body', event.target.value)} />
+              </div>
+              <div className="sub-block">
+                <div className="section-label-row">
+                  <span className="field-label">Details</span>
+                  <span className="field-hint">Dates, place, tickets · lighter</span>
+                </div>
+                <textarea aria-label="Details" className="body-input details-input" value={inside.details} rows={3} placeholder={'22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite'} onChange={(event) => updateInside('details', event.target.value)} />
                 <div className="words-status">
                   <div className={`fit-line ${page.overflow === 'body' ? 'error' : ''}`}>
                     <strong>{BODY.size}px</strong>
                     <span>{page.bodyLines} / {page.bodyRoom} lines</span>
+                    <span>text and details</span>
                   </div>
                 </div>
-                <p className="panel-note">A new line starts a new paragraph. Start a line with a dash for a bullet.</p>
+                <p className="panel-note">Leave a blank line between paragraphs. Start a line with a dash for a bullet. Put a line in *stars* to make it bold.</p>
               </div>
               {blockedReason && !page.empty && <p className="fit-message error" role="status">{blockedReason}</p>}
             </Panel>
@@ -1318,11 +1323,14 @@ function App() {
         </aside>
 
         <section className="stage-column">
-          {isInside && (
-            <div className="preview-toolbar">
-              <p className="toolbar-note">Inside page · the title sizes itself, and the text tells you when it runs over</p>
-            </div>
-          )}
+          <div className="making-switcher" role="group" aria-label="What is being made">
+            {makingOptions.map((option) => (
+              <button key={option.value} aria-pressed={making === option.value} className={making === option.value ? 'active' : ''} onClick={() => chooseMaking(option.value)}>
+                <strong>{option.label}</strong>
+                <small>{option.note}</small>
+              </button>
+            ))}
+          </div>
           {!isInside && <div className="preview-toolbar">
             <div className="background-switcher" role="group" aria-label="Preview background">
               <button aria-pressed={previewBackground === 'transparent'} className={previewBackground === 'transparent' ? 'active' : ''} onClick={() => setPreviewBackground('transparent')}>Clear</button>

@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { BRAND, type Layer } from './artwork'
 import { furnitureBoxes } from './furniture'
-import { BODY, DETAILS, IMAGE_HEIGHTS, INSIDE_MARKS, PAGE_MARGIN, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, readLines, sanitizeInside, type MeasureWidth } from './inside'
+import { wrapText } from './geometry'
+import { BODY, DETAILS, FILL_SMALLEST, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, readLines, sanitizeInside, type LabelTools, type MeasureWidth } from './inside'
 import { POST_FRAME } from './settings'
 
 // A stand-in for canvas: every character is half an em wide.
 const measure: MeasureWidth = (text, size) => text.length * size * 0.5
+const tape: LabelTools = { ink: (text, size) => ({ width: text.length * size * 0.5, originOffset: 0, ascent: size * 0.7, descent: 0 }), mode: 'tape', seed: 1234 }
 const texts = (layers: Layer[]) => layers.flatMap((layer) => (layer.kind === 'text' ? [layer] : []))
+const paths = (layers: Layer[]) => layers.flatMap((layer) => (layer.kind === 'path' ? [layer] : []))
+/** The top of a line of text: where its capitals start. */
+const capTop = (layer: { y: number; size: number }) => layer.y - layer.size * 0.7
 const page = (overrides: Partial<Parameters<typeof layoutInside>[0]> = {}, marks = {}) =>
-  layoutInside({ title: 'The closure follows a months-long legal dispute', body: 'One paragraph of the story.\n\nAnd a second one.', details: '', image: 'medium', ...overrides }, measure, marks)
+  layoutInside({ title: 'The closure follows a months-long legal dispute', body: 'One paragraph of the story.\n\nAnd a second one.', details: '', image: 'medium', ...overrides }, measure, marks, tape)
 
 describe('inside page', () => {
   it('puts the picture across the top, then the title, then the story', () => {
@@ -24,15 +29,21 @@ describe('inside page', () => {
     expect(layout.overflow).toBeNull()
   })
 
-  it('sets the title as large as fits in three lines, between 50 and 72', () => {
-    expect(page({ title: 'Ireland Music Week is back' }).titleSize).toBe(72)
-    // 100 characters: three lines of 26 characters at 72 won't hold it, so it comes down.
+  it('sets the title as large as fits in three lines, between 52 and 69', () => {
+    expect([TITLE.smallest, TITLE.largest]).toEqual([52, 69])
+    expect(page({ title: 'Ireland Music Week is back' }).titleSize).toBe(69)
+    // 100 characters: three lines of 28 characters at 69 won't hold it, so it comes down.
     const long = page({ title: 'Bolands Mills is set to come alive this Culture Night with Milling About and Culture in Every Corner' })
-    expect(long.titleSize).toBeLessThan(72)
-    expect(long.titleSize).toBeGreaterThanOrEqual(50)
-    expect(long.titleLines).toBeLessThanOrEqual(TITLE.mostLines)
+    expect(long.titleSize).toBeLessThan(69)
+    expect(long.titleSize).toBeGreaterThanOrEqual(52)
+    expect(long.titleLines).toBeLessThanOrEqual(TITLE.lines)
+    // It comes down no further than it has to: a pixel bigger would take a fourth line.
+    const title = 'Bolands Mills is set to come alive this Culture Night with Milling About and Culture in Every Corner'
+    const linesAt = (size: number) => wrapText(title, TEXT_WIDTH, (value) => measure(value, size, TITLE.weight), true).length
+    expect(linesAt(long.titleSize)).toBe(TITLE.lines)
+    expect(linesAt(long.titleSize + 1)).toBeGreaterThan(TITLE.lines)
     const tooLong = page({ title: Array(40).fill('wordy').join(' ') })
-    expect(tooLong.titleSize).toBe(50)
+    expect(tooLong.titleSize).toBe(52)
     expect(tooLong.overflow).toBe('title')
   })
 
@@ -67,6 +78,176 @@ describe('inside page', () => {
     expect(withArrow.bodyRoom).toBeLessThan(page().bodyRoom)
     const underLogo = page({ image: 'none' }, { logoBottom: marks.logo!.y + marks.logo!.height })
     expect(Math.min(...texts(underLogo.layers).map((layer) => layer.y - layer.size))).toBeGreaterThan(marks.logo!.y + marks.logo!.height)
+  })
+
+  it('puts a picture at the bottom under the words, which end above it', () => {
+    const layout = page({ position: 'bottom', image: 'short' })
+    expect(layout.banner).toEqual({ x: 0, y: POST_FRAME.height - IMAGE_HEIGHTS.short, width: 1080, height: IMAGE_HEIGHTS.short })
+    const lines = texts(layout.layers)
+    expect(capTop(lines[0])).toBeGreaterThan(PAGE_MARGIN)
+    expect(capTop(lines[0])).toBeLessThan(PAGE_MARGIN + 40)
+    expect(Math.max(...lines.map((layer) => layer.y))).toBeLessThan(layout.banner!.y)
+    expect(layout.overflow).toBeNull()
+    // The picture takes the same room from the words wherever it is.
+    expect(layout.bodyRoom).toBe(page({ position: 'top', image: 'short' }).bodyRoom)
+    // The arrow sits on the picture, so it takes no more from the words.
+    expect(page({ position: 'bottom', image: 'short' }, { arrowTop: 1250 }).bodyRoom).toBe(layout.bodyRoom)
+    const long = page({ position: 'bottom', image: 'short', body: Array(150).fill('words').join(' ') })
+    expect(long.overflow).toBe('body')
+    expect(long.over).toBe(long.bodyLines - long.bodyRoom)
+  })
+
+  it('puts a picture in the middle after the title, or after the story when there is no title', () => {
+    const details = '22 September · 6.30pm'
+    const layout = page({ position: 'middle', image: 'short', details })
+    const banner = layout.banner!
+    const bottom = banner.y + banner.height
+    const titles = texts(layout.layers).filter((layer) => layer.size === layout.titleSize)
+    const rest = texts(layout.layers).filter((layer) => layer.size === BODY.size)
+    expect(titles.length).toBe(layout.titleLines)
+    expect(Math.max(...titles.map((layer) => layer.y))).toBeLessThan(banner.y)
+    expect(Math.min(...rest.map(capTop))).toBeGreaterThan(bottom)
+    // The words start at the top margin and the picture has a gap on both sides, which costs two lines.
+    const atTop = page({ position: 'top', image: 'short', details }).bodyRoom
+    expect(layout.bodyRoom).toBeLessThan(atTop)
+    expect(layout.bodyRoom).toBeGreaterThanOrEqual(atTop - 2)
+
+    const untitled = page({ position: 'middle', image: 'short', title: '', details })
+    const story = texts(untitled.layers).filter((layer) => layer.weight === BODY.weight)
+    const dates = texts(untitled.layers).filter((layer) => layer.weight === DETAILS.weight)
+    expect(capTop(story[0])).toBeLessThan(PAGE_MARGIN + 40)
+    expect(Math.max(...story.map((layer) => layer.y))).toBeLessThan(untitled.banner!.y)
+    expect(capTop(dates[0])).toBeGreaterThan(untitled.banner!.y + untitled.banner!.height)
+
+    // With nothing else on the page, the details come first, and the picture has to fit under them.
+    const alone = page({ position: 'middle', image: 'tall', title: '', body: '', details })
+    expect(alone.banner!.y).toBeGreaterThan(capTop(texts(alone.layers)[0]))
+    expect(alone.overflow).toBeNull()
+    const crowded = page({ position: 'middle', image: 'tall', title: '', body: Array(150).fill('words').join(' ') })
+    expect(crowded.overflow).toBe('body')
+    expect(crowded.banner!.y + crowded.banner!.height).toBeGreaterThan(POST_FRAME.height - PAGE_MARGIN)
+  })
+
+  it('gives a picture that fills the room the words leave, wherever it is', () => {
+    const details = '22 September · 6.30pm'
+    const foot = POST_FRAME.height - PAGE_MARGIN
+    const lowest = (layout: ReturnType<typeof page>) => Math.max(...texts(layout.layers).map((layer) => layer.y))
+
+    // At the top the words move down to the foot of the page, and the picture takes the rest.
+    const top = page({ image: 'fill', position: 'top', details })
+    expect(top.banner!.y).toBe(0)
+    expect(top.banner!.height).toBeGreaterThan(IMAGE_HEIGHTS.tall)
+    expect(lowest(top)).toBeLessThan(foot)
+    expect(lowest(top)).toBeGreaterThan(foot - BODY.size)
+    expect(Math.min(...texts(top.layers).map(capTop))).toBeGreaterThan(top.banner!.height + 40)
+
+    // In the middle the first words stay at the top and the rest go to the foot.
+    const middle = page({ image: 'fill', position: 'middle', details })
+    const titles = texts(middle.layers).filter((layer) => layer.size === middle.titleSize)
+    expect(capTop(titles[0])).toBeLessThan(PAGE_MARGIN + 40)
+    expect(middle.banner!.y).toBeGreaterThan(Math.max(...titles.map((layer) => layer.y)))
+    expect(lowest(middle)).toBeGreaterThan(foot - BODY.size)
+    expect(middle.banner!.height).toBeGreaterThan(FILL_SMALLEST)
+    // With nothing after it, it runs to the foot of the page, as at the bottom.
+    const last = page({ image: 'fill', position: 'middle', body: '', details: '' })
+    expect(last.banner!.y + last.banner!.height).toBe(POST_FRAME.height)
+
+    // At the bottom it starts under the words and runs to the foot of the page.
+    const bottom = page({ image: 'fill', position: 'bottom', details })
+    expect(bottom.banner!.y + bottom.banner!.height).toBe(POST_FRAME.height)
+    expect(bottom.banner!.y - lowest(bottom)).toBeGreaterThan(60)
+    expect(bottom.banner!.y - lowest(bottom)).toBeLessThan(80)
+
+    for (const layout of [top, middle, bottom]) {
+      expect(layout.overflow).toBeNull()
+      // The room is what the words would have with the smallest picture.
+      expect(layout.bodyRoom).toBeGreaterThan(layout.bodyLines)
+    }
+    // More words, less picture: never less than the smallest, and then the words are too long.
+    const more = page({ image: 'fill', position: 'bottom', body: Array(60).fill('words').join(' ') })
+    expect(more.banner!.height).toBeLessThan(bottom.banner!.height)
+    expect(more.banner!.height).toBeGreaterThanOrEqual(FILL_SMALLEST)
+    for (const position of ['top', 'middle', 'bottom'] as const) {
+      const long = page({ image: 'fill', position, body: Array(200).fill('words').join(' ') })
+      expect(long.banner!.height).toBe(FILL_SMALLEST)
+      expect(long.overflow).toBe('body')
+      expect(long.over).toBe(long.bodyLines - long.bodyRoom)
+    }
+  })
+
+  it('starts the words under the logo when the picture is not at the top', () => {
+    const marks = furnitureBoxes({ logo: 'left', arrow: false }, POST_FRAME, INSIDE_MARKS)
+    const logoBottom = marks.logo!.y + marks.logo!.height
+    for (const position of ['middle', 'bottom'] as const) {
+      const layout = page({ position }, { logoBottom })
+      expect(Math.min(...texts(layout.layers).map(capTop))).toBeGreaterThan(logoBottom)
+      expect(layout.banner!.y).toBeGreaterThan(logoBottom)
+    }
+    // At the top the logo sits on the picture, and takes nothing from the words.
+    expect(page({ position: 'top' }, { logoBottom }).bodyRoom).toBe(page({ position: 'top' }).bodyRoom)
+  })
+
+  it('ignores the position when the page has no picture', () => {
+    const none = page({ image: 'none', position: 'bottom' })
+    expect(none.banner).toBeNull()
+    expect(none.layers).toEqual(page({ image: 'none', position: 'top' }).layers)
+  })
+
+  it('sets the label in capitals on light tape, over whatever comes first', () => {
+    const layout = page({ label: ' Meet  the artists ', image: 'none' })
+    const [tapePath] = paths(layout.layers)
+    const lettering = texts(layout.layers).find((layer) => layer.text === 'MEET THE ARTISTS')!
+    expect(tapePath).toMatchObject({ fill: BRAND.light })
+    expect(lettering).toMatchObject({ size: LABEL.size, weight: 700, fill: BRAND.dark, x: PAGE_MARGIN })
+    // The tape reaches into the margin; its lettering starts on it, like the title under it.
+    const label = layout.label!
+    expect(label.x).toBeLessThan(PAGE_MARGIN)
+    expect(label.x).toBeGreaterThan(PAGE_MARGIN - LABEL.size / 2)
+    expect(label.x + label.width).toBeGreaterThan(PAGE_MARGIN + 16 * LABEL.size * 0.5)
+    expect(label.x + label.width).toBeLessThan(POST_FRAME.width - PAGE_MARGIN)
+    expect(label.y).toBeGreaterThanOrEqual(PAGE_MARGIN)
+    expect(capTop(lettering)).toBeGreaterThan(label.y)
+    expect(lettering.y).toBeLessThan(label.y + label.height)
+    const title = texts(layout.layers).find((layer) => layer.size === layout.titleSize)!
+    expect(capTop(title)).toBeGreaterThan(label.y + label.height + 30)
+    expect(capTop(title)).toBeLessThan(label.y + label.height + 70)
+    // The label takes its room from the story.
+    expect(layout.bodyRoom).toBeLessThan(page({ image: 'none' }).bodyRoom)
+
+    // Under a picture at the top; and with no title, over the story.
+    const under = page({ label: 'Meet the artists' })
+    expect(under.label!.y).toBeGreaterThan(IMAGE_HEIGHTS.medium + 40)
+    const untitled = page({ label: 'Meet the artists', title: '', image: 'none' })
+    const first = texts(untitled.layers).find((layer) => layer.size === BODY.size)!
+    expect(capTop(first)).toBeGreaterThan(untitled.label!.y + untitled.label!.height + 40)
+    expect(capTop(first)).toBeLessThan(untitled.label!.y + untitled.label!.height + 80)
+    // In the middle, the picture follows the label and the title together, never the label alone.
+    const middle = page({ label: 'Meet the artists', position: 'middle', image: 'short' })
+    expect(middle.banner!.y).toBeGreaterThan(Math.max(...texts(middle.layers).filter((layer) => layer.size === middle.titleSize).map((layer) => layer.y)))
+    const story = page({ label: 'Meet the artists', title: '', position: 'middle', image: 'short' })
+    expect(story.banner!.y).toBeGreaterThan(Math.max(...texts(story.layers).filter((layer) => layer.weight === BODY.weight).map((layer) => layer.y)))
+  })
+
+  it('cuts the label from the cover’s seed, and has none until one is typed', () => {
+    expect(page({ label: '  ' })).toMatchObject({ label: null })
+    expect(paths(page({ label: '' }).layers)).toHaveLength(0)
+    const cut = (seed: number) => layoutInside({ label: 'Meet the artists', title: '', body: '', image: 'none' }, measure, {}, { ...tape, seed })
+    expect(paths(cut(7).layers)[0].d).toBe(paths(cut(7).layers)[0].d)
+    expect(new Set([1, 2, 3, 4, 5, 6].map((seed) => paths(cut(seed).layers)[0].d)).size).toBeGreaterThan(1)
+    // A label alone is a page; a plain cut is a plain rectangle.
+    expect(cut(7)).toMatchObject({ empty: false, bodyLines: 0, overflow: null })
+    const plain = layoutInside({ label: 'Meet the artists', title: '', body: '', image: 'none' }, measure, {}, { ...tape, mode: 'plain' })
+    expect(paths(plain.layers)[0].d.match(/[ML]/g)).toHaveLength(4)
+    // Without the cover's tools there is no label to cut.
+    expect(layoutInside({ label: 'Meet the artists', title: 'A title', body: '', image: 'none' }, measure).label).toBeNull()
+  })
+
+  it('wraps a long label inside the margins', () => {
+    const layout = page({ label: 'Everything you need to know before you go', image: 'none' })
+    const lettering = texts(layout.layers).filter((layer) => layer.size === LABEL.size)
+    expect(lettering.length).toBeGreaterThan(1)
+    expect(layout.label!.x + layout.label!.width).toBeLessThan(POST_FRAME.width - PAGE_MARGIN + 1)
+    expect(lettering[1].y - lettering[0].y).toBeCloseTo(LABEL.size * 0.94, 1)
   })
 
   it('reads a blank line as a new paragraph, a dash as a bullet and stars as bold', () => {
@@ -134,12 +315,24 @@ describe('inside page', () => {
     expect(svg.indexOf('<image')).toBeLessThan(svg.indexOf('M0 0H10V10Z'))
     expect(svg.indexOf('M0 0H10V10Z')).toBeLessThan(svg.indexOf('<text'))
     expect(insideSvg(page({ image: 'none' }), { photo: 'data:image/jpeg;base64,AAA' })).not.toContain('<image')
+    // Lower down the page, the picture and its darkening go where the banner is.
+    const lower = insideSvg(page({ position: 'bottom' }), { photo: 'data:image/jpeg;base64,AAA', darken: 0.15 })
+    const top = POST_FRAME.height - IMAGE_HEIGHTS.medium
+    expect(lower).toContain(`<image xlink:href="data:image/jpeg;base64,AAA" y="${top}" width="1080" height="${IMAGE_HEIGHTS.medium}"`)
+    expect(lower).toContain(`<rect y="${top}" width="1080" height="${IMAGE_HEIGHTS.medium}" fill="#000" opacity="0.15"/>`)
+    // The label's tape is drawn under its lettering.
+    const labelled = insideSvg(page({ label: 'Meet the artists' }))
+    expect(labelled.indexOf(`fill="${BRAND.light}" transform="translate(${PAGE_MARGIN} `)).toBeGreaterThan(0)
+    expect(labelled.indexOf('<path')).toBeLessThan(labelled.indexOf('MEET THE ARTISTS'))
   })
 
   it('replaces invalid stored values instead of trusting them', () => {
-    expect(sanitizeInside({ title: 4, body: null, details: 7, image: 'huge', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
-    const chosen = { title: 'A title', body: 'A story', details: 'A date', image: 'none', logo: 'left', arrow: false }
+    expect(sanitizeInside({ label: 9, title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
+    const chosen = { label: 'Meet the artists', title: 'A title', body: 'A story', details: 'A date', image: 'none', position: 'middle', logo: 'left', arrow: false }
     expect(sanitizeInside(chosen)).toEqual(chosen)
+    expect(sanitizeInside({ ...chosen, image: 'fill' }).image).toBe('fill')
+    // A page saved before the label and the position existed has no label, and its picture at the top.
+    expect(sanitizeInside({ title: 'A title', body: 'A story', details: '', image: 'tall' })).toMatchObject({ label: '', position: 'top', image: 'tall' })
     // A page saved before details existed gets none, not the sample ones.
     expect(sanitizeInside({ title: 'A title', body: 'A story' }).details).toBe('')
   })

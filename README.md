@@ -69,13 +69,17 @@ The switch above the canvas picks one of three: a post's **Cover**, its **Inside
 
 ### Inside page
 
-A post is a cover and, usually, one page inside it. The inside page is a picture across the top, a title, the story, then the details, on brand black:
+A post is a cover and, usually, one page inside it. The inside page is a picture, a label, a title, the story, then the details, on brand black:
 
-- **Title**: Barlow Bold, white. It takes the largest size from 72px down to 50px that fits in three lines.
+- **Label**: a few words in capitals on light tape, over whatever comes first on the page ("Meet the artists"). Barlow Bold at 50px, its lettering starting on the margin like the lines under it. Leave it empty for none. It is cut like the cover's tape: the cut style and Randomise cut under it are the cover's own, so changing them here changes the cover too.
+- **Title**: Barlow Bold, white. It takes the largest size from 69px down to 52px that fits in three lines.
 - **Text**: the story, in Barlow Medium at 38px (28.5 in Canva, whose sizes are points), light grey, lines 1.32 apart.
 - **Details**: dates, place, tickets. The same size in a lighter weight (Regular), under the story.
-- **Picture**: None, Short (340px), Medium (430px) or Tall (540px). It starts as the cover's photo and can be given its own; drag it inside its banner, or use the sliders, as on a cover.
-- **Marks**: the arrow is on and the logo is off to start with. The logo is small here (128px) and both sit on the page's 56px margin.
+- **Picture**: None, Short (340px), Medium (430px), Tall (540px) or Fill. It starts as the cover's photo and can be given its own; drag it inside its banner, or use the sliders, as on a cover.
+- **Position**: where the picture goes. **Top**: above the words. **Middle**: after the first thing on the page, which is the title, or the story when there is no title. **Bottom**: under the words, on the foot of the page, with the arrow over it.
+- **Marks**: the arrow is on and the logo is off to start with. The logo is small here (128px) and both sit on the page's 56px margin. With the picture in the middle or at the bottom, the words start under the logo.
+
+A picture that **fills** takes the room the words leave, so the page is always full: at the top the words sit on the foot of the page, in the middle the first words stay at the top and the rest go to the foot, and at the bottom the picture runs from under the words to the foot. It is never less than 260px tall; past that the words are too long.
 
 Everything under the title is one size, and what matters more or less is told apart by weight alone. In the text and the details:
 
@@ -85,7 +89,7 @@ Everything under the title is one size, and what matters more or less is told ap
 
 Emoji typed into either box are drawn as the device draws them.
 
-The panel counts the lines of text and details against the room the page has, and exports are blocked while they run over: cut them, use a shorter picture, or none. With a Medium picture and a three-line title there is room for about seven lines.
+The panel counts the lines of text and details against the room the page has, and exports are blocked while they run over: cut them, use a shorter picture, or none. With a Medium picture and a three-line title there is room for about seven lines. A picture in the middle costs about two lines more than one at the top or the bottom, because it has a gap on both sides.
 
 Sizes, margins and greys follow the article pages of the Alternative Dublin social templates; they are set at the top of `src/inside.ts`. The cutout SVG is for covers only.
 

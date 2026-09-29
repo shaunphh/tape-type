@@ -748,7 +748,7 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
   cursor: pointer;
 }
 .photo-empty span { font-family: 'Barlow Condensed'; font-size: 20px; font-weight: 700; text-transform: uppercase; }
-/* The inside page's picture sits in a banner across the top, not over the whole page. */
+/* The inside page’s picture sits in a banner across the page, not over the whole of it. */
 .photo-empty.banner { inset: 0 0 auto; }
 /* What is being made sits above the canvas, where it can always be seen. */
 .making-switcher { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: #dcd9d2; }

@@ -50,10 +50,11 @@ import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type HeadlineLayout, type Me
 import { LINE_HEIGHT, applyLocks, isBarred, isLocked, lockedLineGap, unlocked } from './locks'
 import {
   BODY,
-  IMAGE_HEIGHTS,
   INSIDE_MARKS,
+  LABEL,
   PAGE_MARGIN,
   TEXT_WIDTH as PAGE_TEXT_WIDTH,
+  TITLE,
   drawInside,
   insideSvg,
   layoutInside,
@@ -61,7 +62,9 @@ import {
   saveInside,
   type ImageHeight,
   type InsideOptions,
+  type LabelTools,
   type MeasureWidth,
+  type PicturePosition,
 } from './inside'
 import { measureInk } from './metrics'
 import { CENTRED, MAX_ZOOM, dragPhoto, photoRect, photoSlack, visiblePart, type PhotoView } from './photo'
@@ -100,6 +103,23 @@ const imageOptions: { value: ImageHeight; label: string }[] = [
   { value: 'short', label: 'Short' },
   { value: 'medium', label: 'Medium' },
   { value: 'tall', label: 'Tall' },
+  { value: 'fill', label: 'Fill' },
+]
+
+/** Where the inside page's picture goes, and what that means for the words. */
+const pictureOptions: { value: PicturePosition; label: string }[] = [
+  { value: 'top', label: 'Top' },
+  { value: 'middle', label: 'Middle' },
+  { value: 'bottom', label: 'Bottom' },
+]
+const PICTURE_NOTES: Record<PicturePosition, string> = { top: 'Above the words', middle: 'After the first words', bottom: 'Under the words' }
+const cutOptions: { value: ShapeMode; label: string }[] = [
+  { value: 'plain', label: 'Plain' },
+  { value: 'torn', label: 'Torn' },
+  { value: 'clean', label: 'Clean' },
+  { value: 'tape', label: 'Tape' },
+  { value: 'cling', label: 'Cling' },
+  { value: 'rough', label: 'Rough' },
 ]
 
 const positions: { label: string; y: number }[] = [
@@ -575,16 +595,31 @@ function App() {
       return context.measureText(value).width
     }
   }, [])
+  // The inside page's label is cut like the cover's tape: the same kind of cut, from the same seed.
+  const labelTools = useMemo<LabelTools>(() => {
+    const context = document.createElement('canvas').getContext('2d')
+    return {
+      ink: (value, size, weight) => {
+        if (!context) return { width: value.length * size * 0.6, originOffset: 0, ascent: size * 0.7, descent: 0 }
+        context.font = fontShorthand(size, weight)
+        return measureInk(context, value, weight, size)
+      },
+      mode: settings.mode,
+      seed: settings.seed,
+    }
+  }, [settings.mode, settings.seed])
   useEffect(() => {
     if (!isInside) return
     const words = `${inside.title} ${inside.body} ${inside.details}`
     for (const weight of [400, 500, 700]) document.fonts.load(fontShorthand(BODY.size, weight), words).catch(() => undefined)
-  }, [isInside, inside.title, inside.body, inside.details])
+    const label = normaliseEyebrow(inside.label)
+    if (label) document.fonts.load(fontShorthand(LABEL.size, LABEL.weight), label).catch(() => undefined)
+  }, [isInside, inside.label, inside.title, inside.body, inside.details])
   const page = useMemo(
-    () => layoutInside(inside, measureWidth, { logoBottom: markBoxes.logo ? markBoxes.logo.y + markBoxes.logo.height : undefined, arrowTop: markBoxes.arrow?.y }),
+    () => layoutInside(inside, measureWidth, { logoBottom: markBoxes.logo ? markBoxes.logo.y + markBoxes.logo.height : undefined, arrowTop: markBoxes.arrow?.y }, labelTools),
     // Measured again whenever a font finishes loading.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [inside, measureWidth, markBoxes, fonts.version],
+    [inside, measureWidth, markBoxes, labelTools, fonts.version],
   )
   const runs = useMemo(() => textRuns(isInside ? page.layers : layers), [isInside, page.layers, layers])
 
@@ -593,18 +628,21 @@ function App() {
   const view = isInside ? insideView : photoView
   const setView = isInside ? setInsideView : setPhotoView
   const photoFrame = isInside && page.banner ? page.banner : frame
+  // How far down the page the inside page's picture starts.
+  const bannerTop = isInside && page.banner ? page.banner.y : 0
 
   // For now the arrow takes the logo's colour whenever both are on the cover.
   const tied = !locksOff && marksLogo !== 'off' && marksArrow
   // Each mark is checked against what is behind it, so moving the photo can change its colour.
   const rulings = useMemo(() => {
     const flat = isInside ? BRAND.dark : BACKGROUND_FILLS[previewBackground]
-    const onPhoto = (box: Box) => shownPhoto && (!isInside || box.y + box.height / 2 < photoFrame.height)
-    const groundUnder = (box?: Box) => (!box ? [] : onPhoto(box) && shownPhoto ? photoGround(shownPhoto, view, box, darken, photoFrame) : flat ? [fillLuminance(flat)] : [])
+    const middle = (box: Box) => box.y + box.height / 2 - bannerTop
+    const onPhoto = (box: Box) => shownPhoto && (!isInside || (middle(box) >= 0 && middle(box) < photoFrame.height))
+    const groundUnder = (box?: Box) => (!box ? [] : onPhoto(box) && shownPhoto ? photoGround(shownPhoto, view, { ...box, y: box.y - bannerTop }, darken, photoFrame) : flat ? [fillLuminance(flat)] : [])
     const logo = settleColour(cover.logoColour, groundUnder(markBoxes.logo))
     // Tied, the arrow is drawn in the logo's colour and only checked against its own ground.
     return { logo, arrow: settleColour(tied ? logo.colour : cover.arrowColour, groundUnder(markBoxes.arrow)) }
-  }, [tied, isInside, cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, view, darken, previewBackground, photoFrame])
+  }, [tied, isInside, cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, view, darken, previewBackground, photoFrame, bannerTop])
   const furniture = useMemo(
     () => buildFurniture({ logo: marksLogo, arrow: marksArrow }, { logo: rulings.logo.colour, arrow: rulings.arrow.colour }, frame, markSizes),
     [marksLogo, marksArrow, rulings.logo.colour, rulings.arrow.colour, frame, markSizes],
@@ -621,7 +659,7 @@ function App() {
     : page.overflow === 'title'
       ? 'The title runs past four lines. Shorten it.'
       : page.overflow === 'body'
-        ? `The text is ${page.over} ${page.over === 1 ? 'line' : 'lines'} too long for the page. Cut it${page.banner ? ', or use a shorter picture' : ''}.`
+        ? `The text is ${page.over} ${page.over === 1 ? 'line' : 'lines'} too long for the page. Cut it${!page.banner ? '' : inside.image === 'fill' ? ', or set the picture to None' : ', or use a shorter picture'}.`
         : page.banner && !shownPhoto ? 'Choose a photo, or set the picture to None.' : null
   const blockedReason = isInside ? pageBlocked : coverBlocked
   const exportDisabled = Boolean(blockedReason) || fonts.loading
@@ -893,7 +931,8 @@ function App() {
     const onWords = x >= viewBox.x - GRAB_MARGIN && x <= viewBox.x + viewBox.width + GRAB_MARGIN
       && y >= viewBox.y - GRAB_MARGIN && y <= viewBox.y + viewBox.height + GRAB_MARGIN
     // On the inside page only the picture moves, and only from inside its banner.
-    const onBanner = (event.clientY - stage.top) * scale < photoFrame.height
+    const down = (event.clientY - stage.top) * scale - bannerTop
+    const onBanner = down >= 0 && down < photoFrame.height
     if (isInside && !(shownPhoto && onBanner)) return
     dragRef.current = {
       pointerId: event.pointerId,
@@ -998,10 +1037,11 @@ function App() {
   const headlinePreview = settings.headline.replace(/\s+/g, ' ').trim()
   const eyebrowPreview = settings.eyebrowEnabled ? settings.eyebrow.trim() : ''
   const insideTitle = inside.title.replace(/\s+/g, ' ').trim()
+  const insideLabel = normaliseEyebrow(inside.label)
   const summaries: Record<PanelId, string> = {
     cover: look.label,
     words: isInside
-      ? insideTitle || 'No title yet'
+      ? [insideLabel, insideTitle || 'No title yet'].filter(Boolean).join(' · ')
       : headlinePreview ? (eyebrowPreview ? `${eyebrowPreview} · ${headlinePreview}` : headlinePreview) : 'No headline yet',
     photo: !anyPhoto
       ? 'No photo yet'
@@ -1053,13 +1093,26 @@ function App() {
 
           {isInside && (
             <Panel id="words" title="Words" summary={summaries.words} open={panels.words} onToggle={togglePanel}>
-              <span className="field-label">Title</span>
-              <textarea aria-label="Title" className="title-input" value={inside.title} rows={3} onChange={(event) => updateInside('title', event.target.value)} />
-              <div className="words-status">
-                <div className={`fit-line ${page.overflow === 'title' ? 'error' : ''}`}>
-                  <strong>{page.titleSize}px</strong>
-                  <span>{page.titleLines} / 3 lines</span>
-                  <span>sized 50–72</span>
+              <div className="section-label-row">
+                <span className="field-label">Label</span>
+                <span className="field-hint">Capitals on tape · leave empty for none</span>
+              </div>
+              <input className="eyebrow-input" aria-label="Label" value={inside.label} maxLength={40} placeholder="Meet the artists" onChange={(event) => updateInside('label', event.target.value)} />
+              {insideLabel && (
+                <>
+                  <Segmented label="Label cut" note="Shared with the cover’s tape" value={settings.mode} options={cutOptions} onChange={(mode) => update('mode', mode)} />
+                  <button className="panel-button" disabled={plain || locked} title={plain ? 'Plain tape has no cut to vary' : locked ? 'The seed is locked on the cover' : undefined} onClick={randomise}><Sparkles size={14} aria-hidden="true" /> Randomise cut</button>
+                </>
+              )}
+              <div className="sub-block">
+                <span className="field-label">Title</span>
+                <textarea aria-label="Title" className="title-input" value={inside.title} rows={3} onChange={(event) => updateInside('title', event.target.value)} />
+                <div className="words-status">
+                  <div className={`fit-line ${page.overflow === 'title' ? 'error' : ''}`}>
+                    <strong>{page.titleLines ? `${page.titleSize}px` : 'No title'}</strong>
+                    <span>{page.titleLines} / {TITLE.lines} lines</span>
+                    <span>sized {TITLE.smallest}–{TITLE.largest}</span>
+                  </div>
                 </div>
               </div>
               <div className="sub-block">
@@ -1160,7 +1213,8 @@ function App() {
           </Panel>}
 
           <Panel id="photo" title="Photo" summary={summaries.photo} open={panels.photo} onToggle={togglePanel}>
-            {isInside && <Segmented label="Picture" note={page.banner ? `${page.banner.height}px tall` : 'Words only'} value={inside.image} options={imageOptions} onChange={(image) => updateInside('image', image)} />}
+            {isInside && <Segmented label="Picture" note={!page.banner ? 'Words only' : inside.image === 'fill' ? `Fills the page · ${page.banner.height}px` : `${page.banner.height}px tall`} value={inside.image} options={imageOptions} onChange={(image) => updateInside('image', image)} />}
+            {isInside && <Segmented label="Position" note={page.banner ? PICTURE_NOTES[inside.position] : undefined} value={inside.position} options={pictureOptions} disabled={!page.banner} onChange={(place) => updateInside('position', place)} />}
             <div className="photo-actions">
               <label className="panel-button upload-button" onClick={clickPhoto}>
                 <input type="file" accept="image/*" onChange={choosePhoto} />
@@ -1177,7 +1231,7 @@ function App() {
               </div>
             ) : (
               <p className="panel-note">{isInside
-                ? (page.banner ? 'Photos stay in your browser. Once one is in, drag it in its banner to reposition it.' : 'This page has no picture. Pick a height above to add one.')
+                ? (page.banner ? 'Photos stay in your browser. Once one is in, drag it in its banner to reposition it.' : 'This page has no picture. Pick a height above to add one, or Fill to give it the room the words leave.')
                 : photo ? 'The photo is hidden while another background is showing.' : 'Photos stay in your browser. Once one is in, drag it on the cover to reposition it.'}</p>
             )}
             {isInside && shownPhoto && !insidePhoto && <p className="panel-note">This is the cover’s photo. Choose another to change it on this page only.</p>}
@@ -1373,7 +1427,7 @@ function App() {
                 <label className="photo-empty"><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
               )}
               {isInside && page.banner && !shownPhoto && (
-                <label className="photo-empty banner" style={{ height: `${page.banner.height / frame.height * 100}%` }}><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
+                <label className="photo-empty banner" style={{ top: `${page.banner.y / frame.height * 100}%`, height: `${page.banner.height / frame.height * 100}%` }}><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
               )}
               <div
                 className="artwork draggable"
@@ -1393,11 +1447,11 @@ function App() {
               >
                 {isInside && (
                   <svg role="img" aria-label={`Inside page: ${insideTitle || 'no title yet'}`} viewBox={`0 0 ${frame.width} ${frame.height}`}>
-                    <defs><clipPath id="banner"><rect width={photoFrame.width} height={photoFrame.height} /></clipPath></defs>
+                    <defs><clipPath id="banner"><rect y={bannerTop} width={photoFrame.width} height={photoFrame.height} /></clipPath></defs>
                     {shownPhoto && photoPlace && (
                       <g clipPath="url(#banner)">
-                        <image href={shownPhoto.url} x={photoPlace.x} y={photoPlace.y} width={photoPlace.width} height={photoPlace.height} preserveAspectRatio="none" />
-                        {darken > 0 && <rect width={photoFrame.width} height={photoFrame.height} fill="#000" opacity={darken} />}
+                        <image href={shownPhoto.url} x={photoPlace.x} y={bannerTop + photoPlace.y} width={photoPlace.width} height={photoPlace.height} preserveAspectRatio="none" />
+                        {darken > 0 && <rect y={bannerTop} width={photoFrame.width} height={photoFrame.height} fill="#000" opacity={darken} />}
                       </g>
                     )}
                     <rect className="safe-guide" x={PAGE_MARGIN} y={PAGE_MARGIN} width={PAGE_TEXT_WIDTH} height={frame.height - PAGE_MARGIN * 2} />

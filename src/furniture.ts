@@ -120,27 +120,22 @@ const COLOURS: readonly MarkColour[] = ['yellow', 'light', 'dark']
 const FALLBACKS: readonly MarkColour[] = ['light', 'dark']
 const MARK_LUMINANCE = Object.fromEntries(COLOURS.map((colour) => [colour, fillLuminance(MARK_FILLS[colour])])) as Record<MarkColour, number>
 
-/** What was settled for a mark's colour, and what may be chosen instead. */
+/** What was settled for a mark's colour. */
 export interface Ruling {
   /** The colour the mark is drawn in. */
   colour: MarkColour
-  /** The colours that can be chosen for it on this ground. */
-  allowed: MarkColour[]
-  /** Whether the brand's yellow reads on this ground. */
-  yellowReads: boolean
-  /** Whether the colour in use reads on this ground. */
+  /** Whether that colour reads on the ground under the mark. */
   reads: boolean
 }
 
 /**
  * Settles a mark's colour from the ground under it (one luminance per sample, as the cover shows
- * it). Marks are yellow wherever yellow reads. Where it doesn't, the mark takes the colour that
- * does read there; where nothing reads (ground that is part dark, part bright) it takes whatever
- * reads on most of it, and any colour can be chosen by eye instead. `free` lifts all that: any
- * colour can be set, and Auto follows the same rule. With nothing behind the mark to check (a
- * see-through background) it is yellow.
+ * it). A chosen colour is used as it is. On Auto the mark is yellow wherever yellow reads; where
+ * it doesn't, it takes the colour that does read there, and where nothing reads (ground that is
+ * part dark, part bright) whatever reads on most of it. With nothing behind the mark to check (a
+ * see-through background) Auto is yellow.
  */
-export function settleColour(choice: ColourChoice, ground: number[], free = false): Ruling {
+export function settleColour(choice: ColourChoice, ground: number[]): Ruling {
   const measure = (colour: MarkColour) => {
     const values = ground.map((sample) => contrast(MARK_LUMINANCE[colour], sample))
     return {
@@ -153,12 +148,8 @@ export function settleColour(choice: ColourChoice, ground: number[], free = fals
   // Ties go to the colour listed first, so yellow is kept whenever it does as well as another.
   const most = (colours: readonly MarkColour[], by: 'share' | 'strength') =>
     colours.reduce((held, colour) => (measured[colour][by] > measured[held][by] ? colour : held))
-  const open = FALLBACKS.filter(reads)
-  const automatic = reads('yellow') ? 'yellow' : open.length ? most(open, 'strength') : most(COLOURS, 'share')
-  const ruling = (colour: MarkColour, allowed: MarkColour[]): Ruling => ({ colour, allowed, yellowReads: reads('yellow'), reads: reads(colour) })
-
-  if (free) return ruling(choice === 'auto' ? automatic : choice, [...COLOURS])
-  if (reads('yellow')) return ruling('yellow', ['yellow'])
-  const allowed = open.length ? open : [...COLOURS]
-  return ruling(choice !== 'auto' && allowed.includes(choice) ? choice : automatic, allowed)
+  const fallbacks = FALLBACKS.filter(reads)
+  const automatic = reads('yellow') ? 'yellow' : fallbacks.length ? most(fallbacks, 'strength') : most(COLOURS, 'share')
+  const colour = choice === 'auto' ? automatic : choice
+  return { colour, reads: reads(colour) }
 }

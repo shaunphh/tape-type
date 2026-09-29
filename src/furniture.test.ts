@@ -97,7 +97,7 @@ describe('headline and marks', () => {
 
 describe('mark colour', () => {
   const ground = (red: number, green: number, blue: number, darken = 0.15) => [luminanceOf(red, green, blue, darken)]
-  const settled = (samples: number[], choice: ColourChoice = 'auto', free = false) => settleColour(choice, samples, free)
+  const settled = (samples: number[], choice: ColourChoice = 'auto') => settleColour(choice, samples)
   const marks = { yellow: luminanceOf(255, 239, 58), light: luminanceOf(240, 240, 240), dark: luminanceOf(16, 16, 16) }
 
   it('measures contrast from none to black on white, the same either way up', () => {
@@ -114,7 +114,7 @@ describe('mark colour', () => {
     expect(contrast(marks.yellow, sky)).toBeGreaterThan(READS_FROM)
   })
 
-  it('keeps marks yellow wherever yellow reads, with nothing else to choose', () => {
+  it('on Auto, keeps marks yellow wherever yellow reads', () => {
     const reads = [
       ground(16, 16, 16, 0), // the Dark background
       ground(40, 24, 20), // a dim interior
@@ -122,44 +122,41 @@ describe('mark colour', () => {
       ground(74, 144, 217), // blue sky
       ground(138, 138, 138), // grey stone
     ]
-    for (const samples of reads) {
-      expect(settled(samples)).toEqual({ colour: 'yellow', allowed: ['yellow'], yellowReads: true, reads: true })
-      expect(settled(samples, 'dark').colour).toBe('yellow')
-    }
+    for (const samples of reads) expect(settled(samples)).toEqual({ colour: 'yellow', reads: true })
   })
 
-  it('turns dark where the ground is too bright for yellow', () => {
+  it('on Auto, turns dark where the ground is too bright for yellow', () => {
     for (const samples of [ground(200, 212, 224), ground(255, 255, 255), ground(255, 239, 58, 0)]) {
-      expect(settled(samples)).toEqual({ colour: 'dark', allowed: ['dark'], yellowReads: false, reads: true })
-      // Light is no better than yellow there, so it can't be chosen.
-      expect(settled(samples, 'light').colour).toBe('dark')
+      expect(settled(samples)).toEqual({ colour: 'dark', reads: true })
     }
   })
 
   it('goes by most of the ground, not a bright or dark corner of it', () => {
     const [dim] = ground(40, 24, 20)
     const [bright] = ground(255, 255, 255)
-    expect(settled([...Array(80).fill(dim), ...Array(20).fill(bright)]).colour).toBe('yellow')
-    expect(settled([...Array(20).fill(dim), ...Array(80).fill(bright)]).colour).toBe('dark')
+    expect(settled([...Array(80).fill(dim), ...Array(20).fill(bright)])).toEqual({ colour: 'yellow', reads: true })
+    expect(settled([...Array(20).fill(dim), ...Array(80).fill(bright)])).toEqual({ colour: 'dark', reads: true })
   })
 
-  it('opens every colour, to be picked by eye, where nothing reads', () => {
+  it('where nothing reads, takes what reads on more of the ground and says it does not read', () => {
     const [dim] = ground(40, 24, 20)
     const [bright] = ground(255, 255, 255)
-    const split = [...Array(60).fill(dim), ...Array(40).fill(bright)]
-    expect(settled(split)).toEqual({ colour: 'yellow', allowed: ['yellow', 'light', 'dark'], yellowReads: false, reads: false })
-    expect(settled(split, 'light').colour).toBe('light')
-    expect(settled(split, 'dark').colour).toBe('dark')
+    expect(settled([...Array(60).fill(dim), ...Array(40).fill(bright)])).toEqual({ colour: 'yellow', reads: false })
+    expect(settled([...Array(40).fill(dim), ...Array(60).fill(bright)])).toEqual({ colour: 'dark', reads: false })
   })
 
-  it('is yellow when there is nothing behind the mark to check', () => {
-    expect(settled([])).toEqual({ colour: 'yellow', allowed: ['yellow'], yellowReads: true, reads: true })
+  it('is yellow on Auto when there is nothing behind the mark to check', () => {
+    expect(settled([])).toEqual({ colour: 'yellow', reads: true })
   })
 
-  it('lets any colour be set once the locks are lifted, and says when it is hard to read', () => {
+  it('uses a chosen colour as it is, and says when it is hard to read', () => {
     const bright = ground(255, 255, 255)
-    expect(settled(bright, 'auto', true)).toMatchObject({ colour: 'dark', allowed: ['yellow', 'light', 'dark'], reads: true })
-    expect(settled(bright, 'yellow', true)).toMatchObject({ colour: 'yellow', reads: false })
-    expect(settled(ground(40, 24, 20), 'light', true)).toMatchObject({ colour: 'light', reads: true })
+    const dim = ground(40, 24, 20)
+    expect(settled(bright, 'yellow')).toEqual({ colour: 'yellow', reads: false })
+    expect(settled(bright, 'light')).toEqual({ colour: 'light', reads: false })
+    expect(settled(bright, 'dark')).toEqual({ colour: 'dark', reads: true })
+    expect(settled(dim, 'light')).toEqual({ colour: 'light', reads: true })
+    expect(settled(dim, 'dark')).toEqual({ colour: 'dark', reads: false })
+    expect(settled([], 'light')).toEqual({ colour: 'light', reads: true })
   })
 })

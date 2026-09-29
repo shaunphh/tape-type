@@ -51,12 +51,11 @@ The tool makes the whole cover, not only the headline:
 - **Darken photo** lays 15% black over the photo so the words and marks read. It is on by default and can be switched off.
 - **Logo**: Off, Left or Right. The Alternative Dublin logo sits in a top corner of the safe area, 250px wide, with DUBLIN lined up on that side.
 - **Swipe arrow**: the painted arrow sits in the bottom right corner of the safe area, at the size it was drawn (137 × 119px).
-- **Colour**: marks are yellow wherever yellow reads. The tool checks the contrast between each mark and what is behind it (the photo as the cover shows it, darkening included), so moving or zooming the photo can change the result, and the panel says what it found:
-  - *Yellow reads here*: the mark is yellow, and Light and Dark are greyed out.
-  - *Yellow is hard to read here*: the mark takes the colour that does read there, which on bright ground is Dark. Colours that don't read are greyed out.
-  - *Nothing reads well here*: the ground is part dark and part bright, so no colour reads on most of it. The mark takes the one that reads on more of it, and all three can be chosen by eye. Moving the photo usually fixes it.
+- **Colour**, for each mark: Auto, Yellow, Light or Dark. A chosen colour is used as it is. On Auto the mark is yellow wherever yellow reads: the tool checks the contrast between the mark and what is behind it (the photo as the cover shows it, darkening included). Where yellow doesn't read, the mark takes the colour that does, which on bright ground is Dark. Moving or zooming the photo can change the result. The panel says what Auto picked, and warns when the colour in use is hard to read:
+  - *Nothing reads well here* (on Auto): the ground is part dark and part bright, so no colour reads on most of it, and the mark takes the one that reads on more of it. Moving the photo usually fixes it.
+  - *Hard to read here*: the chosen colour doesn't read on this ground.
 
-  A colour reads when its contrast with the ground is 50 or more on at least three quarters of the ground under the mark. Contrast is measured the way the draft of the next accessibility guidelines does (APCA), which agrees with the eye that light marks hold up on mid tones such as a blue sky; 45 is its figure for large, heavy lettering. On the Yellow background marks are dark, and with a see-through background, where there is nothing to check, they are yellow.
+  A colour reads when its contrast with the ground is 50 or more on at least three quarters of the ground under the mark. Contrast is measured the way the draft of the next accessibility guidelines does (APCA), which agrees with the eye that light marks hold up on mid tones such as a blue sky; 45 is its figure for large, heavy lettering. On the Yellow background Auto is dark, and with a see-through background, where there is nothing to check, it is yellow.
 
 The headline's lettering keeps clear of both marks. A headline beside a mark stays where it was put; one that would sit on a mark steps aside by the shortest way that stays inside the safe area, so a full-width headline starts under the logo at Top and stops above the arrow at Bottom. The marks are part of the PNG and full SVG exports, and left out of the cutout SVG.
 
@@ -64,9 +63,9 @@ The marks are outlines, read from the SVG files in `src/assets`. `node scripts/p
 
 ### Locked choices
 
-For now every cover keeps to one look: black words on a light block of tape, left aligned. These choices are greyed out rather than removed, so people can see what is coming: the Feature style, Strips, the Dark, Yellow and None tapes, Centre and Right alignment, and the Series format. The cut styles stay open, as do column, position, size and fine-tuning.
+For now the text block keeps to one look: black words on a light block of tape, left aligned. These choices are greyed out rather than removed, so people can see what is coming: the Feature style, Strips, the Dark, Yellow and None tapes, Centre and Right alignment, and the Series format. The cut styles stay open, as do column, position, size and fine-tuning. Only the text block is locked: the photo, the logo, the arrow and their colours are free.
 
-The list lives in `src/locks.ts`; take an entry off it to open that choice up. Settings saved before the locks went on are put back to the house look, keeping the words. Opening the tool with `?unlocked` at the end of the address lifts every lock, and lets either mark be set to any colour (or back to Auto, which follows the rule above).
+The list lives in `src/locks.ts`; take an entry off it to open that choice up. Settings saved before the locks went on are put back to the house look, keeping the words. Opening the tool with `?unlocked` at the end of the address lifts every lock.
 
 ## Cover styles
 

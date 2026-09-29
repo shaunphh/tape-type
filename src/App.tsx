@@ -42,7 +42,6 @@ import {
   type Box,
   type ColourChoice,
   type LogoSide,
-  type MarkColour,
   type Ruling,
 } from './furniture'
 import { buildShape, nextSeed } from './geometry'
@@ -95,13 +94,12 @@ const logoOptions: { value: LogoSide; label: string }[] = [
   { value: 'left', label: 'Left' },
   { value: 'right', label: 'Right' },
 ]
-const colourOptions: { value: MarkColour; label: string }[] = [
+const colourOptions: { value: ColourChoice; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
   { value: 'yellow', label: 'Yellow' },
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
 ]
-// With the locks lifted a colour can be forced, so there is an Auto to go back to.
-const freeColourOptions: { value: ColourChoice; label: string }[] = [{ value: 'auto', label: 'Auto' }, ...colourOptions]
 const LOCKED_NOTE = 'Switched off for now'
 
 const samples = [
@@ -331,16 +329,9 @@ function photoGround(photo: Photo, view: PhotoView, box: Box, darken: number) {
 const fillLuminance = (fill: string) => luminanceOf(parseInt(fill.slice(1, 3), 16), parseInt(fill.slice(3, 5), 16), parseInt(fill.slice(5, 7), 16))
 
 /** A few words on how a mark's colour was settled, shown beside its control. */
-function colourNote(ruling: Ruling, choice: ColourChoice, free: boolean) {
-  if (!ruling.reads) return free && choice !== 'auto' ? 'Hard to read here' : 'Nothing reads well here'
-  if (free) return choice === 'auto' ? `Picked ${ruling.colour}` : undefined
-  return ruling.yellowReads ? 'Yellow reads here' : 'Yellow is hard to read here'
-}
-
-/** Why a colour can't be chosen for a mark, or false when it can. */
-function colourLock(ruling: Ruling, colour: MarkColour) {
-  if (ruling.allowed.includes(colour)) return false
-  return ruling.yellowReads ? 'Yellow reads here, so the mark stays yellow' : 'Too little contrast with what is behind it'
+function colourNote(ruling: Ruling, choice: ColourChoice) {
+  if (choice === 'auto') return ruling.reads ? `Picked ${ruling.colour}` : 'Nothing reads well here'
+  return ruling.reads ? undefined : 'Hard to read here'
 }
 
 function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = false, format, onChange }: {
@@ -431,8 +422,8 @@ function Segmented<T extends string>({ label, note, value, options, disabled = f
   value: T | null
   options: { value: T; label: string }[]
   disabled?: boolean
-  /** Options that are switched off: greyed out, but still on show. A string says why. */
-  locked?: (value: T) => boolean | string
+  /** Options that are switched off for now: greyed out, but still on show. */
+  locked?: (value: T) => boolean
   onChange: (value: T) => void
 }) {
   return (
@@ -441,7 +432,7 @@ function Segmented<T extends string>({ label, note, value, options, disabled = f
       <div className="piece-toggle compact" role="group" aria-label={label} style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
         {options.map((option) => {
           const off = locked?.(option.value) ?? false
-          return <button key={option.value} aria-pressed={value === option.value} className={value === option.value ? 'active' : ''} disabled={disabled || Boolean(off)} title={off ? (typeof off === 'string' ? off : LOCKED_NOTE) : undefined} onClick={() => onChange(option.value)}>{option.label}</button>
+          return <button key={option.value} aria-pressed={value === option.value} className={value === option.value ? 'active' : ''} disabled={disabled || off} title={off ? LOCKED_NOTE : undefined} onClick={() => onChange(option.value)}>{option.label}</button>
         })}
       </div>
     </div>
@@ -524,9 +515,9 @@ function App() {
   const rulings = useMemo(() => {
     const flat = BACKGROUND_FILLS[previewBackground]
     const settle = (choice: ColourChoice, box?: Box) =>
-      settleColour(choice, !box ? [] : shownPhoto ? photoGround(shownPhoto, photoView, box, darken) : flat ? [fillLuminance(flat)] : [], locksOff)
+      settleColour(choice, !box ? [] : shownPhoto ? photoGround(shownPhoto, photoView, box, darken) : flat ? [fillLuminance(flat)] : [])
     return { logo: settle(cover.logoColour, markBoxes.logo), arrow: settle(cover.arrowColour, markBoxes.arrow) }
-  }, [cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, photoView, darken, previewBackground, locksOff])
+  }, [cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, photoView, darken, previewBackground])
   const furniture = useMemo(
     () => buildFurniture({ logo: cover.logo, arrow: cover.arrow }, { logo: rulings.logo.colour, arrow: rulings.arrow.colour }),
     [cover.logo, cover.arrow, rulings.logo.colour, rulings.arrow.colour],
@@ -994,13 +985,12 @@ function App() {
 
           <Panel id="marks" title="Logo & arrow" summary={summaries.marks} open={panels.marks} onToggle={togglePanel}>
             <Segmented label="Logo" note="Top corner" value={cover.logo} options={logoOptions} onChange={(logo) => updateCover('logo', logo)} />
-            <Segmented<ColourChoice>
+            <Segmented
               label="Logo colour"
-              note={cover.logo !== 'off' ? colourNote(rulings.logo, cover.logoColour, locksOff) : undefined}
-              value={locksOff ? cover.logoColour : rulings.logo.colour}
-              options={locksOff ? freeColourOptions : colourOptions}
+              note={cover.logo !== 'off' ? colourNote(rulings.logo, cover.logoColour) : undefined}
+              value={cover.logoColour}
+              options={colourOptions}
               disabled={cover.logo === 'off'}
-              locked={(colour) => colour !== 'auto' && colourLock(rulings.logo, colour)}
               onChange={(colour) => updateCover('logoColour', colour)}
             />
             <label className="toggle-row spread">
@@ -1008,13 +998,12 @@ function App() {
               <input type="checkbox" checked={cover.arrow} onChange={(event) => updateCover('arrow', event.target.checked)} />
               <span className="switch" />
             </label>
-            <Segmented<ColourChoice>
+            <Segmented
               label="Arrow colour"
-              note={cover.arrow ? colourNote(rulings.arrow, cover.arrowColour, locksOff) : undefined}
-              value={locksOff ? cover.arrowColour : rulings.arrow.colour}
-              options={locksOff ? freeColourOptions : colourOptions}
+              note={cover.arrow ? colourNote(rulings.arrow, cover.arrowColour) : undefined}
+              value={cover.arrowColour}
+              options={colourOptions}
               disabled={!cover.arrow}
-              locked={(colour) => colour !== 'auto' && colourLock(rulings.arrow, colour)}
               onChange={(colour) => updateCover('arrowColour', colour)}
             />
           </Panel>

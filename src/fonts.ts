@@ -16,6 +16,24 @@ import extraboldVietnamese from '@fontsource/barlow/files/barlow-vietnamese-800-
 import black from '@fontsource/barlow/files/barlow-latin-900-normal.woff2?url'
 import blackExt from '@fontsource/barlow/files/barlow-latin-ext-900-normal.woff2?url'
 import blackVietnamese from '@fontsource/barlow/files/barlow-vietnamese-900-normal.woff2?url'
+import regularItalic from '@fontsource/barlow/files/barlow-latin-400-italic.woff2?url'
+import regularItalicExt from '@fontsource/barlow/files/barlow-latin-ext-400-italic.woff2?url'
+import regularItalicVietnamese from '@fontsource/barlow/files/barlow-vietnamese-400-italic.woff2?url'
+import mediumItalic from '@fontsource/barlow/files/barlow-latin-500-italic.woff2?url'
+import mediumItalicExt from '@fontsource/barlow/files/barlow-latin-ext-500-italic.woff2?url'
+import mediumItalicVietnamese from '@fontsource/barlow/files/barlow-vietnamese-500-italic.woff2?url'
+import semiboldItalic from '@fontsource/barlow/files/barlow-latin-600-italic.woff2?url'
+import semiboldItalicExt from '@fontsource/barlow/files/barlow-latin-ext-600-italic.woff2?url'
+import semiboldItalicVietnamese from '@fontsource/barlow/files/barlow-vietnamese-600-italic.woff2?url'
+import boldItalic from '@fontsource/barlow/files/barlow-latin-700-italic.woff2?url'
+import boldItalicExt from '@fontsource/barlow/files/barlow-latin-ext-700-italic.woff2?url'
+import boldItalicVietnamese from '@fontsource/barlow/files/barlow-vietnamese-700-italic.woff2?url'
+import extraboldItalic from '@fontsource/barlow/files/barlow-latin-800-italic.woff2?url'
+import extraboldItalicExt from '@fontsource/barlow/files/barlow-latin-ext-800-italic.woff2?url'
+import extraboldItalicVietnamese from '@fontsource/barlow/files/barlow-vietnamese-800-italic.woff2?url'
+import blackItalic from '@fontsource/barlow/files/barlow-latin-900-italic.woff2?url'
+import blackItalicExt from '@fontsource/barlow/files/barlow-latin-ext-900-italic.woff2?url'
+import blackItalicVietnamese from '@fontsource/barlow/files/barlow-vietnamese-900-italic.woff2?url'
 import { FONT_FAMILY } from './artwork'
 
 // The same subsets and unicode ranges as the Fontsource CSS the page itself uses.
@@ -26,7 +44,7 @@ const RANGES = {
 }
 type Subset = keyof typeof RANGES
 
-const FACES: { weight: number; subset: Subset; url: string }[] = [
+const FACES: { weight: number; subset: Subset; url: string; italic?: boolean }[] = [
   { weight: 400, subset: 'latin', url: regular },
   { weight: 400, subset: 'latin-ext', url: regularExt },
   { weight: 400, subset: 'vietnamese', url: regularVietnamese },
@@ -46,6 +64,25 @@ const FACES: { weight: number; subset: Subset; url: string }[] = [
   { weight: 900, subset: 'latin', url: black },
   { weight: 900, subset: 'latin-ext', url: blackExt },
   { weight: 900, subset: 'vietnamese', url: blackVietnamese },
+  // Italics are only set on the inside page, where words are put in underscores.
+  { weight: 400, subset: 'latin', url: regularItalic, italic: true },
+  { weight: 400, subset: 'latin-ext', url: regularItalicExt, italic: true },
+  { weight: 400, subset: 'vietnamese', url: regularItalicVietnamese, italic: true },
+  { weight: 500, subset: 'latin', url: mediumItalic, italic: true },
+  { weight: 500, subset: 'latin-ext', url: mediumItalicExt, italic: true },
+  { weight: 500, subset: 'vietnamese', url: mediumItalicVietnamese, italic: true },
+  { weight: 600, subset: 'latin', url: semiboldItalic, italic: true },
+  { weight: 600, subset: 'latin-ext', url: semiboldItalicExt, italic: true },
+  { weight: 600, subset: 'vietnamese', url: semiboldItalicVietnamese, italic: true },
+  { weight: 700, subset: 'latin', url: boldItalic, italic: true },
+  { weight: 700, subset: 'latin-ext', url: boldItalicExt, italic: true },
+  { weight: 700, subset: 'vietnamese', url: boldItalicVietnamese, italic: true },
+  { weight: 800, subset: 'latin', url: extraboldItalic, italic: true },
+  { weight: 800, subset: 'latin-ext', url: extraboldItalicExt, italic: true },
+  { weight: 800, subset: 'vietnamese', url: extraboldItalicVietnamese, italic: true },
+  { weight: 900, subset: 'latin', url: blackItalic, italic: true },
+  { weight: 900, subset: 'latin-ext', url: blackItalicExt, italic: true },
+  { weight: 900, subset: 'vietnamese', url: blackItalicVietnamese, italic: true },
 ]
 
 const parsedRanges = Object.fromEntries(Object.entries(RANGES).map(([subset, range]) => [
@@ -59,6 +96,7 @@ const parsedRanges = Object.fromEntries(Object.entries(RANGES).map(([subset, ran
 export interface TextRun {
   text: string
   weight: number
+  italic?: boolean
 }
 
 const covers = (subset: Subset, text: string) => [...text].some((character) => {
@@ -68,7 +106,7 @@ const covers = (subset: Subset, text: string) => [...text].some((character) => {
 
 /** The font files an export of these runs needs, chosen the way the browser chooses them: by unicode-range. */
 export const facesFor = (runs: TextRun[]) =>
-  FACES.filter((face) => runs.some((run) => run.weight === face.weight && covers(face.subset, run.text)))
+  FACES.filter((face) => runs.some((run) => run.weight === face.weight && Boolean(run.italic) === Boolean(face.italic) && covers(face.subset, run.text)))
 
 const pending = new Map<string, Promise<string>>()
 const loaded = new Map<string, string>()
@@ -99,7 +137,7 @@ function load(url: string) {
 }
 
 const fontFace = (face: (typeof FACES)[number], data: string) =>
-  `@font-face{font-family:'${FONT_FAMILY}';font-style:normal;font-weight:${face.weight};src:url(${data}) format('woff2');unicode-range:${RANGES[face.subset]}}`
+  `@font-face{font-family:'${FONT_FAMILY}';font-style:${face.italic ? 'italic' : 'normal'};font-weight:${face.weight};src:url(${data}) format('woff2');unicode-range:${RANGES[face.subset]}}`
 
 /** Starts fetching the files these runs need, so exports rarely have to wait. */
 export function preloadEmbeddedFonts(runs: TextRun[]) {

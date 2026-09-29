@@ -44,6 +44,8 @@ export interface PageWords {
   large: boolean
   /** The story is set a size up. */
   bodyLarge: boolean
+  /** The highlight stands at the foot of the words' room, not straight under the story. */
+  pinned: boolean
   /** What the story and the highlight are set in: grey and white to start with. */
   bodyTone: TextTone
   detailsTone: TextTone
@@ -76,8 +78,12 @@ export const BODY = { weight: 400, size: 38, large: 42, lineHeight: 1.2, paragra
  * size or a size up. It is not bolder of itself: words in stars are.
  */
 export const DETAILS = { weight: 400, large: 42, fill: TONES.light }
-/** Words in stars are bold and white, in the story or the highlight: a name, a date. */
+/** Words in two stars are bold and white, in the story or the highlight: a name, a date. */
 export const STRONG = { weight: 700, fill: BRAND.light }
+/** Words in one star are white too, and a step lighter. */
+export const SEMI = { weight: 600, fill: BRAND.light }
+/** Where a line under words sits, and how thick it is, as shares of the type size. */
+const UNDERLINE = { below: 0.13, thick: 0.055 }
 /** The label is a cover's tape in small: capitals on light tape, with a cut of its own. */
 export const LABEL = { size: 38, weight: 800 }
 
@@ -88,8 +94,9 @@ export interface PageType {
   text: { size: number; large: number; weight: number; lineHeight: number }
   /** The highlight, at its usual size and a size up. It takes the text's line height. */
   details: { size: number; large: number; weight: number }
-  /** A line in stars. */
+  /** Words in two stars, and in one. */
   strong: { weight: number }
+  semi: { weight: number }
   label: { size: number; weight: number }
 }
 
@@ -99,6 +106,7 @@ export const PAGE_TYPE: PageType = {
   text: { size: BODY.size, large: BODY.large, weight: BODY.weight, lineHeight: BODY.lineHeight },
   details: { size: BODY.size, large: DETAILS.large, weight: DETAILS.weight },
   strong: { weight: STRONG.weight },
+  semi: { weight: SEMI.weight },
   label: { size: LABEL.size, weight: LABEL.weight },
 }
 const CUTS: readonly ShapeMode[] = ['plain', 'torn', 'clean', 'tape', 'cling', 'rough']
@@ -112,7 +120,8 @@ const GAP = {
   labelToText: 46,
   aboveBody: 34,
   aboveDetails: 40,
-  aboveArrow: 24,
+  // How close words may come to the arrow before they are said to run under it.
+  aroundArrow: 12,
   underLogo: 48,
 }
 
@@ -120,7 +129,7 @@ const GAP = {
 // centres that in the line height, and the pages are set the way the templates' pages were.
 const baselineIn = (size: number, lineHeight: number) => size * (lineHeight / 2 + 0.4)
 
-export type MeasureWidth = (text: string, size: number, weight: number) => number
+export type MeasureWidth = (text: string, size: number, weight: number, italic?: boolean) => number
 
 export interface InsideLayout {
   /** Where the picture goes, or null for a page with none. */
@@ -137,54 +146,85 @@ export interface InsideLayout {
   overflow: 'title' | 'body' | null
   /** How many lines too long the story and details are. */
   over: number
+  /** Words run under the arrow. It stands where it stands, so that is for the words to mend. */
+  underArrow: boolean
   empty: boolean
 }
 
 const BULLET = /^\s*[-•–]\s+/
-// Words in one star or two, the same on both sides: the stars hug the words, and stand clear of
-// the letters and figures around them ("5* hotel" and "2*3*4" are left alone).
-const STARS = /(^|[^\p{L}\p{N}*])(\*{1,2})(?!\*)(\S(?:.*?\S)?)\2(?![\p{L}\p{N}*])/gu
 
+/** How a stretch of a line is set: its weight, and whether it slants or is underlined. */
+export interface RunStyle {
+  weight: 'text' | 'semi' | 'bold'
+  italic: boolean
+  underline: boolean
+}
 /** A stretch of a line set one way. */
-export interface Run { text: string; strong: boolean }
+export interface Run extends RunStyle { text: string }
 export interface TypedLine {
-  /** The line's words, without its stars. */
+  /** The line's words, without their marks. */
   text: string
   bullet: boolean
-  /** The whole line is in stars. */
-  strong: boolean
   runs: Run[]
 }
 
-/** A line as runs: the words in stars, and the words between them. */
-function readRuns(line: string): Run[] {
-  const runs: Run[] = []
-  const add = (value: string, strong: boolean) => {
+const PLAIN: RunStyle = { weight: 'text', italic: false, underline: false }
+const sameStyle = (one: RunStyle, other: RunStyle) => one.weight === other.weight && one.italic === other.italic && one.underline === other.underline
+
+// Marks come in pairs that hug the words, and stand clear of the letters and figures around
+// them, so "5* hotel", "2*3*4" and "some_file_name" are left alone.
+const mark = (sign: '*' | '_', twice: boolean) => {
+  // A star means something to a pattern, so it is escaped; an underscore must not be.
+  const one = sign === '*' ? '\\*' : sign
+  const pair = twice ? one + one : one
+  return new RegExp(`(^|[^\\p{L}\\p{N}${one}])${pair}(?!${one})(\\S(?:.*?[^\\s${one}])?)${pair}(?![\\p{L}\\p{N}${one}])`, 'u')
+}
+// The longer of each pair comes first: of two marks that open together, the first listed is taken.
+const MARKS: { pattern: RegExp; set: (style: RunStyle) => RunStyle }[] = [
+  { pattern: mark('*', true), set: (style) => ({ ...style, weight: 'bold' }) },
+  { pattern: mark('*', false), set: (style) => ({ ...style, weight: style.weight === 'bold' ? 'bold' : 'semi' }) },
+  { pattern: mark('_', true), set: (style) => ({ ...style, underline: true }) },
+  { pattern: mark('_', false), set: (style) => ({ ...style, italic: true }) },
+]
+
+/** A line as runs: the words in marks, and the words between them. Marks can sit inside marks. */
+function readRuns(line: string, style: RunStyle = PLAIN, runs: Run[] = []): Run[] {
+  const add = (value: string) => {
     if (!value) return
     const last = runs[runs.length - 1]
-    if (last && last.strong === strong) last.text += value
-    else runs.push({ text: value, strong })
+    if (last && sameStyle(last, style)) last.text += value
+    else runs.push({ ...style, text: value })
   }
-  let from = 0
-  for (const found of line.matchAll(STARS)) {
-    add(line.slice(from, found.index) + found[1], false)
-    add(found[3], true)
-    from = found.index + found[0].length
+  let rest = line
+  while (rest) {
+    // The first pair to open: where its mark is, not the letter before it.
+    const opens = (found: RegExpExecArray) => found.index + found[1].length
+    let first: { found: RegExpExecArray; mark: (typeof MARKS)[number] } | null = null
+    for (const candidate of MARKS) {
+      const found = candidate.pattern.exec(rest)
+      if (found && (!first || opens(found) < opens(first.found))) first = { found, mark: candidate }
+    }
+    if (!first) break
+    const { found } = first
+    add(rest.slice(0, found.index) + found[1])
+    readRuns(found[2], first.mark.set(style), runs)
+    rest = rest.slice(found.index + found[0].length)
   }
-  add(line.slice(from), false)
+  add(rest)
   return runs
 }
 
 /**
  * What was typed, as paragraphs of lines. A blank line starts a new paragraph; a new line is a
- * new line. A dash starts a bullet, and words in stars are bold: a whole line, or part of one.
+ * new line. A dash starts a bullet. Words in **two stars** are bold, in *one* semibold, in
+ * _underscores_ italic and in __two__ underlined: a whole line, or part of one.
  */
 export function readLines(typed: string): TypedLine[][] {
   return cleanText(typed.normalize('NFC')).replace(/\r/g, '').split(/\n[ \t]*\n/)
     .map((paragraph) => paragraph.split('\n').map((line) => {
       const bullet = BULLET.test(line)
       const runs = readRuns(line.replace(BULLET, '').replace(/\s+/g, ' ').trim())
-      return { text: runs.map((run) => run.text).join(''), bullet, strong: runs.length > 0 && runs.every((run) => run.strong), runs }
+      return { text: runs.map((run) => run.text).join(''), bullet, runs }
     }).filter((line) => line.text))
     .filter((paragraph) => paragraph.length)
 }
@@ -194,10 +234,10 @@ interface Piece extends Run { x: number }
 
 /**
  * Wraps a line of runs to the width. A line breaks at its spaces only, so a word set two ways
- * stays whole. Words are measured one by one, each in its own weight, and placed by those
+ * stays whole. Words are measured one by one, each the way it is set, and placed by those
  * measures, so what is drawn is what was fitted.
  */
-function wrapRuns(runs: Run[], width: number, widthOf: (text: string, strong: boolean) => number, space: number): Piece[][] {
+function wrapRuns(runs: Run[], width: number, widthOf: (text: string, style: RunStyle) => number, space: number): Piece[][] {
   // The line's words, each as the parts it is set in.
   const words: Run[][] = []
   let open = false
@@ -205,8 +245,8 @@ function wrapRuns(runs: Run[], width: number, widthOf: (text: string, strong: bo
     for (const part of run.text.split(/( )/)) {
       if (part === ' ') open = false
       else if (part) {
-        if (open) words[words.length - 1].push({ text: part, strong: run.strong })
-        else words.push([{ text: part, strong: run.strong }])
+        if (open) words[words.length - 1].push({ ...run, text: part })
+        else words.push([{ ...run, text: part }])
         open = true
       }
     }
@@ -215,7 +255,7 @@ function wrapRuns(runs: Run[], width: number, widthOf: (text: string, strong: bo
   let line: Run[][] = []
   let used = 0
   for (const word of words) {
-    const wide = word.reduce((sum, part) => sum + widthOf(part.text, part.strong), 0)
+    const wide = word.reduce((sum, part) => sum + widthOf(part.text, part), 0)
     if (line.length && used + space + wide > width) {
       lines.push(line)
       line = []
@@ -234,17 +274,24 @@ function wrapRuns(runs: Run[], width: number, widthOf: (text: string, strong: bo
       word.forEach((part, partIndex) => {
         const last = pieces[pieces.length - 1]
         // Words set the same way, one after the other, are one piece of text.
-        if (last && last.strong === part.strong) last.text += (partIndex === 0 ? ' ' : '') + part.text
+        if (last && sameStyle(last, part)) last.text += (partIndex === 0 ? ' ' : '') + part.text
         else pieces.push({ ...part, x })
-        x += widthOf(part.text, part.strong)
+        x += widthOf(part.text, part)
       })
     })
     return pieces
   })
 }
 
-const text = (value: string, x: number, y: number, size: number, weight: number, fill: string): Layer =>
-  ({ kind: 'text', text: value, x, y: Math.round(y * 100) / 100, size, weight, fill, angle: 0, cx: 0, cy: 0 })
+const hundredth = (value: number) => Math.round(value * 100) / 100
+const text = (value: string, x: number, y: number, size: number, weight: number, fill: string, italic = false): Layer =>
+  ({ kind: 'text', text: value, x, y: hundredth(y), size, weight, fill, angle: 0, cx: 0, cy: 0, ...(italic ? { italic } : {}) })
+/** The line under underlined words: drawn, so every export has it where the preview does. */
+const underline = (x: number, baseline: number, wide: number, size: number, fill: string): Layer => {
+  const top = hundredth(baseline + size * UNDERLINE.below)
+  const thick = Math.max(2, Math.round(size * UNDERLINE.thick))
+  return { kind: 'path', d: `M${hundredth(x)} ${top}H${hundredth(x + wide)}V${top + thick}H${hundredth(x)}Z`, fill, angle: 0, cx: 0, cy: 0 }
+}
 
 /** Measures the ink of a line, as the cover does: what the label's tape is cut around. */
 export type MeasureInk = (text: string, size: number, weight: number) => InkMetrics
@@ -287,17 +334,19 @@ function buildLabel(label: string, top: number, inkOf: MeasureInk, cut: ShapeMod
 }
 
 /**
- * Sets the page, top to bottom: the title, the story, the details, with the picture at the top,
- * at the bottom, or after the first of them. The label sits over whichever comes first. The
- * title takes the largest size from 52 down to 45 that fits it in three lines; the story and
- * the details are always 38. A picture that fills takes the room the words leave. `marks` says
- * where the logo ends and the arrow starts, so the words keep clear of both. Without `ink`
- * to measure it by, there is no label. `type` is for trying other sizes and weights.
+ * Sets the page, top to bottom: the title, the story, the highlight, with the picture at the
+ * top, at the bottom, or after the first of them. The label sits over whichever comes first.
+ * The title takes the largest size from 52 down to 45 that fits it in three lines. A picture
+ * that fills takes the room the words leave; with any other, the highlight can stand at the
+ * foot of that room. `marks` says where the logo ends, so the words start clear of it, and
+ * where the arrow is: it stands where it stands, and the layout only says when words run under
+ * it. Without `ink` to measure it by, there is no label. `type` is for trying other sizes and
+ * weights.
  */
 export function layoutInside(
-  content: Pick<InsideOptions, 'title' | 'body' | 'image'> & Partial<Pick<InsideOptions, 'label' | 'cut' | 'seed' | 'details' | 'large' | 'bodyLarge' | 'bodyTone' | 'detailsTone' | 'position'>>,
+  content: Pick<InsideOptions, 'title' | 'body' | 'image'> & Partial<Pick<InsideOptions, 'label' | 'cut' | 'seed' | 'details' | 'large' | 'bodyLarge' | 'pinned' | 'bodyTone' | 'detailsTone' | 'position'>>,
   measure: MeasureWidth,
-  marks: { logoBottom?: number; arrowTop?: number } = {},
+  marks: { logoBottom?: number; arrow?: Box } = {},
   ink?: MeasureInk,
   type: PageType = PAGE_TYPE,
 ): InsideLayout {
@@ -312,8 +361,8 @@ export function layoutInside(
   const textSize = content.bodyLarge ? type.text.large : type.text.size
   // Lines are counted in lines of the text.
   const pitch = textSize * type.text.lineHeight
-  // The words end above the arrow, or on the bottom margin.
-  const foot = marks.arrowTop !== undefined ? marks.arrowTop - GAP.aboveArrow : pageHeight - PAGE_MARGIN
+  // The words end on the bottom margin.
+  const foot = pageHeight - PAGE_MARGIN
 
   const wrapTitle = (size: number) => wrapText(title, TEXT_WIDTH, (value) => measure(value, size, type.title.weight), true, { balance: true })
   let titleSize = Math.max(type.title.largest, type.title.smallest)
@@ -322,14 +371,16 @@ export function layoutInside(
 
   /** The page with a picture this tall. */
   const flow = (pictureHeight: number) => {
-    const layers: Layer[] = []
+    let layers: Layer[] = []
     const placed: { banner: Box | null; label: Box | null } = { banner: null, label: null }
     const picture = (top: number, height: number) => { placed.banner = { x: 0, y: Math.round(top), width, height: Math.round(height) } }
     // The words start at the top margin, under the logo if it is on, or under a picture at the top.
     let y = marks.logoBottom ? marks.logoBottom + GAP.underLogo : PAGE_MARGIN
     // What comes next follows nothing, words, or the picture (which brings its own gap).
     let after: 'nothing' | 'words' | 'picture' = 'nothing'
+    // Where the words end, and where they would have with the highlight straight under the story.
     let wordsEnd = 0
+    let flowEnd = 0
     let bodyLines = 0
     // A picture with no words under it has the page to its foot.
     let last = false
@@ -348,6 +399,9 @@ export function layoutInside(
       after = 'picture'
       last = true
     }
+    // A picture at the bottom that doesn't fill has its place before any word is set.
+    const standing = pictured && position === 'bottom' && !fills ? pageHeight - pictureHeight : null
+    const wordsFoot = standing !== null ? standing - GAP.aroundPicture : pictured && position === 'bottom' ? pageHeight - FILL_SMALLEST - GAP.aroundPicture : foot
 
     const setLabel = (gapUnder: number) => {
       if (!label || !ink) return
@@ -368,37 +422,60 @@ export function layoutInside(
       const { lineHeight } = type.text
       // The gaps and the bullets' indent are the text's, and grow and shrink with it.
       const scale = block.size / BODY.size
+      const weightOf = (style: RunStyle) => (style.weight === 'bold' ? type.strong.weight : style.weight === 'semi' ? type.semi.weight : block.weight)
+      const fillOf = (style: RunStyle) => (style.weight === 'text' ? blockFill : STRONG.fill)
+      const widthOf = (value: string, style: RunStyle) => measure(value, block.size, weightOf(style), style.italic)
       paragraphs.forEach((paragraph, paragraphIndex) => {
         if (paragraphIndex > 0) y += BODY.paragraphGap * scale
         paragraph.forEach((typed, lineIndex) => {
           if (lineIndex > 0 && typed.bullet && paragraph[lineIndex - 1].bullet) y += BODY.bulletGap * scale
-          const weightOf = (strong: boolean) => (strong ? type.strong.weight : block.weight)
-          const fillOf = (strong: boolean) => (strong ? STRONG.fill : blockFill)
           const indent = typed.bullet ? Math.round(BODY.indent * scale) : 0
           const left = PAGE_MARGIN + indent
-          if (typed.bullet) layers.push(text('•', PAGE_MARGIN + Math.round(10 * scale), y + baselineIn(block.size, lineHeight), block.size, weightOf(typed.strong), fillOf(typed.strong)))
-          // A line set one way is wrapped and drawn whole; one with words in stars, piece by piece.
+          const opening = typed.runs[0]
+          if (typed.bullet) layers.push(text('•', PAGE_MARGIN + Math.round(10 * scale), y + baselineIn(block.size, lineHeight), block.size, weightOf(opening), fillOf(opening)))
+          // A line set one way is wrapped and drawn whole; one with words in marks, piece by piece.
           const lines: Piece[][] = typed.runs.length === 1
-            ? wrapText(typed.text, TEXT_WIDTH - indent, (value) => measure(value, block.size, weightOf(typed.strong)), true).map((line) => [{ text: line, strong: typed.strong, x: 0 }])
-            : wrapRuns(typed.runs, TEXT_WIDTH - indent, (value, strong) => measure(value, block.size, weightOf(strong)), measure(' ', block.size, block.weight))
+            ? wrapText(typed.text, TEXT_WIDTH - indent, (value) => widthOf(value, opening), true).map((line) => [{ ...opening, text: line, x: 0 }])
+            : wrapRuns(typed.runs, TEXT_WIDTH - indent, widthOf, measure(' ', block.size, block.weight))
           for (const line of lines) {
-            for (const piece of line) layers.push(text(piece.text, Math.round((left + piece.x) * 100) / 100, y + baselineIn(block.size, lineHeight), block.size, weightOf(piece.strong), fillOf(piece.strong)))
+            const baseline = y + baselineIn(block.size, lineHeight)
+            for (const piece of line) {
+              // On a whole pixel, so the preview and both kinds of export put the letters in the same place.
+              const x = Math.round(left + piece.x)
+              layers.push(text(piece.text, x, baseline, block.size, weightOf(piece), fillOf(piece), piece.italic))
+              if (piece.underline) layers.push(underline(x, baseline, widthOf(piece.text, piece), block.size, fillOf(piece)))
+            }
             y += block.size * lineHeight
             bodyLines += 1
           }
         })
       })
     }
+    const setHighlight = () => setText(details, { size: content.large ? type.details.large : type.details.size, weight: type.details.weight }, content.detailsTone ? TONES[content.detailsTone] : DETAILS.fill)
 
     const blocks = [
-      { has: titleLines.length > 0, gap: 0, labelGap: GAP.labelToTitle, set: setTitle },
-      { has: story.length > 0, gap: GAP.aboveBody, labelGap: GAP.labelToText, set: () => setText(story, { size: textSize, weight: type.text.weight }, content.bodyTone ? TONES[content.bodyTone] : BODY.fill) },
-      { has: details.length > 0, gap: GAP.aboveDetails, labelGap: GAP.labelToText, set: () => setText(details, { size: content.large ? type.details.large : type.details.size, weight: type.details.weight }, content.detailsTone ? TONES[content.detailsTone] : DETAILS.fill) },
+      { has: titleLines.length > 0, gap: 0, labelGap: GAP.labelToTitle, pinned: false, set: setTitle },
+      { has: story.length > 0, gap: GAP.aboveBody, labelGap: GAP.labelToText, pinned: false, set: () => setText(story, { size: textSize, weight: type.text.weight }, content.bodyTone ? TONES[content.bodyTone] : BODY.fill) },
+      // A picture that fills has taken the room already, so there is no foot to stand apart on.
+      { has: details.length > 0, gap: GAP.aboveDetails, labelGap: GAP.labelToText, pinned: Boolean(content.pinned) && !fills, set: setHighlight },
     ].filter((block) => block.has)
     blocks.forEach((block, index) => {
       if (after === 'words') y += block.gap
       if (index === 0) setLabel(block.labelGap)
+      const top = y
+      const before = layers
+      if (block.pinned && index > 0) layers = []
       block.set()
+      flowEnd = y
+      if (layers !== before) {
+        // Set where it fell to find its height, it moves down to stand on the foot, if there is room to.
+        const down = Math.max(0, wordsFoot - y)
+        before.push(...layers.map((layer): Layer => (layer.kind === 'text'
+          ? { ...layer, y: hundredth(layer.y + down) }
+          : { ...layer, place: { x: 0, y: hundredth(down), scale: 1 } })))
+        layers = before
+        y = top + (y - top) + down
+      }
       after = 'words'
       wordsEnd = y
       last = false
@@ -409,20 +486,20 @@ export function layoutInside(
       setLabel(0)
       after = 'words'
       wordsEnd = y
+      flowEnd = y
     }
     // With nothing typed but a label, or nothing at all, a picture for the middle still has its place.
     inTheMiddle()
     if (pictured && position === 'bottom') {
       // Filling, it starts under the words; otherwise it stands on the foot of the page.
       const under = after === 'words' ? Math.ceil(wordsEnd + GAP.aroundPicture) : marks.logoBottom ? y : 0
-      const top = fills ? Math.min(under, pageHeight - FILL_SMALLEST) : pageHeight - pictureHeight
+      const top = standing ?? Math.min(under, pageHeight - FILL_SMALLEST)
       picture(top, pageHeight - top)
     }
 
     // How much room is left: for the words above their foot, and for a picture that comes last above the page's.
     const { banner } = placed
-    const wordsFoot = banner && position === 'bottom' ? (fills ? pageHeight - FILL_SMALLEST : banner.y) - GAP.aroundPicture : foot
-    const spare = Math.min(wordsFoot - wordsEnd, banner && last ? pageHeight - (banner.y + banner.height) : Infinity)
+    const spare = Math.min(wordsFoot - flowEnd, banner && last ? pageHeight - (banner.y + banner.height) : Infinity)
     return { layers, banner, label: placed.label, bodyLines, spare, last, empty: !label && !blocks.length }
   }
 
@@ -436,7 +513,17 @@ export function layoutInside(
   const bodyRoom = Math.max(0, over ? bodyLines - over : bodyLines + Math.floor((spare + 0.5) / pitch))
   const overflow = titleLines.length > TITLE.mostLines ? 'title' : over > 0 ? 'body' : null
 
-  return { banner: page.banner, label: page.label, layers: page.layers, titleSize, titleLines: titleLines.length, bodyLines, bodyRoom, overflow, over, empty: page.empty }
+  // The arrow keeps its corner whatever is typed: the words are told when they run under it.
+  const { arrow } = marks
+  const underArrow = Boolean(arrow) && page.layers.some((layer) => {
+    if (layer.kind !== 'text' || !arrow) return false
+    const right = layer.x + measure(layer.text, layer.size, layer.weight, layer.italic)
+    const clear = GAP.aroundArrow
+    return right > arrow.x - clear && layer.x < arrow.x + arrow.width + clear
+      && layer.y + layer.size * 0.25 > arrow.y - clear && layer.y - layer.size * 0.75 < arrow.y + arrow.height + clear
+  })
+
+  return { banner: page.banner, label: page.label, layers: page.layers, titleSize, titleLines: titleLines.length, bodyLines, bodyRoom, overflow, over, underArrow, empty: page.empty }
 }
 
 interface Picture {
@@ -497,10 +584,11 @@ export const PAGE_KINDS: Record<PageKind, { label: string; description: string; 
     sample: {
       label: '',
       title: 'Bolands Mills is set to come alive this Culture Night',
-      body: 'A free evening of live music, art, storytelling and movement, with performances from *AE MAK*, *Sorcha Richardson* and *Zaska* on the Factory Main Stage.',
+      body: 'A free evening of live music, art, storytelling and movement, with performances from **AE MAK**, **Sorcha Richardson** and **Zaska** on the Factory Main Stage.',
       details: 'Friday 18 September · 6.30pm\nBolands Mills, Dublin 4\nFree, no ticket needed',
       large: false,
       bodyLarge: false,
+      pinned: false,
       bodyTone: 'grey',
       detailsTone: 'light',
       position: 'top',
@@ -512,10 +600,11 @@ export const PAGE_KINDS: Record<PageKind, { label: string; description: string; 
     sample: {
       label: 'Meet the artists',
       title: '',
-      body: '*Aoife Dooley*\nIllustration\n*Emma Rose Hanley*\nCeramics',
+      body: '**Aoife Dooley**\nIllustration\n**Emma Rose Hanley**\nCeramics',
       details: 'Four Dublin creatives are coming together for an evening exploring their work, practice and inspiration.',
       large: true,
       bodyLarge: false,
+      pinned: false,
       bodyTone: 'grey',
       detailsTone: 'light',
       position: 'bottom',
@@ -524,8 +613,8 @@ export const PAGE_KINDS: Record<PageKind, { label: string; description: string; 
 }
 export const PAGE_KIND_NAMES = Object.keys(PAGE_KINDS) as PageKind[]
 
-const wordsOf = ({ label, title, body, details, large, bodyLarge, bodyTone, detailsTone, position }: PageWords): PageWords =>
-  ({ label, title, body, details, large, bodyLarge, bodyTone, detailsTone, position })
+const wordsOf = ({ label, title, body, details, large, bodyLarge, pinned, bodyTone, detailsTone, position }: PageWords): PageWords =>
+  ({ label, title, body, details, large, bodyLarge, pinned, bodyTone, detailsTone, position })
 
 /** The page as the other kind: its own words are kept, and that kind's come back, or its example. */
 export function switchKind(inside: InsideOptions, kind: PageKind): InsideOptions {
@@ -562,6 +651,7 @@ function sanitizeWords(stored: Record<string, unknown>, sample: PageWords): Page
     details: words(stored.details, typeof stored.body === 'string' ? '' : sample.details),
     large: typeof stored.large === 'boolean' ? stored.large : typeof stored.body === 'string' ? false : sample.large,
     bodyLarge: typeof stored.bodyLarge === 'boolean' ? stored.bodyLarge : sample.bodyLarge,
+    pinned: typeof stored.pinned === 'boolean' ? stored.pinned : sample.pinned,
     bodyTone: stored.bodyTone === 'grey' || stored.bodyTone === 'light' ? stored.bodyTone : sample.bodyTone,
     detailsTone: stored.detailsTone === 'grey' || stored.detailsTone === 'light' ? stored.detailsTone : sample.detailsTone,
     position: POSITIONS.includes(stored.position as PicturePosition) ? stored.position as PicturePosition : sample.position,

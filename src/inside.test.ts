@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { BRAND, type Layer } from './artwork'
 import { furnitureBoxes } from './furniture'
 import { wrapText } from './geometry'
-import { BODY, DETAILS, FILL_SMALLEST, TONES, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, PAGE_TYPE, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, PAGE_KINDS, readLines, sanitizeInside, switchKind, type MeasureInk, type MeasureWidth } from './inside'
+import { BODY, DETAILS, FILL_SMALLEST, TONES, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, PAGE_TYPE, SEMI, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, PAGE_KINDS, readLines, sanitizeInside, switchKind, type MeasureInk, type MeasureWidth, type Run } from './inside'
 import { POST_FRAME } from './settings'
 
 // A stand-in for canvas: every character is half an em wide.
 const measure: MeasureWidth = (text, size) => text.length * size * 0.5
 const ink: MeasureInk = (text, size) => ({ width: text.length * size * 0.5, originOffset: 0, ascent: size * 0.7, descent: 0 })
+/** A run as it is typed in these tests: its words, then what marks it is in. */
+const run = (text: string, style: Partial<Omit<Run, 'text'>> = {}): Run => ({ weight: 'text', italic: false, underline: false, ...style, text })
 const texts = (layers: Layer[]) => layers.flatMap((layer) => (layer.kind === 'text' ? [layer] : []))
 const paths = (layers: Layer[]) => layers.flatMap((layer) => (layer.kind === 'path' ? [layer] : []))
 /** The top of a line of text: where its capitals start. */
@@ -70,14 +72,30 @@ describe('inside page', () => {
     expect(Math.max(...texts(fits.layers).map((layer) => layer.y))).toBeLessThan(POST_FRAME.height - PAGE_MARGIN)
   })
 
-  it('keeps the words clear of the arrow and, with no picture, of the logo', () => {
+  it('starts the words under the logo when there is one and no picture over them', () => {
     const marks = furnitureBoxes({ logo: 'left', arrow: true }, POST_FRAME, INSIDE_MARKS)
     expect(marks.logo).toMatchObject({ x: PAGE_MARGIN, y: PAGE_MARGIN, width: 128 })
     expect(marks.arrow!.x + marks.arrow!.width).toBeCloseTo(POST_FRAME.width - PAGE_MARGIN, 5)
-    const withArrow = page({}, { arrowTop: marks.arrow!.y })
-    expect(withArrow.bodyRoom).toBeLessThan(page().bodyRoom)
     const underLogo = page({ image: 'none' }, { logoBottom: marks.logo!.y + marks.logo!.height })
     expect(Math.min(...texts(underLogo.layers).map((layer) => layer.y - layer.size))).toBeGreaterThan(marks.logo!.y + marks.logo!.height)
+  })
+
+  it('lets the arrow keep its corner whatever is typed, and says when words run under it', () => {
+    const { arrow } = furnitureBoxes({ logo: 'off', arrow: true }, POST_FRAME, INSIDE_MARKS)
+    // The arrow takes no room from the words: a page fits with it as it does without.
+    const without = page({ image: 'none' })
+    const withArrow = page({ image: 'none' }, { arrow })
+    expect(withArrow.layers).toEqual(without.layers)
+    expect(withArrow).toMatchObject({ bodyRoom: without.bodyRoom, overflow: null, underArrow: false })
+    expect(without.underArrow).toBe(false)
+    // Words that reach the foot of the page are under it only if they reach across to it.
+    const lines = (last: string) => `${Array(without.bodyRoom - 1).fill('A line.').join('\n')}\n${last}`
+    const short = page({ image: 'none', body: lines('Ends well short.') }, { arrow })
+    expect(short).toMatchObject({ overflow: null, underArrow: false })
+    const across = page({ image: 'none', body: lines('A last line that runs right across to the corner') }, { arrow })
+    expect(across).toMatchObject({ overflow: null, underArrow: true })
+    // With no arrow there is nothing to run under.
+    expect(page({ image: 'none', body: lines('A last line that runs right across to the corner') }).underArrow).toBe(false)
   })
 
   it('puts a picture at the bottom under the words, which end above it', () => {
@@ -92,8 +110,9 @@ describe('inside page', () => {
     const atTop = page({ position: 'top', image: 'short' }).bodyRoom
     expect(layout.bodyRoom).toBeLessThanOrEqual(atTop)
     expect(layout.bodyRoom).toBeGreaterThanOrEqual(atTop - 1)
-    // The arrow sits on the picture, so it takes no more from the words.
-    expect(page({ position: 'bottom', image: 'short' }, { arrowTop: 1250 }).bodyRoom).toBe(layout.bodyRoom)
+    // The arrow sits on the picture, clear of the words.
+    const { arrow } = furnitureBoxes({ logo: 'off', arrow: true }, POST_FRAME, INSIDE_MARKS)
+    expect(page({ position: 'bottom', image: 'short' }, { arrow })).toMatchObject({ bodyRoom: layout.bodyRoom, underArrow: false })
     const long = page({ position: 'bottom', image: 'short', body: Array(150).fill('words').join(' ') })
     expect(long.overflow).toBe('body')
     expect(long.over).toBe(long.bodyLines - long.bodyRoom)
@@ -271,34 +290,44 @@ describe('inside page', () => {
     expect(lettering[1].y - lettering[0].y).toBeCloseTo(LABEL.size * 0.94, 1)
   })
 
-  it('reads a blank line as a new paragraph, a dash as a bullet and stars as bold', () => {
-    const read = (typed: string) => readLines(typed).map((paragraph) => paragraph.map(({ text, bullet, strong }) => ({ text, bullet, strong })))
-    expect(read('First.\n\n  Second   one. \nSame paragraph.\n\n- A bullet\n• Another\n\n*Ishmael Claxton*\nPhotography\n**Sean Conroy**\n')).toEqual([
-      [{ text: 'First.', bullet: false, strong: false }],
-      [{ text: 'Second one.', bullet: false, strong: false }, { text: 'Same paragraph.', bullet: false, strong: false }],
-      [{ text: 'A bullet', bullet: true, strong: false }, { text: 'Another', bullet: true, strong: false }],
-      [{ text: 'Ishmael Claxton', bullet: false, strong: true }, { text: 'Photography', bullet: false, strong: false }, { text: 'Sean Conroy', bullet: false, strong: true }],
+  it('reads a blank line as a new paragraph, a new line as a new line and a dash as a bullet', () => {
+    const read = (typed: string) => readLines(typed).map((paragraph) => paragraph.map(({ text, bullet }) => ({ text, bullet })))
+    expect(read('First.\n\n  Second   one. \nSame paragraph.\n\n- A bullet\n• Another\n\n**Ishmael Claxton**\nPhotography\n')).toEqual([
+      [{ text: 'First.', bullet: false }],
+      [{ text: 'Second one.', bullet: false }, { text: 'Same paragraph.', bullet: false }],
+      [{ text: 'A bullet', bullet: true }, { text: 'Another', bullet: true }],
+      [{ text: 'Ishmael Claxton', bullet: false }, { text: 'Photography', bullet: false }],
     ])
   })
 
-  it('reads words in stars anywhere in a line, and leaves other stars alone', () => {
+  it('reads two stars as bold, one as semibold, underscores as italic and two as underlined', () => {
     const runs = (typed: string) => readLines(typed)[0][0].runs
-    expect(runs('When **The theatre**')).toEqual([{ text: 'When ', strong: false }, { text: 'The theatre', strong: true }])
-    expect(runs('With *AE MAK*, *Zaska* and more')).toEqual([
-      { text: 'With ', strong: false }, { text: 'AE MAK', strong: true }, { text: ', ', strong: false }, { text: 'Zaska', strong: true }, { text: ' and more', strong: false },
+    expect(runs('When **The theatre**')).toEqual([run('When '), run('The theatre', { weight: 'bold' })])
+    expect(runs('With *AE MAK*, **Zaska** and more')).toEqual([
+      run('With '), run('AE MAK', { weight: 'semi' }), run(', '), run('Zaska', { weight: 'bold' }), run(' and more'),
     ])
-    expect(runs('- *Doors* at six')).toEqual([{ text: 'Doors', strong: true }, { text: ' at six', strong: false }])
-    expect(runs('(*free*)')).toEqual([{ text: '(', strong: false }, { text: 'free', strong: true }, { text: ')', strong: false }])
-    expect(readLines('*A whole line*')[0][0]).toMatchObject({ text: 'A whole line', strong: true, runs: [{ text: 'A whole line', strong: true }] })
-    expect(readLines('*One* and *two*')[0][0]).toMatchObject({ text: 'One and two', strong: false })
-    // Stars that hug nothing, stand in a sum or come one to a side are just stars.
-    for (const plain of ['5* hotel', '* not bold *', '2*3*4', 'A *lone star', '**two and one*', '***']) {
-      expect(readLines(plain)[0][0]).toMatchObject({ text: plain, strong: false, runs: [{ text: plain, strong: false }] })
+    expect(runs('In _The Irish Times_ on __Friday__')).toEqual([run('In '), run('The Irish Times', { italic: true }), run(' on '), run('Friday', { underline: true })])
+    expect(runs('- *Doors* at six')).toEqual([run('Doors', { weight: 'semi' }), run(' at six')])
+    expect(runs('(**free**)')).toEqual([run('('), run('free', { weight: 'bold' }), run(')')])
+    expect(readLines('**A whole line**')[0][0]).toMatchObject({ text: 'A whole line', runs: [run('A whole line', { weight: 'bold' })] })
+    // Marks can sit inside marks, and one set the same way as its neighbour joins it.
+    expect(runs('**_Bold and italic_**')).toEqual([run('Bold and italic', { weight: 'bold', italic: true })])
+    expect(runs('_**Italic and bold**_')).toEqual([run('Italic and bold', { weight: 'bold', italic: true })])
+    expect(runs('**Bold with _a slant_ in it**')).toEqual([run('Bold with ', { weight: 'bold' }), run('a slant', { weight: 'bold', italic: true }), run(' in it', { weight: 'bold' })])
+    expect(runs('__*Semibold*, underlined__')).toEqual([run('Semibold', { weight: 'semi', underline: true }), run(', underlined', { underline: true })])
+    expect(runs('**One** **two**')).toEqual([run('One', { weight: 'bold' }), run(' '), run('two', { weight: 'bold' })])
+    // One star inside two stays bold.
+    expect(runs('**Bold *still* bold**')).toEqual([run('Bold still bold', { weight: 'bold' })])
+  })
+
+  it('leaves marks alone that hug nothing, or sit inside a word, a sum or a name', () => {
+    for (const plain of ['5* hotel', '* not bold *', '2*3*4', 'A *lone star', '**two and one*', '***', 'some_file_name', '_ not slanted _', 'a_b_c', 'An _open slant', '____']) {
+      expect(readLines(plain)[0][0], plain).toMatchObject({ text: plain, runs: [run(plain)] })
     }
   })
 
-  it('sets words in stars in their place in the line, and wraps the line as one', () => {
-    const layout = page({ title: '', image: 'none', body: 'When *The theatre* opens', details: '' })
+  it('sets words in marks in their place in the line, and wraps the line as one', () => {
+    const layout = page({ title: '', image: 'none', body: 'When **The theatre** opens', details: '' })
     const [when, theatre, opens] = texts(layout.layers)
     expect(when).toMatchObject({ text: 'When', x: PAGE_MARGIN, weight: BODY.weight, fill: BODY.fill })
     expect(theatre).toMatchObject({ text: 'The theatre', weight: STRONG.weight, fill: STRONG.fill, y: when.y })
@@ -311,7 +340,7 @@ describe('inside page', () => {
 
     // A long line wraps at its spaces, inside the margins, whichever way its words are set.
     const names = Array(14).fill('Sorcha').join(' ')
-    const long = page({ title: '', image: 'none', details: '', body: `A free evening with *${names}* and (*friends*), all night` })
+    const long = page({ title: '', image: 'none', details: '', body: `A free evening with **${names}** and (*friends*), all night` })
     const pieces = texts(long.layers)
     expect(long.bodyLines).toBeGreaterThan(1)
     expect(new Set(pieces.map((layer) => layer.y)).size).toBe(long.bodyLines)
@@ -320,12 +349,38 @@ describe('inside page', () => {
     const open = pieces.find((layer) => layer.text.endsWith('('))!
     const friends = pieces.find((layer) => layer.text === 'friends')!
     const close = pieces.find((layer) => layer.text.startsWith('),'))!
-    expect(friends).toMatchObject({ weight: STRONG.weight, y: open.y })
+    expect(friends).toMatchObject({ weight: SEMI.weight, y: open.y })
     expect(friends.x).toBeCloseTo(open.x + wide(open.text), 5)
     expect(close).toMatchObject({ text: '), all night', weight: BODY.weight, y: open.y })
     expect(close.x).toBeCloseTo(friends.x + wide('friends'), 5)
-    // Words in stars count towards the room like any others.
+    // Words in marks count towards the room like any others.
     expect(long.bodyLines).toBe(page({ title: '', image: 'none', details: '', body: `A free evening with ${names} and (friends), all night` }).bodyLines)
+  })
+
+  it('slants italics, and draws the line under underlined words where the words are', () => {
+    const layout = page({ title: '', image: 'none', details: '', body: 'In _The Irish Times_ on __Friday night__, **_all of it_**' })
+    const [first, times, on, friday, comma, all] = texts(layout.layers)
+    expect(first.italic).toBeUndefined()
+    expect(times).toMatchObject({ text: 'The Irish Times', italic: true, weight: BODY.weight, fill: BODY.fill })
+    expect(on.italic).toBeUndefined()
+    expect(friday).toMatchObject({ text: 'Friday night', weight: BODY.weight, fill: BODY.fill })
+    expect(comma.text).toBe(',')
+    expect(all).toMatchObject({ text: 'all of it', italic: true, weight: STRONG.weight, fill: STRONG.fill })
+    // One line, under the underlined words only: as wide as they are, just under their baseline.
+    const lines = paths(layout.layers)
+    expect(lines).toHaveLength(1)
+    const [x, top, right, bottom] = /^M([\d.]+) ([\d.]+)H([\d.]+)V([\d.]+)H/.exec(lines[0].d)!.slice(1).map(Number)
+    expect(lines[0].fill).toBe(friday.fill)
+    expect(x).toBeCloseTo(friday.x, 2)
+    expect(right - x).toBeCloseTo(measure('Friday night', BODY.size, 0), 2)
+    expect(top).toBeGreaterThan(friday.y)
+    expect(top).toBeLessThan(friday.y + BODY.size * 0.25)
+    expect(bottom - top).toBeGreaterThanOrEqual(2)
+    // In an export the slant is said, and the line is drawn.
+    const svg = insideSvg(layout)
+    expect(svg).toContain('font-style="italic" fill="#C2C2C2">The Irish Times</text>')
+    expect(svg).toContain(`<path d="${lines[0].d}"`)
+    expect(svg).not.toContain('text-decoration')
   })
 
   it('sets the highlight under the story in white, in the story’s weight and size', () => {
@@ -361,7 +416,7 @@ describe('inside page', () => {
   })
 
   it('sets the story a size up when asked, leaving the highlight as it is', () => {
-    const body = 'A free evening of live music, art, storytelling and movement, with performances from *AE MAK* on the Factory Main Stage.'
+    const body = 'A free evening of live music, art, storytelling and movement, with performances from **AE MAK** on the Factory Main Stage.'
     const usual = page({ body, details: 'A date', image: 'none' })
     const large = page({ body, details: 'A date', bodyLarge: true, image: 'none' })
     const story = (layout: typeof large) => texts(layout.layers).filter((layer) => layer.fill === BODY.fill || layer.text === 'AE MAK')
@@ -377,23 +432,65 @@ describe('inside page', () => {
     expect(PAGE_KINDS.label.sample.bodyLarge).toBe(false)
   })
 
-  it('sets words in stars bold and white, in the story or the highlight', () => {
-    const layout = page({ body: '*Each artist will give a short presentation.*', details: '*Ishmael Claxton*\nPhotography' })
+  it('sets words in two stars bold and in one semibold, both in white, in the story or the highlight', () => {
+    const layout = page({ body: '**Each artist will give a short presentation.**\n*On their practice.*', details: '**Ishmael Claxton**\nPhotography' })
     const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
     expect(lines.find((layer) => layer.text === 'Each artist will give a short presentation.')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
+    expect(lines.find((layer) => layer.text === 'On their practice.')).toMatchObject({ weight: SEMI.weight, fill: SEMI.fill })
     expect(lines.find((layer) => layer.text === 'Ishmael Claxton')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
     expect(lines.find((layer) => layer.text === 'Photography')).toMatchObject({ weight: DETAILS.weight, fill: DETAILS.fill })
     expect(STRONG).toEqual({ weight: 700, fill: TITLE.fill })
+    expect(SEMI).toEqual({ weight: 600, fill: TITLE.fill })
+  })
+
+  it('stands the highlight at the foot of the words’ room when asked, unless the picture fills it', () => {
+    const foot = POST_FRAME.height - PAGE_MARGIN
+    const content = { body: 'The story.', details: 'A date\nA place' }
+    const highlight = (layout: ReturnType<typeof page>) => texts(layout.layers).filter((layer) => layer.fill === DETAILS.fill && layer.weight === DETAILS.weight)
+    const lowest = (layout: ReturnType<typeof page>) => Math.max(...highlight(layout).map((layer) => layer.y))
+    for (const image of ['none', 'short', 'tall'] as const) {
+      const under = page({ ...content, image })
+      const pinned = page({ ...content, image, pinned: true })
+      // Under the story it follows it; pinned, its last line sits on the bottom margin.
+      expect(lowest(under)).toBeLessThan(foot - BODY.size * 2)
+      expect(lowest(pinned)).toBeLessThan(foot)
+      expect(lowest(pinned)).toBeGreaterThan(foot - BODY.size)
+      expect(highlight(pinned).map((layer) => layer.text)).toEqual(['A date', 'A place'])
+      expect(highlight(pinned)[1].y - highlight(pinned)[0].y).toBeCloseTo(BODY.size * BODY.lineHeight, 1)
+      // Everything else stays where it was, and the page has the same room.
+      const others = (layout: ReturnType<typeof page>) => texts(layout.layers).filter((layer) => !highlight(layout).includes(layer))
+      expect(others(pinned)).toEqual(others(under))
+      expect(pinned).toMatchObject({ bodyRoom: under.bodyRoom, overflow: null, banner: under.banner })
+    }
+    // Over a picture at the bottom, the foot is the picture's top, less its gap.
+    const over = page({ ...content, image: 'short', position: 'bottom', pinned: true })
+    expect(lowest(over)).toBeLessThan(over.banner!.y - 60)
+    expect(lowest(over)).toBeGreaterThan(over.banner!.y - 60 - BODY.size)
+    // An underline moves with its words.
+    const lined = page({ body: 'The story.', details: '__A date__', image: 'none', pinned: true })
+    const [word] = highlight(lined)
+    const [line] = paths(lined.layers)
+    expect(Number(/^M[\d.]+ ([\d.]+)H/.exec(line.d)![1]) + line.place!.y).toBeCloseTo(word.y + BODY.size * 0.13, 1)
+    // A picture that fills has taken the room: the highlight is where it would be anyway.
+    expect(page({ ...content, image: 'fill', pinned: true }).layers).toEqual(page({ ...content, image: 'fill' }).layers)
+    // With no room to move into, it stays under the story, and the page says it is too long.
+    const long = page({ body: Array(400).fill('words').join(' '), details: 'A date', image: 'none', pinned: true })
+    const unpinned = page({ body: Array(400).fill('words').join(' '), details: 'A date', image: 'none' })
+    expect(unpinned.over).toBeGreaterThan(0)
+    expect(long).toMatchObject({ overflow: 'body', over: unpinned.over })
+    expect(long.layers).toEqual(unpinned.layers)
+    // Alone on the page it is the first thing on it, and stays at the top.
+    expect(texts(page({ title: '', body: '', details: 'A date', image: 'none', pinned: true }).layers)[0].y).toBeLessThan(PAGE_MARGIN + BODY.size * 2)
   })
 
   it('sets each box of words in the grey or in white, as chosen', () => {
     expect(TONES).toEqual({ grey: BODY.fill, light: TITLE.fill })
-    const content = { body: 'The story, with *a name* in it.', details: 'A date, and *a place*' }
+    const content = { body: 'The story, with **a name** in it.', details: 'A date, and **a place**' }
     const fills = (layout: ReturnType<typeof page>) => Object.fromEntries(texts(layout.layers).filter((layer) => layer.size === BODY.size).map((layer) => [layer.text, `${layer.weight} ${layer.fill}`]))
     // To start with the story is grey and the highlight white.
     expect(fills(page(content))).toMatchObject({ 'The story, with': `400 ${TONES.grey}`, 'in it.': `400 ${TONES.grey}`, 'A date, and': `400 ${TONES.light}` })
     expect(fills(page({ ...content, bodyTone: 'light', detailsTone: 'grey' }))).toMatchObject({ 'The story, with': `400 ${TONES.light}`, 'A date, and': `400 ${TONES.grey}` })
-    // Words in stars are bold and white either way.
+    // Words in two stars are bold and white either way.
     for (const tones of [{}, { bodyTone: 'light' as const, detailsTone: 'grey' as const }]) {
       expect(fills(page({ ...content, ...tones }))).toMatchObject({ 'a name': `700 ${TONES.light}`, 'a place': `700 ${TONES.light}` })
     }
@@ -402,8 +499,8 @@ describe('inside page', () => {
   })
 
   it('sets the page in other sizes and weights when they are being tried', () => {
-    const content = { label: 'Meet the artists', title: 'The closure follows a months-long legal dispute', body: 'The story.\n*A bold line.*\n- A bullet', details: 'A date', image: 'none' as const }
-    const tried = { title: { largest: 80, smallest: 60, weight: 800, lineHeight: 1 }, text: { size: 30, large: 36, weight: 400, lineHeight: 1.5 }, details: { size: 26, large: 34, weight: 600 }, strong: { weight: 900 }, label: { size: 60, weight: 900 } }
+    const content = { label: 'Meet the artists', title: 'The closure follows a months-long legal dispute', body: 'The story.\n**A bold line.**\n*A lighter one.*\n- A bullet', details: 'A date', image: 'none' as const }
+    const tried = { title: { largest: 80, smallest: 60, weight: 800, lineHeight: 1 }, text: { size: 30, large: 36, weight: 400, lineHeight: 1.5 }, details: { size: 26, large: 34, weight: 600 }, strong: { weight: 900 }, semi: { weight: 500 }, label: { size: 60, weight: 900 } }
     const layout = layoutInside(content, measure, {}, ink, tried)
     const lines = texts(layout.layers)
     const find = (value: string) => lines.find((layer) => layer.text === value)!
@@ -416,6 +513,7 @@ describe('inside page', () => {
     expect(find('The story.')).toMatchObject({ size: 30, weight: 400, fill: BODY.fill })
     expect(find('A date').fill).toBe(DETAILS.fill)
     expect(find('A bold line.')).toMatchObject({ size: 30, weight: 900, fill: STRONG.fill })
+    expect(find('A lighter one.')).toMatchObject({ size: 30, weight: 500, fill: SEMI.fill })
     expect(find('A bold line.').y - find('The story.').y).toBeCloseTo(30 * 1.5, 1)
     // The bullet's indent is the text's, so it shrinks with it.
     expect(find('A bullet').x).toBe(PAGE_MARGIN + Math.round(BODY.indent * 30 / BODY.size))
@@ -483,8 +581,8 @@ describe('inside page', () => {
 
   it('replaces invalid stored values instead of trusting them', () => {
     expect(sanitizeInside({ kind: 'poster', kept: 'all', label: 9, cut: 'jagged', seed: 'seven', title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
-    const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', large: true, bodyLarge: true, bodyTone: 'light', detailsTone: 'grey', position: 'bottom' } }
-    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', large: true, bodyLarge: true, bodyTone: 'light', detailsTone: 'grey', image: 'none', position: 'middle', logo: 'left', arrow: false }
+    const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', large: true, bodyLarge: true, pinned: true, bodyTone: 'light', detailsTone: 'grey', position: 'bottom' } }
+    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', large: true, bodyLarge: true, pinned: true, bodyTone: 'light', detailsTone: 'grey', image: 'none', position: 'middle', logo: 'left', arrow: false }
     expect(sanitizeInside(chosen)).toEqual(chosen)
     // What is kept is checked too, and only for the kind the page is not.
     expect(sanitizeInside({ ...chosen, kept: { title: kept.label, label: { label: 5, body: 'Names', large: 'yes', bodyTone: 'pink', position: 'sideways' } } }).kept).toEqual({ label: { ...PAGE_KINDS.label.sample, body: 'Names', details: '', large: false } })

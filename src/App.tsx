@@ -74,6 +74,7 @@ import {
   type PicturePosition,
   type TextTone,
 } from './inside'
+import { markSelection } from './marks'
 import { TYPE_RANGE, TYPE_WEIGHTS, WEIGHT_NAMES, describePageType, isLocal, loadPageType, sameType, savePageType } from './pageType'
 import { measureInk } from './metrics'
 import { CENTRED, MAX_ZOOM, dragPhoto, photoRect, photoSlack, visiblePart, type PhotoView } from './photo'
@@ -520,7 +521,7 @@ function LayerList({ layers }: { layers: Layer[] }) {
     <>
       {layers.map((layer, index) => (layer.kind === 'path'
         ? <path key={`path-${index}`} d={layer.d} fill={layer.fill} transform={layerTransform(layer)} />
-        : <text key={`text-${index}`} x={layer.x} y={layer.y} fill={layer.fill} fontFamily={FONT_FAMILY} fontWeight={layer.weight} fontSize={layer.size} transform={layerTransform(layer)}>{layer.text}</text>))}
+        : <text key={`text-${index}`} x={layer.x} y={layer.y} fill={layer.fill} fontFamily={FONT_FAMILY} fontWeight={layer.weight} fontStyle={layer.italic ? 'italic' : undefined} fontSize={layer.size} transform={layerTransform(layer)}>{layer.text}</text>))}
     </>
   )
 }
@@ -543,6 +544,33 @@ interface Drag {
 
 /** How close to the words a press still picks them up, in artboard pixels. */
 const GRAB_MARGIN = 14
+
+const FORMATS: { sign: string; label: string; name: string; className: string }[] = [
+  { sign: '**', label: 'B', name: 'Bold', className: 'bold' },
+  { sign: '*', label: 'S', name: 'Semibold', className: 'semi' },
+  { sign: '_', label: 'I', name: 'Italic', className: 'italic' },
+  { sign: '__', label: 'U', name: 'Underline', className: 'underline' },
+  { sign: '- ', label: '•', name: 'Bullets', className: '' },
+]
+
+/** Buttons that put the marks in for the words picked in the box under them. */
+function FormatBar({ label, onMark }: { label: string; onMark: (sign: string) => void }) {
+  return (
+    <div className="format-bar" role="group" aria-label={`Format the ${label.toLowerCase()}`}>
+      {FORMATS.map((format) => (
+        <button
+          key={format.sign}
+          className={format.className}
+          aria-label={format.name}
+          title={format.sign === '- ' ? 'Bullets: start a line with a dash' : `${format.name}: ${format.sign}words${format.sign}`}
+          // Pressing a button must not take the box's picked words away from it.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onMark(format.sign)}
+        >{format.label}</button>
+      ))}
+    </div>
+  )
+}
 
 // Asked as the page loads, not as the app draws: drawing can happen more than once.
 const FIRST_OPENING = firstSinceHouseCut()
@@ -578,6 +606,8 @@ function App() {
   const [sampleOpen, setSampleOpen] = useState(false)
   const [panels, setPanels] = useState<Record<PanelId, boolean>>(loadPanels)
   const previewRef = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const detailsRef = useRef<HTMLTextAreaElement>(null)
   const dragRef = useRef<Drag | null>(null)
   const noticeTimer = useRef<number | undefined>(undefined)
   const treatments = useRef<Partial<Record<CoverStyle, Treatment>>>({})
@@ -623,9 +653,9 @@ function App() {
 
   const measureWidth = useMemo<MeasureWidth>(() => {
     const context = document.createElement('canvas').getContext('2d')
-    return (value, size, weight) => {
+    return (value, size, weight, italic) => {
       if (!context) return value.length * size * 0.5
-      context.font = fontShorthand(size, weight)
+      context.font = fontShorthand(size, weight, italic)
       return context.measureText(value).width
     }
   }, [])
@@ -641,13 +671,17 @@ function App() {
   useEffect(() => {
     if (!isInside) return
     const words = `${inside.title} ${inside.body} ${inside.details}`
-    const weights = new Set([pageType.title.weight, pageType.text.weight, pageType.details.weight, pageType.strong.weight])
-    for (const weight of weights) document.fonts.load(fontShorthand(BODY.size, weight), words).catch(() => undefined)
+    // Every weight the words could be set in, upright and slanted: asking for one that is never drawn loads nothing.
+    const weights = new Set([pageType.title.weight, pageType.text.weight, pageType.details.weight, pageType.strong.weight, pageType.semi.weight])
+    for (const weight of weights) {
+      document.fonts.load(fontShorthand(BODY.size, weight), words).catch(() => undefined)
+      if (words.includes('_')) document.fonts.load(fontShorthand(BODY.size, weight, true), words).catch(() => undefined)
+    }
     const label = normaliseEyebrow(inside.label)
     if (label) document.fonts.load(fontShorthand(pageType.label.size, pageType.label.weight), label).catch(() => undefined)
   }, [isInside, inside.label, inside.title, inside.body, inside.details, pageType])
   const page = useMemo(
-    () => layoutInside(inside, measureWidth, { logoBottom: markBoxes.logo ? markBoxes.logo.y + markBoxes.logo.height : undefined, arrowTop: markBoxes.arrow?.y }, measureLabel, pageType),
+    () => layoutInside(inside, measureWidth, { logoBottom: markBoxes.logo ? markBoxes.logo.y + markBoxes.logo.height : undefined, arrow: markBoxes.arrow }, measureLabel, pageType),
     // Measured again whenever a font finishes loading.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [inside, measureWidth, markBoxes, measureLabel, pageType, fonts.version],
@@ -737,6 +771,18 @@ function App() {
   const updateType = useCallback(<G extends keyof PageType>(group: G, changes: Partial<PageType[G]>) => {
     setPageType((current) => ({ ...current, [group]: { ...current[group], ...changes } }))
   }, [])
+
+  /** Puts marks round the words picked in a box, line by line, or starts the lines with a dash. */
+  const markWords = (field: 'body' | 'details', area: HTMLTextAreaElement | null, sign: string) => {
+    if (!area) return
+    const marked = markSelection(area.value, area.selectionStart, area.selectionEnd, sign)
+    updateInside(field, marked.value)
+    // The box is redrawn with the new words before the picked ones can be shown again.
+    requestAnimationFrame(() => {
+      area.focus()
+      area.setSelectionRange(marked.from, marked.to)
+    })
+  }
 
   const copyType = async () => {
     try {
@@ -1200,18 +1246,29 @@ function App() {
                 </div>
               </div>
               <div className="sub-block">
-                <span className="field-label">Text</span>
-                <textarea aria-label="Text" className="body-input" value={inside.body} rows={7} onChange={(event) => updateInside('body', event.target.value)} />
+                <div className="section-label-row">
+                  <span className="field-label">Text</span>
+                  <FormatBar label="Text" onMark={(sign) => markWords('body', bodyRef.current, sign)} />
+                </div>
+                <textarea ref={bodyRef} aria-label="Text" className="body-input" value={inside.body} rows={7} onChange={(event) => updateInside('body', event.target.value)} />
                 <Segmented label="Text colour" value={inside.bodyTone} options={toneOptions} onChange={(tone) => updateInside('bodyTone', tone)} />
                 <Segmented label="Text size" note={inside.bodyLarge ? 'A size up' : undefined} value={inside.bodyLarge ? 'large' : 'text'} options={[{ value: 'text', label: `${pageType.text.size}px` }, { value: 'large', label: `${pageType.text.large}px` }]} onChange={(size) => updateInside('bodyLarge', size === 'large')} />
               </div>
               <div className="sub-block">
                 <div className="section-label-row">
                   <span className="field-label">Highlight</span>
-                  <span className="field-hint">A closing line, or the date and place</span>
+                  <FormatBar label="Highlight" onMark={(sign) => markWords('details', detailsRef.current, sign)} />
                 </div>
-                <textarea aria-label="Highlight" className="body-input details-input" value={inside.details} rows={3} placeholder={'22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite'} onChange={(event) => updateInside('details', event.target.value)} />
+                <textarea ref={detailsRef} aria-label="Highlight" className="body-input details-input" value={inside.details} rows={3} placeholder={'22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite'} onChange={(event) => updateInside('details', event.target.value)} />
                 <Segmented label="Highlight colour" value={inside.detailsTone} options={toneOptions} onChange={(tone) => updateInside('detailsTone', tone)} />
+                <Segmented
+                  label="Highlight sits"
+                  note={inside.image === 'fill' && page.banner ? 'The picture fills the room between' : undefined}
+                  value={inside.pinned && inside.image !== 'fill' ? 'foot' : 'under'}
+                  options={[{ value: 'under', label: 'Under the text' }, { value: 'foot', label: 'At the foot' }]}
+                  disabled={inside.image === 'fill'}
+                  onChange={(place) => updateInside('pinned', place === 'foot')}
+                />
                 <Segmented label="Highlight size" note={inside.large ? 'A size up' : undefined} value={inside.large ? 'large' : 'text'} options={[{ value: 'text', label: `${pageType.details.size}px` }, { value: 'large', label: `${pageType.details.large}px` }]} onChange={(size) => updateInside('large', size === 'large')} />
                 <div className="words-status">
                   <div className={`fit-line ${page.overflow === 'body' ? 'error' : ''}`}>
@@ -1220,9 +1277,22 @@ function App() {
                     <span>text and highlight</span>
                   </div>
                 </div>
-                <p className="panel-note">Leave a blank line between paragraphs. Start a line with a dash for a bullet. Put words in *stars* to make them bold and white: a whole line, or a name inside one.</p>
+                <details className="cheatsheet">
+                  <summary>How to format the words</summary>
+                  <dl>
+                    <dt>**two stars**</dt><dd><b>Bold</b>, in white</dd>
+                    <dt>*one star*</dt><dd><strong className="semi">Semibold</strong>, in white</dd>
+                    <dt>_underscores_</dt><dd><i>Italic</i></dd>
+                    <dt>__two underscores__</dt><dd><u>Underlined</u></dd>
+                    <dt>- a dash, then a space</dt><dd>A bullet</dd>
+                    <dt>a new line</dt><dd>A new line</dd>
+                    <dt>a blank line</dt><dd>A new paragraph</dd>
+                  </dl>
+                  <p className="panel-note">Marks go round a whole line or a few words of one, and can sit inside each other: **_bold and italic_**. Pick words in a box and press B, S, I or U above it to put the marks in.</p>
+                </details>
               </div>
               {blockedReason && !page.empty && <p className="fit-message error" role="status">{blockedReason}</p>}
+              {!blockedReason && page.underArrow && <p className="fit-message warning" role="status">Words are running under the arrow. Shorten the last lines, or switch the arrow off.</p>}
             </Panel>
           )}
 
@@ -1251,7 +1321,8 @@ function App() {
               </div>
               <div className="sub-block range-stack">
                 <span className="field-label">Words in stars</span>
-                <Segmented label="Weight" note={WEIGHT_NAMES[pageType.strong.weight]} value={String(pageType.strong.weight)} options={weightOptions} onChange={(weight) => updateType('strong', { weight: Number(weight) })} />
+                <Segmented label="Two stars" note={WEIGHT_NAMES[pageType.strong.weight]} value={String(pageType.strong.weight)} options={weightOptions} onChange={(weight) => updateType('strong', { weight: Number(weight) })} />
+                <Segmented label="One star" note={WEIGHT_NAMES[pageType.semi.weight]} value={String(pageType.semi.weight)} options={weightOptions} onChange={(weight) => updateType('semi', { weight: Number(weight) })} />
               </div>
               <div className="sub-block range-stack">
                 <span className="field-label">Label</span>

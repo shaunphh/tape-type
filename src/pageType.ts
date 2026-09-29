@@ -33,7 +33,7 @@ const hundredth = (value: number) => Math.round(value * 100) / 100
 
 /** Stored sizes are untrusted, like everything else that is remembered. */
 export function sanitizePageType(stored: Record<string, unknown>): PageType {
-  const [title, text, details, strong, label] = [stored.title, stored.text, stored.details, stored.strong, stored.label].map(part)
+  const [title, text, details, strong, semi, label] = [stored.title, stored.text, stored.details, stored.strong, stored.semi, stored.label].map(part)
   const largest = within(title.largest, TYPE_RANGE.title.size, PAGE_TYPE.title.largest)
   return {
     title: {
@@ -55,6 +55,7 @@ export function sanitizePageType(stored: Record<string, unknown>): PageType {
       weight: weightOf(details.weight, PAGE_TYPE.details.weight),
     },
     strong: { weight: weightOf(strong.weight, PAGE_TYPE.strong.weight) },
+    semi: { weight: weightOf(semi.weight, PAGE_TYPE.semi.weight) },
     label: {
       size: within(label.size, TYPE_RANGE.label.size, PAGE_TYPE.label.size),
       weight: weightOf(label.weight, PAGE_TYPE.label.weight),
@@ -101,7 +102,8 @@ export function describePageType(type: PageType) {
     `Title: ${type.title.largest}px down to ${type.title.smallest}px, ${named(type.title.weight)}, line height ${type.title.lineHeight}`,
     `Text: ${type.text.size}px or ${type.text.large}px, ${named(type.text.weight)}, line height ${type.text.lineHeight}`,
     `Highlight: ${type.details.size}px or ${type.details.large}px, ${named(type.details.weight)}`,
-    `Words in stars: ${named(type.strong.weight)}`,
+    `Words in two stars: ${named(type.strong.weight)}`,
+    `Words in one star: ${named(type.semi.weight)}`,
     `Label: ${type.label.size}px, ${named(type.label.weight)}`,
   ].join('\n')
 }

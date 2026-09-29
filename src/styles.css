@@ -798,6 +798,46 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
 textarea.details-input { min-height: 84px; font-weight: 400; }
 textarea.body-input { min-height: 150px; font-family: 'Barlow', Arial, sans-serif; font-size: 14px; font-weight: 500; line-height: 1.35; }
 textarea.title-input { font-family: 'Barlow', Arial, sans-serif; font-size: 18px; font-weight: 700; line-height: 1.15; }
+/* The buttons over a box of words, and the notes on what they put in. */
+.format-bar { display: flex; gap: 3px; }
+.format-bar button {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid #cbc8c0;
+  font-family: 'Barlow', Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+}
+.format-bar button:hover { border-color: var(--ink); }
+.format-bar .bold { font-weight: 700; }
+.format-bar .semi, .cheatsheet .semi { font-weight: 600; }
+.format-bar .italic { font-style: italic; }
+.format-bar .underline { text-decoration: underline; text-underline-offset: 2px; }
+.cheatsheet { color: #55524d; font-size: 11px; line-height: 1.4; }
+/* It sits inside a panel, whose own heading is a summary too: none of that heading's layout is wanted here. */
+.panel .cheatsheet summary {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  color: #67645e;
+  background: none;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-decoration: underline;
+  text-transform: none;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.panel .cheatsheet summary:hover { color: var(--ink); background: none; }
+.cheatsheet dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 9px 0; font-family: 'Barlow', Arial, sans-serif; font-size: 12px; }
+.cheatsheet dt { color: var(--ink); font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; }
+.cheatsheet dd { margin: 0; }
 /* A field the page has no use for stays on show, switched off. */
 textarea:disabled, .eyebrow-input:disabled { background: #e9e7e1; border-style: dashed; cursor: not-allowed; }
 textarea.title-input:disabled { min-height: 0; height: 36px; resize: none; }

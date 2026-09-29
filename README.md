@@ -78,17 +78,22 @@ It comes in two kinds, chosen under **Kind of page**. A **Title page** opens wit
 - **Text**: the story, in Barlow Regular at 38px (28.5 in Canva, whose sizes are points), lines 1.2 apart, in the grey (`#C2C2C2`).
 - **Highlight**: a closing line, or the date, place and tickets, under the story. It is the story's weight, and starts in the title's white. (The code calls it `details`.)
 - **Colour and size**: each of the two boxes has the same two switches under it. Colour sets it in the grey or in white; size sets it at 38px or a size up, 42px.
+- **Highlight sits**: under the text, or at the foot of the words' room, with whatever space there is between the two. The foot is the bottom margin, or the top of a picture at the bottom. A picture that fills has taken that space already, so the switch is off with one.
 - **Picture**: Fill (what a new page starts with), None, Short (340px), Medium (430px) or Tall (540px). Drag it inside its banner, or use the sliders, as on a cover. It is the page's own photo, or the cover's until one is chosen. Until either is, each kind of page shows a **sample picture**, so it reads as a page from the start. A sample says what it is on the canvas and is never exported: export waits for a photo, or for the picture to be set to None. The samples are `src/assets/samples/title-page.jpg` and `label-page.jpg`; swap the files to change them.
 - **Position**: where the picture goes. **Top**: above the words. **Middle**: after the first thing on the page, which is the title, or the story when there is no title. **Bottom**: under the words, on the foot of the page, with the arrow over it.
-- **Marks**: the arrow is off to start with; Logo & arrow switches it on. With it off, the words run down to the bottom margin; with it on, they end above it. An inside page goes without the logo for now, so its words start at the top of the page: the choice is greyed out, and `?unlocked` opens it (the logo is small here, 128px, and the words then start under it).
+- **Marks**: the arrow is off to start with; Logo & arrow switches it on. It keeps its corner whatever is typed, and takes no room from the words: they run down to the bottom margin either way. When words do run under it, the panel says so, and nothing is blocked. An inside page goes without the logo for now, so its words start at the top of the page: the choice is greyed out, and `?unlocked` opens it (the logo is small here, 128px, and the words then start under it).
 
 A picture that **fills** takes the room the words leave, so the page is always full: at the top the words sit on the foot of the page, in the middle the first words stay at the top and the rest go to the foot, and at the bottom the picture runs from under the words to the foot. It is never less than 260px tall; past that the words are too long.
 
-Under the title, what matters more or less is told apart by how bright it is, and by weight where words are in stars. In the text and the highlight:
+Under the title, what matters more or less is told apart by how bright it is, and by the marks put round words. In the text and the highlight:
 
 - a blank line starts a new paragraph, and a new line is a new line;
 - a line starting with a dash is a bullet;
-- words in `*stars*` are bold and white: a whole line (a name, a call to book) or part of one (`with *AE MAK* and *Zaska*`). One star or two, the same on both sides, hugging the words. A star that hugs nothing, or sits inside a word or a sum (`5* hotel`, `2*3*4`), is just a star.
+- words in `**two stars**` are bold and white, and in `*one star*` semibold and white;
+- words in `_underscores_` are italic, and in `__two underscores__` underlined, in the colour of the words round them;
+- marks go round a whole line or part of one (`with **AE MAK** and *Zaska*`), hugging the words, and can sit inside each other (`**_bold and italic_**`). A mark that hugs nothing, or sits inside a word, a sum or a name (`5* hotel`, `2*3*4`, `some_file_name`), is left as typed.
+
+Over each box, **B**, **S**, **I**, **U** and **•** put the marks in for the words picked in it, or take them off again; "How to format the words", under the boxes, lists them. An underline is drawn, not asked of the font, so the preview and every export have it in the same place.
 
 Emoji typed into either box are drawn as the device draws them.
 
@@ -98,7 +103,7 @@ Sizes, margins and greys follow the article pages of the Alternative Dublin soci
 
 #### Trying other sizes and weights
 
-Run on your own machine (`npm run dev`, or any `localhost` address), the inside page has one more panel: **Type · this machine only**. It sets the title's largest and smallest size, weight and line height; the text's size, weight and line height; the highlight's two sizes and its weight; the weight of words in stars; and the label's size and weight. Weights are Barlow's 400 to 900. The preview and the exports follow, and what was tried is remembered in that browser.
+Run on your own machine (`npm run dev`, or any `localhost` address), the inside page has one more panel: **Type · this machine only**. It sets the title's largest and smallest size, weight and line height; the text's size, weight and line height; the highlight's two sizes and its weight; the weights of words in two stars and in one; and the label's size and weight. Weights are Barlow's 400 to 900. The preview and the exports follow, and what was tried is remembered in that browser.
 
 The published tool never shows the panel and never reads what it saved, so everyone else's pages stay in the tool's own sizes. **Copy values** puts the settings on the clipboard in words; to make them the tool's own, write them into `TITLE`, `BODY`, `DETAILS`, `STRONG` and `LABEL` at the top of `src/inside.ts`. **Back to the tool's** undoes the trial. A trial is also dropped once the tool's own values change, since it has then done its job.
 

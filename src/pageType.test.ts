@@ -20,6 +20,7 @@ describe('trying other sizes and weights', () => {
       text: { size: 38, large: 42, weight: 400, lineHeight: 1.2 },
       details: { size: 38, large: 42, weight: 400 },
       strong: { weight: 700 },
+      semi: { weight: 600 },
       label: { size: 38, weight: 800 },
     })
     expect(sanitizePageType({})).toEqual(PAGE_TYPE)
@@ -32,12 +33,14 @@ describe('trying other sizes and weights', () => {
       text: { size: '40', weight: 600, lineHeight: 1.256 },
       details: { size: 31.6, large: 900, weight: 300 },
       strong: { weight: 900 },
+      semi: { weight: 650 },
       label: 'big',
     })
     expect(tried.title).toEqual({ largest: 120, smallest: 36, weight: 700, lineHeight: 1.4 })
     expect(tried.text).toEqual({ size: 38, large: 42, weight: 600, lineHeight: 1.26 })
     expect(tried.details).toEqual({ size: 32, large: 60, weight: PAGE_TYPE.details.weight })
     expect(tried.strong).toEqual({ weight: 900 })
+    expect(tried.semi).toEqual({ weight: 600 })
     expect(tried.label).toEqual(PAGE_TYPE.label)
     // The smallest title is never the larger of the two.
     expect(sanitizePageType({ title: { largest: 60, smallest: 80 } }).title).toMatchObject({ largest: 60, smallest: 60 })
@@ -48,7 +51,8 @@ describe('trying other sizes and weights', () => {
       'Title: 52px down to 45px, Bold 700, line height 1.07',
       'Text: 38px or 42px, Regular 400, line height 1.2',
       'Highlight: 38px or 42px, Regular 400',
-      'Words in stars: Bold 700',
+      'Words in two stars: Bold 700',
+      'Words in one star: SemiBold 600',
       'Label: 38px, ExtraBold 800',
     ].join('\n'))
   })

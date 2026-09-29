@@ -3,7 +3,7 @@ import { cleanText } from './text'
 import type { ShapeResult, TapeTone } from './types'
 
 export const FONT_FAMILY = 'Barlow'
-export const fontShorthand = (size: number, weight: number) => `${weight} ${size}px "${FONT_FAMILY}"`
+export const fontShorthand = (size: number, weight: number, italic = false) => `${italic ? 'italic ' : ''}${weight} ${size}px "${FONT_FAMILY}"`
 
 // The Alternative Dublin brand colours.
 export const BRAND = { yellow: '#FFEF3A', light: '#F0F0F0', dark: '#101010', white: '#FFFFFF' }
@@ -29,7 +29,7 @@ export interface Obstacle { left: number; top: number; right: number; bottom: nu
 /** One drawing list feeds the live preview, the SVG exports and the PNG exports, so they cannot drift apart. */
 export type Layer =
   | { kind: 'path'; d: string; fill: string; angle: number; cx: number; cy: number; place?: Place }
-  | { kind: 'text'; text: string; x: number; y: number; size: number; weight: number; fill: string; angle: number; cx: number; cy: number }
+  | { kind: 'text'; text: string; x: number; y: number; size: number; weight: number; fill: string; angle: number; cx: number; cy: number; italic?: boolean }
 
 export interface LayerOptions {
   tone: TapeTone
@@ -67,7 +67,7 @@ export function buildLayers(shape: ShapeResult, options: LayerOptions, fontSize:
 }
 
 /** The lettering in a layer list, by weight: which font files an export needs. */
-export const textRuns = (layers: Layer[]) => layers.flatMap((layer) => (layer.kind === 'text' ? [{ text: layer.text, weight: layer.weight }] : []))
+export const textRuns = (layers: Layer[]) => layers.flatMap((layer) => (layer.kind === 'text' ? [{ text: layer.text, weight: layer.weight, italic: Boolean(layer.italic) }] : []))
 
 export const escapeText = (value: string) => cleanText(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 export const escapeAttribute = (value: string) => cleanText(value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
@@ -84,7 +84,8 @@ export function layersToSvg(layers: Layer[]) {
     const placed = layerTransform(layer)
     const transform = placed ? ` transform="${placed}"` : ''
     if (layer.kind === 'path') return `<path d="${layer.d}" fill="${layer.fill}"${transform}/>`
-    return `<text x="${layer.x}" y="${layer.y}" font-family="${FONT_FAMILY}, sans-serif" font-size="${layer.size}" font-weight="${layer.weight}" fill="${layer.fill}"${transform}>${escapeText(layer.text)}</text>`
+    const slant = layer.italic ? ' font-style="italic"' : ''
+    return `<text x="${layer.x}" y="${layer.y}" font-family="${FONT_FAMILY}, sans-serif" font-size="${layer.size}" font-weight="${layer.weight}"${slant} fill="${layer.fill}"${transform}>${escapeText(layer.text)}</text>`
   }).join('')
 }
 
@@ -104,7 +105,7 @@ export function drawLayers(context: CanvasRenderingContext2D, layers: Layer[]) {
     if (layer.kind === 'path') {
       context.fill(new Path2D(layer.d))
     } else {
-      context.font = fontShorthand(layer.size, layer.weight)
+      context.font = fontShorthand(layer.size, layer.weight, layer.italic)
       context.textAlign = 'start'
       context.textBaseline = 'alphabetic'
       context.fillText(layer.text, layer.x, layer.y)

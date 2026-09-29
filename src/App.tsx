@@ -127,6 +127,8 @@ const toneOptions: { value: TextTone; label: string }[] = [
   { value: 'grey', label: 'Grey' },
   { value: 'light', label: 'White' },
 ]
+/** Where a photo can be put. Each has its own: one chosen for a cover is not the inside page's too. */
+type Place = 'cover' | 'video' | PageKind
 /** The pictures an inside page starts with, so it reads as a page before a photo is chosen. They are never exported. */
 const SAMPLE_PICTURES: Record<PageKind, string> = { title: titleSample, label: labelSample }
 const cutOptions: { value: ShapeMode; label: string }[] = [
@@ -584,12 +586,21 @@ function App() {
   const [copied, setCopied] = useState<'svg' | 'seed' | 'type' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
-  const [previewBackground, setPreviewBackground] = useState<PreviewBackground>('charcoal')
-  const [photo, setPhoto] = useState<Photo | null>(null)
-  const [photoView, setPhotoView] = useState<PhotoView>(CENTRED)
   const [inside, setInside] = useState<InsideOptions>(loadInside)
-  const [insidePhoto, setInsidePhoto] = useState<Photo | null>(null)
-  const [insideView, setInsideView] = useState<PhotoView>(CENTRED)
+  // A photo goes where it was chosen and nowhere else, with its own position and its own background.
+  const place: Place = cover.kind === 'video' ? 'video' : cover.page === 'inside' ? inside.kind : 'cover'
+  const [photos, setPhotos] = useState<Partial<Record<Place, Photo>>>({})
+  const [views, setViews] = useState<Partial<Record<Place, PhotoView>>>({})
+  const [backgrounds, setBackgrounds] = useState<Partial<Record<Place, PreviewBackground>>>({})
+  const photo = photos[place] ?? null
+  const view = views[place] ?? CENTRED
+  const setView = useCallback((next: PhotoView | ((current: PhotoView) => PhotoView)) => {
+    setViews((current) => ({ ...current, [place]: typeof next === 'function' ? next(current[place] ?? CENTRED) : next }))
+  }, [place])
+  const previewBackground = backgrounds[place] ?? 'charcoal'
+  const setPreviewBackground = useCallback((background: PreviewBackground) => {
+    setBackgrounds((current) => ({ ...current, [place]: background }))
+  }, [place])
   const [samplePhotos, setSamplePhotos] = useState<Partial<Record<PageKind, Photo>>>({})
   // Other sizes and weights can be tried where the tool runs on this machine; the published tool keeps its own.
   const local = useMemo(() => isLocal(), [])
@@ -698,12 +709,9 @@ function App() {
       .catch(() => undefined)
     return () => { wanted = false }
   }, [isInside, inside.kind, samplePhotos])
-  const ownPhoto = isInside ? insidePhoto ?? photo : photo
-  // The photo in play: behind a cover, or in the inside page's banner (the cover's, until another is chosen).
-  const shownPhoto = isInside ? (page.banner ? ownPhoto ?? samplePhotos[inside.kind] ?? null : null) : previewBackground === 'photo' ? photo : null
-  const sampleShown = isInside && Boolean(shownPhoto) && !ownPhoto
-  const view = isInside ? insideView : photoView
-  const setView = isInside ? setInsideView : setPhotoView
+  // The photo in play: behind a cover, or in the inside page's banner (its sample, until one is chosen).
+  const shownPhoto = isInside ? (page.banner ? photo ?? samplePhotos[inside.kind] ?? null : null) : previewBackground === 'photo' ? photo : null
+  const sampleShown = isInside && Boolean(shownPhoto) && !photo
   const photoFrame = isInside && page.banner ? page.banner : frame
   // How far down the page the inside page's picture starts.
   const bannerTop = isInside && page.banner ? page.banner.y : 0
@@ -749,8 +757,14 @@ function App() {
   useEffect(() => { if (local) savePageType(pageType) }, [local, pageType])
   useEffect(() => { savePanels(panels) }, [panels])
   // A replaced photo is let go; its address only has to last while it is on show.
-  useEffect(() => () => { if (photo) URL.revokeObjectURL(photo.url) }, [photo])
-  useEffect(() => () => { if (insidePhoto) URL.revokeObjectURL(insidePhoto.url) }, [insidePhoto])
+  const held = useRef<Partial<Record<Place, Photo>>>({})
+  useEffect(() => {
+    for (const [where, old] of Object.entries(held.current)) {
+      if (old && old !== photos[where as Place]) URL.revokeObjectURL(old.url)
+    }
+    held.current = photos
+  }, [photos])
+  useEffect(() => () => { for (const old of Object.values(held.current)) if (old) URL.revokeObjectURL(old.url) }, [])
 
   const update = useCallback(<K extends keyof GeneratorSettings>(key: K, value: GeneratorSettings[K]) => {
     setSettings((current) => ({ ...current, [key]: value }))
@@ -1000,15 +1014,13 @@ function App() {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
+    // Where it was chosen is where it goes, even if something else is on show by the time it is ready.
+    const chosenFor = place
     try {
-      if (isInside) {
-        setInsidePhoto(await preparePhoto(file, POST_FRAME))
-        setInsideView(CENTRED)
-        return
-      }
-      setPhoto(await preparePhoto(file, frame))
-      setPhotoView(CENTRED)
-      setPreviewBackground('photo')
+      const prepared = await preparePhoto(file, frame)
+      setPhotos((current) => ({ ...current, [chosenFor]: prepared }))
+      setViews((current) => ({ ...current, [chosenFor]: CENTRED }))
+      if (chosenFor === 'cover' || chosenFor === 'video') setBackgrounds((current) => ({ ...current, [chosenFor]: 'photo' }))
     } catch {
       flash('That file couldn’t be opened as an image. If it’s an iPhone HEIC photo, convert it to JPEG first.')
     }
@@ -1113,7 +1125,7 @@ function App() {
   const slack = shownPhoto ? photoSlack(shownPhoto.width, shownPhoto.height, view, photoFrame) : { x: 0, y: 0 }
   const isVideo = cover.kind === 'video'
   const photoMoved = view.x !== CENTRED.x || view.y !== CENTRED.y || view.zoom !== CENTRED.zoom
-  const anyPhoto = ownPhoto
+  const anyPhoto = photo
   const isFeature = settings.style === 'feature'
   const series = settings.coverFormat === 'series'
   const locked = settings.seedLocked
@@ -1426,7 +1438,7 @@ function App() {
               <label className="panel-button upload-button" onClick={clickPhoto}>
                 <input type="file" accept="image/*" onChange={choosePhoto} />
                 {anyPhoto ? <ImageIcon size={14} aria-hidden="true" /> : <Upload size={14} aria-hidden="true" />}
-                {isInside ? (insidePhoto ? 'Replace photo' : 'Choose photo') : !photo ? 'Choose photo' : shownPhoto ? 'Replace photo' : 'Show photo'}
+                {!photo ? 'Choose photo' : shownPhoto ? 'Replace photo' : 'Show photo'}
               </label>
               {shownPhoto && <button className="text-button underlined" disabled={!photoMoved} onClick={() => setView(CENTRED)}>Reset position</button>}
             </div>
@@ -1442,7 +1454,7 @@ function App() {
                 : photo ? 'The photo is hidden while another background is showing.' : 'Photos stay in your browser. Once one is in, drag it on the cover to reposition it.'}</p>
             )}
             {sampleShown && <p className="panel-note">This is a sample picture, to show the page. It is never exported: choose a photo of your own.</p>}
-            {isInside && shownPhoto && !sampleShown && !insidePhoto && <p className="panel-note">This is the cover’s photo. Choose another to change it on this page only.</p>}
+            {photo && <p className="panel-note">A photo stays where it was chosen: each page and cover has its own.</p>}
             <label className="toggle-row spread">
               <span>Darken photo <small>{Math.round(PHOTO_DARKEN * 100)}% black, so the words read</small></span>
               <input type="checkbox" checked={cover.darken} onChange={(event) => updateCover('darken', event.target.checked)} />
@@ -1635,9 +1647,14 @@ function App() {
               {!isInside && previewBackground === 'photo' && !photo && (
                 <label className="photo-empty"><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
               )}
-              {sampleShown && page.banner && (
-                <label className="sample-badge" style={{ top: `${page.banner.y / frame.height * 100}%` }} title="This picture is a sample, and is never exported">
-                  <Upload size={13} aria-hidden="true" /> Sample picture · choose your own
+              {shownPhoto && (
+                <label
+                  className="photo-change"
+                  // In the corner of the picture: the foot of a cover, or of an inside page's banner.
+                  style={{ top: `${(isInside && page.banner ? page.banner.y + page.banner.height : frame.height) / frame.height * 100}%` }}
+                  title={sampleShown ? 'This picture is a sample, and is never exported. Choose a photo of your own' : 'Choose another photo'}
+                >
+                  <Upload size={11} aria-hidden="true" /> {sampleShown ? 'Sample · change photo' : 'Change photo'}
                   <input type="file" accept="image/*" onChange={choosePhoto} />
                 </label>
               )}

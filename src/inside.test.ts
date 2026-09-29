@@ -494,8 +494,9 @@ describe('inside page', () => {
     for (const tones of [{}, { bodyTone: 'light' as const, detailsTone: 'grey' as const }]) {
       expect(fills(page({ ...content, ...tones }))).toMatchObject({ 'a name': `700 ${TONES.light}`, 'a place': `700 ${TONES.light}` })
     }
+    // A title page starts with its story in the grey; a label page's list is white, with its names in bold.
     expect(PAGE_KINDS.title.sample).toMatchObject({ bodyTone: 'grey', detailsTone: 'light' })
-    expect(PAGE_KINDS.label.sample).toMatchObject({ bodyTone: 'grey', detailsTone: 'light' })
+    expect(PAGE_KINDS.label.sample).toMatchObject({ bodyTone: 'light', detailsTone: 'light' })
   })
 
   it('sets the page in other sizes and weights when they are being tried', () => {
@@ -559,7 +560,11 @@ describe('inside page', () => {
   it('comes in two kinds, each with its own words and its own example', () => {
     expect(insideDefaults).toMatchObject({ kind: 'title', kept: {}, ...PAGE_KINDS.title.sample })
     expect(PAGE_KINDS.title.sample).toMatchObject({ label: '', large: false, position: 'top' })
-    expect(PAGE_KINDS.label.sample).toMatchObject({ label: 'Meet the artists', title: '', large: true, position: 'bottom' })
+    expect(PAGE_KINDS.label.sample).toMatchObject({ label: 'Meet the artists', title: '', large: false, position: 'bottom' })
+    // The examples show the marks at work: two stars for bold, one for semibold.
+    const weights = (kind: 'title' | 'label') => new Set(texts(layoutInside({ ...insideDefaults, ...PAGE_KINDS[kind].sample }, measure, {}, ink).layers).map((layer) => layer.weight))
+    expect(weights('title')).toEqual(new Set([TITLE.weight, BODY.weight, STRONG.weight]))
+    expect(weights('label')).toEqual(new Set([LABEL.weight, STRONG.weight, BODY.weight, SEMI.weight]))
     // Each example fits its page, with a picture that fills.
     for (const kind of ['title', 'label'] as const) {
       const layout = layoutInside({ ...insideDefaults, ...PAGE_KINDS[kind].sample }, measure, {}, ink)

@@ -575,7 +575,8 @@ export function insideSvg(layout: InsideLayout, options: { photo?: string | null
 
 /**
  * The two kinds of page, and what each starts with. The examples show what the page is for,
- * and how its words are typed: stars for bold, a new line for a new line.
+ * and how its words are typed: stars for bold, a new line for a new line. They are the pages as
+ * Shaun had them on 29 September 2026.
  */
 export const PAGE_KINDS: Record<PageKind, { label: string; description: string; sample: PageWords }> = {
   title: {
@@ -584,8 +585,8 @@ export const PAGE_KINDS: Record<PageKind, { label: string; description: string; 
     sample: {
       label: '',
       title: 'Bolands Mills is set to come alive this Culture Night',
-      body: 'A free evening of live music, art, storytelling and movement, with performances from **AE MAK**, **Sorcha Richardson** and **Zaska** on the Factory Main Stage.',
-      details: 'Friday 18 September · 6.30pm\nBolands Mills, Dublin 4\nFree, no ticket needed',
+      body: 'A free evening of live music, art, storytelling and movement, with performances from AE MAK, Sorcha Richardson and Zaska on the Factory Main Stage.\n\nThe Factory Main Stage will host performances from AE MAK, Sorcha Richardson and Zaska, while DJ and chef Marcus O’Laoire brings a relaxed vinyl listening session to Grindstone Coffee.',
+      details: '**A free evening of live music,**\n**storytelling Factory Main Stage.**',
       large: false,
       bodyLarge: false,
       pinned: false,
@@ -601,11 +602,11 @@ export const PAGE_KINDS: Record<PageKind, { label: string; description: string; 
       label: 'Meet the artists',
       title: '',
       body: '**Aoife Dooley**\nIllustration\n**Emma Rose Hanley**\nCeramics',
-      details: 'Four Dublin creatives are coming together for an evening exploring their work, practice and inspiration.',
-      large: true,
+      details: '*Four Dublin creatives are coming together for an evening exploring their work, practice and inspiration.*',
+      large: false,
       bodyLarge: false,
       pinned: false,
-      bodyTone: 'grey',
+      bodyTone: 'light',
       detailsTone: 'light',
       position: 'bottom',
     },

@@ -757,25 +757,29 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
 .photo-empty span { font-family: 'Barlow Condensed'; font-size: 20px; font-weight: 700; text-transform: uppercase; }
 /* The inside page’s picture sits in a banner across the page, not over the whole of it. */
 .photo-empty.banner { inset: 0 0 auto; }
-/* A sample picture says what it is, on the canvas only: it is not part of the artwork. */
-.sample-badge {
+/* Changing the photo, from the corner of the picture: quiet until it is wanted, and never part of the artwork. */
+.photo-change {
   display: inline-flex;
   position: absolute;
   left: 0;
   z-index: 4;
   align-items: center;
-  gap: 6px;
-  margin: 10px;
-  padding: 6px 10px 5px;
-  color: var(--ink);
-  background: var(--yellow);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: .06em;
+  gap: 5px;
+  margin: 0 0 0 8px;
+  padding: 5px 8px 4px;
+  color: rgba(255,255,255,.82);
+  background: rgba(16,16,16,.46);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: .07em;
   text-transform: uppercase;
+  transform: translateY(calc(-100% - 8px));
+  opacity: .78;
   cursor: pointer;
+  transition: opacity .15s, background .15s;
 }
-.sample-badge input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
+.photo-change:hover, .photo-change:focus-within { background: rgba(16,16,16,.82); opacity: 1; }
+.photo-change input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
 /* What is being made sits above the canvas, where it can always be seen. */
 .making-switcher { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: #dcd9d2; }
 .making-switcher button {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { coverDefaults, sanitizeCover } from './cover'
 import { POST_LOOK, VIDEO_LOOKS } from './formats'
-import { HELD, applyLocks, isBarred, isLocked } from './locks'
+import { HELD, HOUSE_CUT_KEY, applyLocks, firstSinceHouseCut, isBarred, isLocked, withHouseCut } from './locks'
 import { defaults, stylePresets } from './settings'
 import type { GeneratorSettings } from './types'
 
@@ -18,6 +18,34 @@ describe('locked choices', () => {
     expect(isLocked('align', 'left', POST_LOOK, false)).toBe(false)
     expect(isLocked('coverFormat', 'series', POST_LOOK, false)).toBe(true)
     expect(HELD).not.toContain('mode')
+  })
+
+  it('holds the tape’s cling where the look has it', () => {
+    expect(isLocked('hugStrength', 1, POST_LOOK, false)).toBe(false)
+    expect(isLocked('hugStrength', 1.1, POST_LOOK, false)).toBe(true)
+    expect(applyLocks({ ...defaults, hugStrength: 0.9 }, POST_LOOK, false).hugStrength).toBe(1)
+    expect(applyLocks({ ...defaults, hugStrength: 0.9 }, POST_LOOK, true).hugStrength).toBe(0.9)
+  })
+
+  it('gives a post the rough cut as its house cut, once, and leaves the choice open after', () => {
+    expect(POST_LOOK.treatment.mode).toBe('rough')
+    expect(Object.values(VIDEO_LOOKS).map((look) => look.treatment.mode)).toEqual(['plain', 'plain', 'plain'])
+    const kept = new Map<string, string>()
+    const storage = { getItem: (key: string) => kept.get(key) ?? null, setItem: (key: string, value: string) => { kept.set(key, value) } }
+    // A browser that remembered the old cut takes the new one the first time it opens.
+    const first = firstSinceHouseCut(storage)
+    expect(first).toBe(true)
+    expect(kept.has(HOUSE_CUT_KEY)).toBe(true)
+    expect(withHouseCut({ ...defaults, mode: 'plain', headline: 'Kept' }, POST_LOOK, first)).toMatchObject({ mode: 'rough', headline: 'Kept' })
+    // Drawn twice with that answer, it comes out the same.
+    expect(withHouseCut({ ...defaults, mode: 'plain' }, POST_LOOK, first).mode).toBe('rough')
+    // After that the cut is the person's own.
+    const chosen = { ...defaults, mode: 'torn' as const }
+    expect(firstSinceHouseCut(storage)).toBe(false)
+    expect(withHouseCut(chosen, POST_LOOK, false)).toBe(chosen)
+    // Storage that cannot be used leaves the settings as they are.
+    expect(firstSinceHouseCut(undefined)).toBe(false)
+    expect(firstSinceHouseCut({ getItem: () => { throw new Error('blocked') }, setItem: () => undefined })).toBe(false)
   })
 
   it('never locks a default of the settings it holds, so the house look is always reachable', () => {
@@ -41,7 +69,8 @@ describe('locked choices', () => {
   it('puts settings saved before the locks back to the house look, keeping the words and the cut', () => {
     const saved: GeneratorSettings = { ...defaults, ...stylePresets.feature, style: 'feature', tone: 'yellow', coverFormat: 'series', headline: 'Kept', seed: 42 }
     const next = applyLocks(saved, POST_LOOK, false)
-    expect(next).toMatchObject({ ...stylePresets.headline, column: 'medium', style: 'headline', tone: 'light', coverFormat: 'regular', headline: 'Kept', seed: 42 })
+    expect(next).toMatchObject({ ...POST_LOOK.treatment, style: 'headline', tone: 'light', coverFormat: 'regular', headline: 'Kept', seed: 42 })
+    expect(POST_LOOK.treatment).toEqual({ ...stylePresets.headline, column: 'medium', mode: 'rough' })
     const cut: GeneratorSettings = { ...defaults, mode: 'torn', align: 'right', perLine: true, column: 'wide' }
     expect(applyLocks(cut, POST_LOOK, false)).toMatchObject({ mode: 'torn', align: 'left', perLine: false, column: 'wide' })
   })
@@ -77,12 +106,12 @@ describe('locked choices', () => {
 
 describe('cover options', () => {
   it('start as a post with the logo, the swipe arrow and a darkened photo, colours picked automatically', () => {
-    expect(coverDefaults).toEqual({ kind: 'post', page: 'cover', video: 'report', logo: 'right', logoColour: 'auto', arrow: true, arrowColour: 'auto', darken: true })
+    expect(coverDefaults).toEqual({ kind: 'post', page: 'cover', video: 'report', logo: 'right', logoColour: 'auto', arrow: true, arrowColour: 'auto', darken: true, eyebrowColour: 'auto' })
   })
 
   it('replaces invalid stored values instead of trusting them', () => {
-    expect(sanitizeCover({ kind: 'story', page: 'back', video: 'vlog', logo: 'middle', logoColour: 'pink', arrow: 'yes', arrowColour: 7, darken: 0 })).toEqual(coverDefaults)
-    const chosen = { kind: 'video', page: 'inside', video: 'presenter', logo: 'left', logoColour: 'light', arrow: false, arrowColour: 'dark', darken: false }
+    expect(sanitizeCover({ kind: 'story', page: 'back', video: 'vlog', logo: 'middle', logoColour: 'pink', arrow: 'yes', arrowColour: 7, darken: 0, eyebrowColour: 'green' })).toEqual(coverDefaults)
+    const chosen = { kind: 'video', page: 'inside', video: 'presenter', logo: 'left', logoColour: 'light', arrow: false, arrowColour: 'dark', darken: false, eyebrowColour: 'yellow' }
     expect(sanitizeCover(chosen)).toEqual(chosen)
     expect(sanitizeCover({})).toEqual(coverDefaults)
   })

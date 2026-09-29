@@ -10,7 +10,7 @@ import type { GeneratorSettings } from './types'
  * one thing is held, in App: the arrow takes the logo's colour. Photo, logo and the logo's
  * colour are free.
  */
-export const HELD = ['style', 'tone', 'perLine', 'align', 'coverFormat'] as const
+export const HELD = ['style', 'tone', 'perLine', 'align', 'coverFormat', 'hugStrength'] as const
 export type HeldSetting = (typeof HELD)[number]
 
 /** Single choices that are switched off for now, whatever is being made. The others of each stay open. */
@@ -33,7 +33,7 @@ export const lockedLineGap = (fontSize: number, letterHeight: number) => fontSiz
 export const unlocked = () => typeof location !== 'undefined' && new URLSearchParams(location.search).has('unlocked')
 
 const lookValue = <K extends HeldSetting>(look: Look, setting: K) =>
-  (setting === 'style' ? look.style : setting === 'coverFormat' ? look.coverFormat : look.treatment[setting as 'tone' | 'perLine' | 'align']) as GeneratorSettings[K]
+  (setting === 'style' ? look.style : setting === 'coverFormat' ? look.coverFormat : look.treatment[setting as 'tone' | 'perLine' | 'align' | 'hugStrength']) as GeneratorSettings[K]
 
 export const isLocked = <K extends HeldSetting>(setting: K, value: GeneratorSettings[K], look: Look, open = unlocked()) =>
   !open && value !== lookValue(look, setting)
@@ -51,3 +51,26 @@ export function applyLocks(settings: GeneratorSettings, look: Look, open = unloc
   }
   return next
 }
+
+export const HOUSE_CUT_KEY = 'tape-type-house-cut-v1'
+
+/**
+ * Whether the tool is opening for the first time since the house cut changed. The cut is a free
+ * choice, so a new house cut would never reach a browser that had already remembered one: on
+ * that first opening the cover takes the look's cut, and after it the choice is the person's
+ * again. Asking marks the opening, so it is asked once per page. For the next change of house
+ * cut, count the key up.
+ */
+export function firstSinceHouseCut(storage: Pick<Storage, 'getItem' | 'setItem'> | undefined = typeof localStorage === 'undefined' ? undefined : localStorage) {
+  try {
+    if (!storage || storage.getItem(HOUSE_CUT_KEY)) return false
+    storage.setItem(HOUSE_CUT_KEY, 'seen')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** The settings with the look's cut, on a first opening. */
+export const withHouseCut = (settings: GeneratorSettings, look: Look, first: boolean): GeneratorSettings =>
+  (first ? { ...settings, mode: look.treatment.mode } : settings)

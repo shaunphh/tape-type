@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BRAND, buildLayers, getPlacement, placementRange, svgMarkup } from './artwork'
-import { GRID_CROP, POST_LOOK, VIDEO_FRAME, VIDEO_LOOKS, frameFor, lookFor } from './formats'
+import { GRID_CROP, POST_LOOK, TAGS, VIDEO_FRAME, VIDEO_LOOKS, frameFor, lookFor, tagFor } from './formats'
 import { furnitureBoxes, furnitureObstacles } from './furniture'
 import { buildShape } from './geometry'
 import { dragPhoto, photoRect, visiblePart, CENTRED } from './photo'
@@ -74,6 +74,19 @@ describe('looks', () => {
     expect(VIDEO_LOOKS.feature).toMatchObject({ style: 'feature', eyebrow: null })
     expect(VIDEO_LOOKS.feature.treatment).toMatchObject({ tone: 'light', perLine: false, align: 'left', rotationVariance: 0 })
     expect(lookFor('post', 'presenter')).toBe(POST_LOOK)
+  })
+
+  it('gives the eyebrow the look’s own colours, or the ones chosen', () => {
+    expect(tagFor('auto', VIDEO_LOOKS.report)).toBe(VIDEO_LOOKS.report.tag)
+    expect(tagFor('auto', POST_LOOK)).toBeUndefined()
+    expect(tagFor('yellow', VIDEO_LOOKS.presenter)).toEqual({ tape: BRAND.yellow, text: BRAND.dark })
+    expect(tagFor('light', VIDEO_LOOKS.report)).toEqual({ tape: BRAND.light, text: BRAND.dark })
+    expect(tagFor('dark', VIDEO_LOOKS.feature)).toEqual({ tape: BRAND.dark, text: BRAND.light })
+    // Its lettering is never the tape's own colour.
+    for (const tag of Object.values(TAGS)) expect(tag.text).not.toBe(tag.tape)
+    const layers = buildLayers(shape, { tone: 'yellow', background: 'photo', weight: 700, tag: tagFor('light', VIDEO_LOOKS.report) }, 80)
+    expect(layers.find((layer) => layer.kind === 'path' && layer.d === shape.eyebrow!.path)).toMatchObject({ fill: BRAND.light })
+    expect(layers.find((layer) => layer.kind === 'text' && layer.text === 'QUICK WATCH')).toMatchObject({ fill: BRAND.dark })
     expect(lookFor('video', 'presenter')).toBe(VIDEO_LOOKS.presenter)
   })
 

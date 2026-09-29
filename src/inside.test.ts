@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BRAND, type Layer } from './artwork'
 import { furnitureBoxes } from './furniture'
 import { wrapText } from './geometry'
-import { BODY, DETAILS, FILL_SMALLEST, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, PAGE_TYPE, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, PAGE_KINDS, readLines, sanitizeInside, switchKind, type MeasureInk, type MeasureWidth } from './inside'
+import { BODY, DETAILS, FILL_SMALLEST, TONES, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, PAGE_TYPE, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, PAGE_KINDS, readLines, sanitizeInside, switchKind, type MeasureInk, type MeasureWidth } from './inside'
 import { POST_FRAME } from './settings'
 
 // A stand-in for canvas: every character is half an em wide.
@@ -360,14 +360,28 @@ describe('inside page', () => {
     expect(large.bodyRoom).toBeLessThanOrEqual(usual.bodyRoom)
   })
 
-  it('sets words in stars white and a little bolder, in the story or the highlight', () => {
+  it('sets words in stars bold and white, in the story or the highlight', () => {
     const layout = page({ body: '*Each artist will give a short presentation.*', details: '*Ishmael Claxton*\nPhotography' })
     const lines = texts(layout.layers).filter((layer) => layer.size === BODY.size)
     expect(lines.find((layer) => layer.text === 'Each artist will give a short presentation.')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
     expect(lines.find((layer) => layer.text === 'Ishmael Claxton')).toMatchObject({ weight: STRONG.weight, fill: STRONG.fill })
     expect(lines.find((layer) => layer.text === 'Photography')).toMatchObject({ weight: DETAILS.weight, fill: DETAILS.fill })
-    expect(STRONG).toEqual({ weight: 500, fill: TITLE.fill })
-    expect(STRONG.weight).toBeGreaterThan(BODY.weight)
+    expect(STRONG).toEqual({ weight: 700, fill: TITLE.fill })
+  })
+
+  it('sets each box of words in the grey or in white, as chosen', () => {
+    expect(TONES).toEqual({ grey: BODY.fill, light: TITLE.fill })
+    const content = { body: 'The story, with *a name* in it.', details: 'A date, and *a place*' }
+    const fills = (layout: ReturnType<typeof page>) => Object.fromEntries(texts(layout.layers).filter((layer) => layer.size === BODY.size).map((layer) => [layer.text, `${layer.weight} ${layer.fill}`]))
+    // To start with the story is grey and the highlight white.
+    expect(fills(page(content))).toMatchObject({ 'The story, with': `400 ${TONES.grey}`, 'in it.': `400 ${TONES.grey}`, 'A date, and': `400 ${TONES.light}` })
+    expect(fills(page({ ...content, bodyTone: 'light', detailsTone: 'grey' }))).toMatchObject({ 'The story, with': `400 ${TONES.light}`, 'A date, and': `400 ${TONES.grey}` })
+    // Words in stars are bold and white either way.
+    for (const tones of [{}, { bodyTone: 'light' as const, detailsTone: 'grey' as const }]) {
+      expect(fills(page({ ...content, ...tones }))).toMatchObject({ 'a name': `700 ${TONES.light}`, 'a place': `700 ${TONES.light}` })
+    }
+    expect(PAGE_KINDS.title.sample).toMatchObject({ bodyTone: 'grey', detailsTone: 'light' })
+    expect(PAGE_KINDS.label.sample).toMatchObject({ bodyTone: 'grey', detailsTone: 'light' })
   })
 
   it('sets the page in other sizes and weights when they are being tried', () => {
@@ -451,11 +465,11 @@ describe('inside page', () => {
 
   it('replaces invalid stored values instead of trusting them', () => {
     expect(sanitizeInside({ kind: 'poster', kept: 'all', label: 9, cut: 'jagged', seed: 'seven', title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
-    const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', large: true, position: 'bottom' } }
-    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', large: true, image: 'none', position: 'middle', logo: 'left', arrow: false }
+    const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', large: true, bodyTone: 'light', detailsTone: 'grey', position: 'bottom' } }
+    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', large: true, bodyTone: 'light', detailsTone: 'grey', image: 'none', position: 'middle', logo: 'left', arrow: false }
     expect(sanitizeInside(chosen)).toEqual(chosen)
     // What is kept is checked too, and only for the kind the page is not.
-    expect(sanitizeInside({ ...chosen, kept: { title: kept.label, label: { label: 5, body: 'Names', large: 'yes', position: 'sideways' } } }).kept).toEqual({ label: { ...PAGE_KINDS.label.sample, body: 'Names', details: '', large: false } })
+    expect(sanitizeInside({ ...chosen, kept: { title: kept.label, label: { label: 5, body: 'Names', large: 'yes', bodyTone: 'pink', position: 'sideways' } } }).kept).toEqual({ label: { ...PAGE_KINDS.label.sample, body: 'Names', details: '', large: false } })
     // A page saved before the highlight could be set a size up has it at the text's size.
     expect(sanitizeInside({ title: 'A title', body: 'A story', details: 'A date' }).large).toBe(false)
     // A page saved before there were kinds is a label page only if a label is all it opens with.

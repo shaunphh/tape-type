@@ -75,19 +75,19 @@ It comes in two kinds, chosen under **Kind of page**. A **Title page** opens wit
 
 - **Label**: a few words in capitals on light tape, over whatever comes first on the page ("Meet the artists"). Barlow ExtraBold at 38px, its lettering starting on the margin like the lines under it. Leave it empty for none. Its cut is its own: Label cut and Randomise cut, under the box, change the label and leave the cover's tape alone. It starts with the Clean cut, one quiet cut, like the labels on the Canva pages.
 - **Title**: Barlow Bold, white. It takes the largest size from 52px down to 45px that fits in three lines.
-- **Text**: the story, in Barlow Regular at 38px (28.5 in Canva, whose sizes are points), light grey (`#C2C2C2`), lines 1.2 apart.
-- **Highlight**: a closing line, or the date, place and tickets, under the story. It is the story's weight, in the title's white, at the story's size or a size up (42px): Highlight size, under its box. (The code calls it `details`.)
-- **Picture**: Fill (what a new page starts with), None, Short (340px), Medium (430px) or Tall (540px). It starts as the cover's photo and can be given its own; drag it inside its banner, or use the sliders, as on a cover.
+- **Text**: the story, in Barlow Regular at 38px (28.5 in Canva, whose sizes are points), lines 1.2 apart. It starts in the grey (`#C2C2C2`); Text colour, under its box, sets it in the title's white instead.
+- **Highlight**: a closing line, or the date, place and tickets, under the story. It is the story's weight, at the story's size or a size up (42px), and starts in white: Highlight colour and Highlight size, under its box. (The code calls it `details`.)
+- **Picture**: Fill (what a new page starts with), None, Short (340px), Medium (430px) or Tall (540px). Drag it inside its banner, or use the sliders, as on a cover. It is the page's own photo, or the cover's until one is chosen. Until either is, each kind of page shows a **sample picture**, so it reads as a page from the start. A sample says what it is on the canvas and is never exported: export waits for a photo, or for the picture to be set to None. The samples are `src/assets/samples/title-page.jpg` and `label-page.jpg`; swap the files to change them.
 - **Position**: where the picture goes. **Top**: above the words. **Middle**: after the first thing on the page, which is the title, or the story when there is no title. **Bottom**: under the words, on the foot of the page, with the arrow over it.
 - **Marks**: the arrow is off to start with; Logo & arrow switches it on. With it off, the words run down to the bottom margin; with it on, they end above it. An inside page goes without the logo for now, so its words start at the top of the page: the choice is greyed out, and `?unlocked` opens it (the logo is small here, 128px, and the words then start under it).
 
 A picture that **fills** takes the room the words leave, so the page is always full: at the top the words sit on the foot of the page, in the middle the first words stay at the top and the rest go to the foot, and at the bottom the picture runs from under the words to the foot. It is never less than 260px tall; past that the words are too long.
 
-Under the title, what matters more or less is told apart by how bright it is, and by a little weight. In the text and the highlight:
+Under the title, what matters more or less is told apart by how bright it is, and by weight where words are in stars. In the text and the highlight:
 
 - a blank line starts a new paragraph, and a new line is a new line;
 - a line starting with a dash is a bullet;
-- words in `*stars*` are white and a little bolder (Medium): a whole line (a name, a call to book) or part of one (`with *AE MAK* and *Zaska*`). One star or two, the same on both sides, hugging the words. A star that hugs nothing, or sits inside a word or a sum (`5* hotel`, `2*3*4`), is just a star.
+- words in `*stars*` are bold and white: a whole line (a name, a call to book) or part of one (`with *AE MAK* and *Zaska*`). One star or two, the same on both sides, hugging the words. A star that hugs nothing, or sits inside a word or a sum (`5* hotel`, `2*3*4`), is just a star.
 
 Emoji typed into either box are drawn as the device draws them.
 
@@ -117,11 +117,13 @@ A video cover is one of three kinds, which set the text block:
 | Presenter led | Dark tape, white words | "Quick guide", light tag | Top left |
 | Feature video | Capitals on light tape | None | Middle left |
 
-The tag's words can be changed or switched off, and the block can be dragged anywhere inside the lines. The kinds are set out in `src/formats.ts`.
+The tag's words can be changed or switched off, and the block can be dragged anywhere inside the lines. On a video cover the tag's colour is open too: **Eyebrow colour** sets it yellow, light or dark in place of the look's own, with lettering that reads on it. The tape's own colour is left out, since the tag would be lost on it, and a change of kind puts the tag back to that kind's own. On a post the choice is greyed out for now. The kinds are set out in `src/formats.ts`.
 
 ### Locked choices
 
-For now the text block keeps to the look of what is being made. A post's is black words on a light block of tape, left aligned; each kind of video has its own (above). The other choices are greyed out rather than removed, so people can see what is coming: style, tape colour, Block or Strips, alignment and the Series format. The line height is held at 0.94 of the type size, so the Line gap slider is greyed out too. The Narrow column is switched off, so covers start in the Medium one and can go Wide. The cut styles stay open, as do position, size, tape cling and rotation. Beyond the text block, one thing is held: the arrow takes the logo's colour. The photo, the logo and its colour are free.
+For now the text block keeps to the look of what is being made. A post's is black words on a light block of tape, rough cut, left aligned; each kind of video has its own (above). The other choices are greyed out rather than removed, so people can see what is coming: style, tape colour, Block or Strips, alignment and the Series format. The line height is held at 0.94 of the type size, so the Line gap slider is greyed out too. The Narrow column is switched off, so covers start in the Medium one and can go Wide. The tape's cling is held at 100%. The cut styles stay open, as do position, size and rotation. Beyond the text block, one thing is held: the arrow takes the logo's colour. The photo, the logo and its colour are free.
+
+The cut is a free choice, so it is remembered, and a change of the house cut would never reach a browser that had remembered the old one. The first time the tool opens after such a change, the cover takes the look's cut (a post's is the rough cut); after that the choice is the person's again. For the next change, count up `HOUSE_CUT_KEY` in `src/locks.ts`.
 
 The settings that are held, and single choices that are switched off, are listed in `src/locks.ts`; take one off its list to open it up. Settings saved before the locks went on, or under another look, are put into the one in use, keeping the words. Opening the tool with `?unlocked` at the end of the address lifts every lock.
 

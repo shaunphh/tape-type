@@ -9,10 +9,12 @@ export interface CoverOptions extends Furniture {
   /** The kind of video, kept while a post is being made. */
   video: VideoType
   darken: boolean
+  /** The eyebrow tag's colour. Auto is the one the cover's look gives it. */
+  eyebrowColour: ColourChoice
 }
 
 export const COVER_KEY = 'tape-type-cover-v1'
-export const coverDefaults: CoverOptions = { kind: 'post', page: 'cover', video: 'report', logo: 'right', logoColour: 'auto', arrow: true, arrowColour: 'auto', darken: true }
+export const coverDefaults: CoverOptions = { kind: 'post', page: 'cover', video: 'report', logo: 'right', logoColour: 'auto', arrow: true, arrowColour: 'auto', darken: true, eyebrowColour: 'auto' }
 
 const LOGO_SIDES: readonly LogoSide[] = ['off', 'left', 'right']
 const COLOUR_CHOICES: readonly ColourChoice[] = ['auto', 'yellow', 'light', 'dark']
@@ -30,6 +32,7 @@ export function sanitizeCover(stored: Record<string, unknown>): CoverOptions {
     arrow: flag(stored.arrow, coverDefaults.arrow),
     arrowColour: colour(stored.arrowColour, coverDefaults.arrowColour),
     darken: flag(stored.darken, coverDefaults.darken),
+    eyebrowColour: colour(stored.eyebrowColour, coverDefaults.eyebrowColour),
   }
 }
 

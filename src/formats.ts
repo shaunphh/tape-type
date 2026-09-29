@@ -1,4 +1,5 @@
 import { BRAND, type Position } from './artwork'
+import type { ColourChoice } from './furniture'
 import { POST_FRAME, SAFE_MARGIN, stylePresets, type Frame, type Treatment } from './settings'
 import type { CoverFormat, CoverStyle } from './types'
 
@@ -39,13 +40,13 @@ export interface Look {
 // The narrow column is switched off for now, so every look starts in the medium one.
 const house: Treatment = { ...stylePresets.headline, column: 'medium' }
 
-/** Posts: black words on a light block of tape, left aligned. */
+/** Posts: black words on a light block of tape, rough cut, left aligned. */
 export const POST_LOOK: Look = {
   label: 'Post',
   description: 'Light tape · black words',
   style: 'headline',
   coverFormat: 'regular',
-  treatment: house,
+  treatment: { ...house, mode: 'rough' },
   eyebrow: 'Breaking',
   position: { x: 0, y: 50 },
 }
@@ -82,6 +83,16 @@ export const VIDEO_LOOKS: Record<VideoType, Look> = {
     position: { x: 0, y: 50 },
   },
 }
+
+/** The eyebrow tag in each brand colour, with lettering that reads on it. */
+export const TAGS: Record<Exclude<ColourChoice, 'auto'>, { tape: string; text: string }> = {
+  yellow: { tape: BRAND.yellow, text: BRAND.dark },
+  light: { tape: BRAND.light, text: BRAND.dark },
+  dark: { tape: BRAND.dark, text: BRAND.light },
+}
+
+/** The tag's colours: the chosen ones, or the look's own (undefined where that is the usual yellow). */
+export const tagFor = (choice: ColourChoice, look: Look) => (choice === 'auto' ? look.tag : TAGS[choice])
 
 export const VIDEO_TYPES = Object.keys(VIDEO_LOOKS) as VideoType[]
 export const frameFor = (kind: CoverKind) => (kind === 'video' ? VIDEO_FRAME : POST_FRAME)

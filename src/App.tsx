@@ -33,7 +33,7 @@ import {
 } from './artwork'
 import { loadCover, saveCover, type CoverOptions } from './cover'
 import { embeddedFontCss, embeddedFontCssNow, preloadEmbeddedFonts } from './fonts'
-import { GRID_CROP, VIDEO_LOOKS, VIDEO_TYPES, frameFor, lookFor, type CoverKind, type Look, type VideoType } from './formats'
+import { GRID_CROP, VIDEO_LOOKS, VIDEO_TYPES, frameFor, lookFor, tagFor, type CoverKind, type Look, type VideoType } from './formats'
 import {
   buildFurniture,
   furnitureBoxes,
@@ -47,7 +47,9 @@ import {
 } from './furniture'
 import { buildShape, nextSeed } from './geometry'
 import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type HeadlineLayout, type Measure } from './layout'
-import { LINE_HEIGHT, applyLocks, isBarred, isLocked, lockedLineGap, unlocked } from './locks'
+import { LINE_HEIGHT, applyLocks, firstSinceHouseCut, isBarred, isLocked, lockedLineGap, unlocked, withHouseCut } from './locks'
+import labelSample from './assets/samples/label-page.jpg'
+import titleSample from './assets/samples/title-page.jpg'
 import {
   BODY,
   INSIDE_MARKS,
@@ -67,8 +69,10 @@ import {
   type InsideOptions,
   type MeasureInk,
   type MeasureWidth,
+  type PageKind,
   type PageType,
   type PicturePosition,
+  type TextTone,
 } from './inside'
 import { TYPE_RANGE, TYPE_WEIGHTS, WEIGHT_NAMES, describePageType, isLocal, loadPageType, sameType, savePageType } from './pageType'
 import { measureInk } from './metrics'
@@ -118,6 +122,12 @@ const pictureOptions: { value: PicturePosition; label: string }[] = [
   { value: 'bottom', label: 'Bottom' },
 ]
 const PICTURE_NOTES: Record<PicturePosition, string> = { top: 'Above the words', middle: 'After the first words', bottom: 'Under the words' }
+const toneOptions: { value: TextTone; label: string }[] = [
+  { value: 'grey', label: 'Grey' },
+  { value: 'light', label: 'White' },
+]
+/** The pictures an inside page starts with, so it reads as a page before a photo is chosen. They are never exported. */
+const SAMPLE_PICTURES: Record<PageKind, string> = { title: titleSample, label: labelSample }
 const cutOptions: { value: ShapeMode; label: string }[] = [
   { value: 'plain', label: 'Plain' },
   { value: 'torn', label: 'Torn' },
@@ -534,9 +544,12 @@ interface Drag {
 /** How close to the words a press still picks them up, in artboard pixels. */
 const GRAB_MARGIN = 14
 
+// Asked as the page loads, not as the app draws: drawing can happen more than once.
+const FIRST_OPENING = firstSinceHouseCut()
+
 function App() {
   const [cover, setCover] = useState<CoverOptions>(loadCover)
-  const [settings, setSettings] = useState<GeneratorSettings>(() => applyLocks(loadSettings(), lookFor(cover.kind, cover.video)))
+  const [settings, setSettings] = useState<GeneratorSettings>(() => applyLocks(withHouseCut(loadSettings(), lookFor(cover.kind, cover.video), FIRST_OPENING), lookFor(cover.kind, cover.video)))
   const [history, setHistory] = useState<number[]>([settings.seed])
   const [historyIndex, setHistoryIndex] = useState(0)
   const [seedDraft, setSeedDraft] = useState<string | null>(null)
@@ -549,9 +562,18 @@ function App() {
   const [inside, setInside] = useState<InsideOptions>(loadInside)
   const [insidePhoto, setInsidePhoto] = useState<Photo | null>(null)
   const [insideView, setInsideView] = useState<PhotoView>(CENTRED)
+  const [samplePhotos, setSamplePhotos] = useState<Partial<Record<PageKind, Photo>>>({})
   // Other sizes and weights can be tried where the tool runs on this machine; the published tool keeps its own.
   const local = useMemo(() => isLocal(), [])
   const [pageType, setPageType] = useState<PageType>(() => loadPageType())
+  // While the tool is being worked on, its own values can change under an open page: a trial from before them is dropped.
+  const typeBase = JSON.stringify(PAGE_TYPE)
+  const typeBaseSeen = useRef(typeBase)
+  useEffect(() => {
+    if (typeBaseSeen.current === typeBase) return
+    typeBaseSeen.current = typeBase
+    setPageType(PAGE_TYPE)
+  }, [typeBase])
   const [position, setPosition] = useState<Position>(() => ({ x: anchorX(settings.align), y: lookFor(cover.kind, cover.video).position.y }))
   const [sampleOpen, setSampleOpen] = useState(false)
   const [panels, setPanels] = useState<Record<PanelId, boolean>>(loadPanels)
@@ -581,9 +603,12 @@ function App() {
     { ascent: layout.ascent, descent: layout.descent },
     { eyebrow: layout.eyebrow, tapeless: settings.tone === 'none' },
   ), [layoutSettings, layout, settings.tone])
+  // The eyebrow's colour is open on video covers; a post's keeps to its look for now.
+  const eyebrowOpen = locksOff || cover.kind === 'video'
+  const tag = useMemo(() => tagFor(eyebrowOpen && cover.eyebrowColour !== settings.tone ? cover.eyebrowColour : 'auto', look), [eyebrowOpen, cover.eyebrowColour, settings.tone, look])
   const layers = useMemo(
-    () => buildLayers(shape, { tone: settings.tone, background: previewBackground, weight: layout.weight, tag: look.tag }, layout.fontSize),
-    [shape, settings.tone, previewBackground, layout.weight, layout.fontSize, look.tag],
+    () => buildLayers(shape, { tone: settings.tone, background: previewBackground, weight: layout.weight, tag }, layout.fontSize),
+    [shape, settings.tone, previewBackground, layout.weight, layout.fontSize, tag],
   )
   const range = useMemo(() => placementRange(shape, frame), [shape, frame])
   const darken = cover.darken ? PHOTO_DARKEN : 0
@@ -629,8 +654,20 @@ function App() {
   )
   const runs = useMemo(() => textRuns(isInside ? page.layers : layers), [isInside, page.layers, layers])
 
+  // An inside page starts with a sample picture, so it reads as a page before a photo is chosen.
+  useEffect(() => {
+    if (!isInside || samplePhotos[inside.kind]) return
+    let wanted = true
+    const kind = inside.kind
+    loadImage(SAMPLE_PICTURES[kind])
+      .then((image) => { if (wanted) setSamplePhotos((current) => ({ ...current, [kind]: { url: SAMPLE_PICTURES[kind], image, width: image.naturalWidth, height: image.naturalHeight } })) })
+      .catch(() => undefined)
+    return () => { wanted = false }
+  }, [isInside, inside.kind, samplePhotos])
+  const ownPhoto = isInside ? insidePhoto ?? photo : photo
   // The photo in play: behind a cover, or in the inside page's banner (the cover's, until another is chosen).
-  const shownPhoto = isInside ? (page.banner ? insidePhoto ?? photo : null) : previewBackground === 'photo' ? photo : null
+  const shownPhoto = isInside ? (page.banner ? ownPhoto ?? samplePhotos[inside.kind] ?? null : null) : previewBackground === 'photo' ? photo : null
+  const sampleShown = isInside && Boolean(shownPhoto) && !ownPhoto
   const view = isInside ? insideView : photoView
   const setView = isInside ? setInsideView : setPhotoView
   const photoFrame = isInside && page.banner ? page.banner : frame
@@ -666,7 +703,8 @@ function App() {
       ? 'The title runs past four lines. Shorten it.'
       : page.overflow === 'body'
         ? `The text is ${page.over} ${page.over === 1 ? 'line' : 'lines'} too long for the page. Cut it${!page.banner ? '' : inside.image === 'fill' ? ', or set the picture to None' : ', or use a shorter picture'}.`
-        : page.banner && !shownPhoto ? 'Choose a photo, or set the picture to None.' : null
+        : page.banner && !shownPhoto ? 'Choose a photo, or set the picture to None.'
+          : sampleShown ? 'That is a sample picture. Choose a photo of your own, or set the picture to None.' : null
   const blockedReason = isInside ? pageBlocked : coverBlocked
   const exportDisabled = Boolean(blockedReason) || fonts.loading
 
@@ -721,6 +759,8 @@ function App() {
       eyebrow: next.eyebrow ?? current.eyebrow,
     }))
     setPosition(next.position)
+    // Each look has a tag colour of its own, so a chosen one doesn't carry over.
+    setCover((current) => (current.eyebrowColour === 'auto' ? current : { ...current, eyebrowColour: 'auto' }))
   }
 
   const chooseKind = (kind: CoverKind) => {
@@ -1027,7 +1067,7 @@ function App() {
   const slack = shownPhoto ? photoSlack(shownPhoto.width, shownPhoto.height, view, photoFrame) : { x: 0, y: 0 }
   const isVideo = cover.kind === 'video'
   const photoMoved = view.x !== CENTRED.x || view.y !== CENTRED.y || view.zoom !== CENTRED.zoom
-  const anyPhoto = isInside ? insidePhoto ?? photo : photo
+  const anyPhoto = ownPhoto
   const isFeature = settings.style === 'feature'
   const series = settings.coverFormat === 'series'
   const locked = settings.seedLocked
@@ -1162,13 +1202,15 @@ function App() {
               <div className="sub-block">
                 <span className="field-label">Text</span>
                 <textarea aria-label="Text" className="body-input" value={inside.body} rows={7} onChange={(event) => updateInside('body', event.target.value)} />
+                <Segmented label="Text colour" value={inside.bodyTone} options={toneOptions} onChange={(tone) => updateInside('bodyTone', tone)} />
               </div>
               <div className="sub-block">
                 <div className="section-label-row">
                   <span className="field-label">Highlight</span>
-                  <span className="field-hint">White · a closing line, or the date and place</span>
+                  <span className="field-hint">A closing line, or the date and place</span>
                 </div>
                 <textarea aria-label="Highlight" className="body-input details-input" value={inside.details} rows={3} placeholder={'22 September · 6.30pm\nThis Must Be The Place, Smithfield\nTickets via Eventbrite'} onChange={(event) => updateInside('details', event.target.value)} />
+                <Segmented label="Highlight colour" value={inside.detailsTone} options={toneOptions} onChange={(tone) => updateInside('detailsTone', tone)} />
                 <Segmented label="Highlight size" note={inside.large ? 'A size up' : 'The text’s size'} value={inside.large ? 'large' : 'text'} options={[{ value: 'text', label: `${pageType.details.size}px` }, { value: 'large', label: `${pageType.details.large}px` }]} onChange={(size) => updateInside('large', size === 'large')} />
                 <div className="words-status">
                   <div className={`fit-line ${page.overflow === 'body' ? 'error' : ''}`}>
@@ -1177,7 +1219,7 @@ function App() {
                     <span>text and highlight</span>
                   </div>
                 </div>
-                <p className="panel-note">Leave a blank line between paragraphs. Start a line with a dash for a bullet. Put words in *stars* to pick them out, white and a little bolder: a whole line, or a name inside one.</p>
+                <p className="panel-note">Leave a blank line between paragraphs. Start a line with a dash for a bullet. Put words in *stars* to make them bold and white: a whole line, or a name inside one.</p>
               </div>
               {blockedReason && !page.empty && <p className="fit-message error" role="status">{blockedReason}</p>}
             </Panel>
@@ -1290,6 +1332,15 @@ function App() {
                       return <button key={suggestion} aria-pressed={active} className={active ? 'active' : ''} onClick={() => update('eyebrow', suggestion)}>{suggestion}</button>
                     })}
                   </div>
+                  <Segmented
+                    label="Eyebrow colour"
+                    note={!eyebrowOpen ? 'The look’s own, for now' : cover.eyebrowColour === 'auto' || cover.eyebrowColour === settings.tone ? 'The look’s own' : undefined}
+                    value={eyebrowOpen && cover.eyebrowColour !== settings.tone ? cover.eyebrowColour : 'auto'}
+                    options={colourOptions}
+                    locked={(colour) => (eyebrowOpen ? colour === settings.tone : colour !== 'auto')}
+                    lockedNote={eyebrowOpen ? 'The tape is this colour: the tag would be lost on it' : LOCKED_NOTE}
+                    onChange={(colour) => updateCover('eyebrowColour', colour)}
+                  />
                 </>
               )}
             </div>
@@ -1317,7 +1368,8 @@ function App() {
                 ? (page.banner ? 'Photos stay in your browser. Once one is in, drag it in its banner to reposition it.' : 'This page has no picture. Pick a height above to add one, or Fill to give it the room the words leave.')
                 : photo ? 'The photo is hidden while another background is showing.' : 'Photos stay in your browser. Once one is in, drag it on the cover to reposition it.'}</p>
             )}
-            {isInside && shownPhoto && !insidePhoto && <p className="panel-note">This is the cover’s photo. Choose another to change it on this page only.</p>}
+            {sampleShown && <p className="panel-note">This is a sample picture, to show the page. It is never exported: choose a photo of your own.</p>}
+            {isInside && shownPhoto && !sampleShown && !insidePhoto && <p className="panel-note">This is the cover’s photo. Choose another to change it on this page only.</p>}
             <label className="toggle-row spread">
               <span>Darken photo <small>{Math.round(PHOTO_DARKEN * 100)}% black, so the words read</small></span>
               <input type="checkbox" checked={cover.darken} onChange={(event) => updateCover('darken', event.target.checked)} />
@@ -1446,7 +1498,7 @@ function App() {
 
           <Panel id="tune" title="Fine-tune" summary={summaries.tune} open={panels.tune} onToggle={togglePanel}>
             <div className="range-stack">
-              <RangeField label="Tape cling" value={settings.hugStrength} min={0.82} max={1.16} step={0.01} disabled={noTape} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => update('hugStrength', value)} />
+              <RangeField label="Tape cling" value={settings.hugStrength} min={0.82} max={1.16} step={0.01} disabled={noTape || !locksOff} title={locksOff ? undefined : LOCKED_NOTE} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => update('hugStrength', value)} />
               {locksOff
                 ? <RangeField label="Line gap" value={settings.lineGap} min={-8} max={20} suffix="px" onChange={(value) => update('lineGap', value)} />
                 : <RangeField label="Line gap" value={Math.max(-8, Math.min(20, layoutSettings.lineGap))} min={-8} max={20} disabled title={`${LOCKED_NOTE}: lines are set ${LINE_HEIGHT} of the type size apart`} format={() => `Line height ${LINE_HEIGHT}`} onChange={() => undefined} />}
@@ -1509,6 +1561,12 @@ function App() {
             >
               {!isInside && previewBackground === 'photo' && !photo && (
                 <label className="photo-empty"><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
+              )}
+              {sampleShown && page.banner && (
+                <label className="sample-badge" style={{ top: `${page.banner.y / frame.height * 100}%` }} title="This picture is a sample, and is never exported">
+                  <Upload size={13} aria-hidden="true" /> Sample picture · choose your own
+                  <input type="file" accept="image/*" onChange={choosePhoto} />
+                </label>
               )}
               {isInside && page.banner && !shownPhoto && (
                 <label className="photo-empty banner" style={{ top: `${page.banner.y / frame.height * 100}%`, height: `${page.banner.height / frame.height * 100}%` }}><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>

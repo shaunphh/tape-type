@@ -1,5 +1,5 @@
 import { BRAND, buildLayers, drawLayers, escapeAttribute, layersToSvg, type Layer } from './artwork'
-import type { Box, LogoSide } from './furniture'
+import type { Box, ColourChoice, LogoSide } from './furniture'
 import { buildShape, wrapText } from './geometry'
 import { lockedLineGap } from './locks'
 import type { InkMetrics } from './metrics'
@@ -32,7 +32,7 @@ export type PageKind = 'title' | 'label'
 export type TextTone = 'grey' | 'light'
 export const TONES: Record<TextTone, string> = { grey: '#C2C2C2', light: BRAND.light }
 
-/** What each kind of page keeps to itself: its words, and where its picture goes. */
+/** What each kind of page keeps to itself: its words, how they are set, its picture's place and its arrow. */
 export interface PageWords {
   /** A small tape label, set in capitals. Empty for none. */
   label: string
@@ -49,7 +49,10 @@ export interface PageWords {
   /** What the story and the highlight are set in: grey and white to start with. */
   bodyTone: TextTone
   detailsTone: TextTone
+  image: ImageHeight
   position: PicturePosition
+  arrow: boolean
+  arrowColour: ColourChoice
 }
 
 export interface InsideOptions extends PageWords {
@@ -59,9 +62,7 @@ export interface InsideOptions extends PageWords {
   /** How the label's tape is cut, and the seed of that cut. They are the label's own, not the cover's. */
   cut: ShapeMode
   seed: number
-  image: ImageHeight
   logo: LogoSide
-  arrow: boolean
 }
 
 /** Inside pages keep 56px from the edges, not a cover's 80: there is more to fit. */
@@ -576,7 +577,7 @@ export function insideSvg(layout: InsideLayout, options: { photo?: string | null
 /**
  * The two kinds of page, and what each starts with. The examples show what the page is for,
  * and how its words are typed: stars for bold, a new line for a new line. They are the pages as
- * Shaun had them on 29 September 2026.
+ * Shaun had them on 29 and 30 September 2026.
  */
 export const PAGE_KINDS: Record<PageKind, { label: string; description: string; sample: PageWords }> = {
   title: {
@@ -586,13 +587,17 @@ export const PAGE_KINDS: Record<PageKind, { label: string; description: string; 
       label: '',
       title: 'Bolands Mills is set to come alive this Culture Night',
       body: 'A free evening of live music, art, storytelling and movement, with performances from AE MAK, Sorcha Richardson and Zaska on the Factory Main Stage.\n\nThe Factory Main Stage will host performances from AE MAK, Sorcha Richardson and Zaska, while DJ and chef Marcus O’Laoire brings a relaxed vinyl listening session to Grindstone Coffee.',
-      details: '**A free evening of live music,**\n**storytelling Factory Main Stage.**',
+      details: '**Friday 18 September · 6.30pm**\n**Bolands Mills, Dublin 4**',
       large: false,
       bodyLarge: false,
-      pinned: false,
+      // The date and place stand at the foot of the page, under a picture of a set height.
+      pinned: true,
       bodyTone: 'grey',
       detailsTone: 'light',
+      image: 'tall',
       position: 'top',
+      arrow: true,
+      arrowColour: 'light',
     },
   },
   label: {
@@ -603,19 +608,30 @@ export const PAGE_KINDS: Record<PageKind, { label: string; description: string; 
       title: '',
       body: '**Aoife Dooley**\nIllustration\n**Emma Rose Hanley**\nCeramics',
       details: '*Four Dublin creatives are coming together for an evening exploring their work, practice and inspiration.*',
-      large: false,
+      // The closing line is a size up from the list over it.
+      large: true,
       bodyLarge: false,
       pinned: false,
       bodyTone: 'light',
       detailsTone: 'light',
+      image: 'tall',
       position: 'bottom',
+      // The arrow sits on the picture.
+      arrow: true,
+      arrowColour: 'light',
     },
   },
 }
 export const PAGE_KIND_NAMES = Object.keys(PAGE_KINDS) as PageKind[]
 
-const wordsOf = ({ label, title, body, details, large, bodyLarge, pinned, bodyTone, detailsTone, position }: PageWords): PageWords =>
-  ({ label, title, body, details, large, bodyLarge, pinned, bodyTone, detailsTone, position })
+const wordsOf = ({ label, title, body, details, large, bodyLarge, pinned, bodyTone, detailsTone, image, position, arrow, arrowColour }: PageWords): PageWords =>
+  ({ label, title, body, details, large, bodyLarge, pinned, bodyTone, detailsTone, image, position, arrow, arrowColour })
+
+/** Whether the page is still the example it started as. */
+export const isExample = (inside: InsideOptions) => JSON.stringify(wordsOf(inside)) === JSON.stringify(wordsOf(PAGE_KINDS[inside.kind].sample))
+
+/** The page put back as it started: this kind's example. The other kind, and the label's cut, are left alone. */
+export const backToExample = (inside: InsideOptions): InsideOptions => ({ ...inside, ...wordsOf(PAGE_KINDS[inside.kind].sample) })
 
 /** The page as the other kind: its own words are kept, and that kind's come back, or its example. */
 export function switchKind(inside: InsideOptions, kind: PageKind): InsideOptions {
@@ -632,62 +648,72 @@ export const insideDefaults: InsideOptions = {
   // One quiet cut, as on the labels of the Canva pages.
   cut: 'clean',
   seed: defaults.seed,
-  // The picture takes the room the words leave, so a page is full however much is typed.
-  image: 'fill',
   logo: 'off',
-  // Off to start with: without it the words run down to the bottom margin.
-  arrow: false,
 }
 
 const POSITIONS: readonly PicturePosition[] = ['top', 'middle', 'bottom']
+/** How every page was set before it had switches for it: what a page saved then is read as. */
+const BEFORE: Pick<PageWords, 'large' | 'bodyLarge' | 'pinned' | 'bodyTone' | 'detailsTone'> = { large: false, bodyLarge: false, pinned: false, bodyTone: 'grey', detailsTone: 'light' }
+const COLOURS: readonly ColourChoice[] = ['auto', 'yellow', 'light', 'dark']
 
-/** Stored words, against the example they fall back on. */
-function sanitizeWords(stored: Record<string, unknown>, sample: PageWords): PageWords {
+/**
+ * Stored words, against what they fall back on: the example, or for the picture's height and the
+ * arrow, which both kinds once shared, what the page had before each kind had its own.
+ */
+function sanitizeWords(stored: Record<string, unknown>, sample: PageWords, shared: Partial<Pick<PageWords, 'image' | 'arrow' | 'arrowColour'>> = {}): PageWords {
   const words = (value: unknown, fallback: string) => (typeof value === 'string' ? value : fallback)
+  // A page saved with words of its own, before a switch existed, was set the way every page then was.
+  const start = typeof stored.body === 'string' ? { ...sample, details: '', ...BEFORE } : sample
   return {
     label: words(stored.label, sample.label),
     title: words(stored.title, sample.title),
     body: words(stored.body, sample.body),
-    // A page saved before details existed has none, not the example's.
-    details: words(stored.details, typeof stored.body === 'string' ? '' : sample.details),
-    large: typeof stored.large === 'boolean' ? stored.large : typeof stored.body === 'string' ? false : sample.large,
-    bodyLarge: typeof stored.bodyLarge === 'boolean' ? stored.bodyLarge : sample.bodyLarge,
-    pinned: typeof stored.pinned === 'boolean' ? stored.pinned : sample.pinned,
-    bodyTone: stored.bodyTone === 'grey' || stored.bodyTone === 'light' ? stored.bodyTone : sample.bodyTone,
-    detailsTone: stored.detailsTone === 'grey' || stored.detailsTone === 'light' ? stored.detailsTone : sample.detailsTone,
+    details: words(stored.details, start.details),
+    large: typeof stored.large === 'boolean' ? stored.large : start.large,
+    bodyLarge: typeof stored.bodyLarge === 'boolean' ? stored.bodyLarge : start.bodyLarge,
+    pinned: typeof stored.pinned === 'boolean' ? stored.pinned : start.pinned,
+    bodyTone: stored.bodyTone === 'grey' || stored.bodyTone === 'light' ? stored.bodyTone : start.bodyTone,
+    detailsTone: stored.detailsTone === 'grey' || stored.detailsTone === 'light' ? stored.detailsTone : start.detailsTone,
+    image: IMAGE_CHOICES.includes(stored.image as ImageHeight) ? stored.image as ImageHeight : shared.image ?? sample.image,
     position: POSITIONS.includes(stored.position as PicturePosition) ? stored.position as PicturePosition : sample.position,
+    arrow: typeof stored.arrow === 'boolean' ? stored.arrow : shared.arrow ?? sample.arrow,
+    arrowColour: COLOURS.includes(stored.arrowColour as ColourChoice) ? stored.arrowColour as ColourChoice : shared.arrowColour ?? sample.arrowColour,
   }
 }
 
-/** Stored pages are untrusted, like everything else that is remembered. */
-export function sanitizeInside(stored: Record<string, unknown>): InsideOptions {
+/**
+ * Stored pages are untrusted, like everything else that is remembered. `arrowWas` is the colour
+ * the arrow had when it was the cover's to set: a page saved then keeps it.
+ */
+export function sanitizeInside(stored: Record<string, unknown>, arrowWas?: ColourChoice): InsideOptions {
   const typed = (value: unknown) => typeof value === 'string' && value.trim() !== ''
   // A page saved before there were kinds is a label page if a label is all it opens with.
   const kind: PageKind = PAGE_KIND_NAMES.includes(stored.kind as PageKind)
     ? stored.kind as PageKind
     : typed(stored.label) && !typed(stored.title) && typeof stored.title === 'string' ? 'label' : 'title'
+  // A page saved with words of its own keeps the arrow colour it had; one with none takes the example's.
+  const own = sanitizeWords(stored, PAGE_KINDS[kind].sample, typeof stored.body === 'string' ? { arrowColour: arrowWas } : {})
+  const shared = { image: own.image, arrow: own.arrow, arrowColour: own.arrowColour }
   const kept: InsideOptions['kept'] = {}
   const storedKept = stored.kept && typeof stored.kept === 'object' ? stored.kept as Record<string, unknown> : {}
   for (const name of PAGE_KIND_NAMES) {
     const words = storedKept[name]
-    if (name !== kind && words && typeof words === 'object') kept[name] = sanitizeWords(words as Record<string, unknown>, PAGE_KINDS[name].sample)
+    if (name !== kind && words && typeof words === 'object') kept[name] = sanitizeWords(words as Record<string, unknown>, PAGE_KINDS[name].sample, shared)
   }
   return {
     kind,
     kept,
-    ...sanitizeWords(stored, PAGE_KINDS[kind].sample),
+    ...own,
     cut: CUTS.includes(stored.cut as ShapeMode) ? stored.cut as ShapeMode : insideDefaults.cut,
     seed: typeof stored.seed === 'number' && Number.isFinite(stored.seed) ? Math.min(4294967295, Math.max(1, Math.floor(stored.seed))) : insideDefaults.seed,
-    image: IMAGE_CHOICES.includes(stored.image as ImageHeight) ? stored.image as ImageHeight : insideDefaults.image,
     logo: (['off', 'left', 'right'] as const).includes(stored.logo as LogoSide) ? stored.logo as LogoSide : insideDefaults.logo,
-    arrow: typeof stored.arrow === 'boolean' ? stored.arrow : insideDefaults.arrow,
   }
 }
 
-export function loadInside(): InsideOptions {
+export function loadInside(arrowWas?: ColourChoice): InsideOptions {
   try {
     const stored = JSON.parse(localStorage.getItem(INSIDE_KEY) ?? 'null')
-    return stored && typeof stored === 'object' && !Array.isArray(stored) ? sanitizeInside(stored) : insideDefaults
+    return stored && typeof stored === 'object' && !Array.isArray(stored) ? sanitizeInside(stored, arrowWas) : insideDefaults
   } catch {
     return insideDefaults
   }

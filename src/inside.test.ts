@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BRAND, type Layer } from './artwork'
 import { furnitureBoxes } from './furniture'
 import { wrapText } from './geometry'
-import { BODY, DETAILS, FILL_SMALLEST, TONES, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, PAGE_TYPE, SEMI, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, PAGE_KINDS, readLines, sanitizeInside, switchKind, type MeasureInk, type MeasureWidth, type Run } from './inside'
+import { BODY, DETAILS, FILL_SMALLEST, TONES, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, PAGE_TYPE, SEMI, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, PAGE_KINDS, backToExample, isExample, readLines, sanitizeInside, switchKind, type MeasureInk, type MeasureWidth, type Run } from './inside'
 import { POST_FRAME } from './settings'
 
 // A stand-in for canvas: every character is half an em wide.
@@ -274,12 +274,39 @@ describe('inside page', () => {
     expect(layoutInside({ label: 'Meet the artists', title: 'A title', body: '', image: 'none' }, measure).label).toBeNull()
   })
 
-  it('starts a new page with a picture that fills, at the top, and no arrow', () => {
-    expect(insideDefaults).toMatchObject({ image: 'fill', position: 'top', label: '', arrow: false, logo: 'off' })
-    const layout = layoutInside(insideDefaults, measure, {}, ink)
-    expect(layout.banner!.y).toBe(0)
-    expect(layout.banner!.height).toBeGreaterThan(FILL_SMALLEST)
-    expect(layout.overflow).toBeNull()
+  it('starts a new page as a title page: a tall picture, the date and place at the foot, a white arrow', () => {
+    expect(insideDefaults).toMatchObject({ kind: 'title', image: 'tall', position: 'top', label: '', pinned: true, arrow: true, arrowColour: 'light', logo: 'off' })
+    const { arrow } = furnitureBoxes({ logo: 'off', arrow: true }, POST_FRAME, INSIDE_MARKS)
+    const layout = layoutInside(insideDefaults, measure, { arrow }, ink)
+    expect(layout.banner).toEqual({ x: 0, y: 0, width: 1080, height: IMAGE_HEIGHTS.tall })
+    expect(layout).toMatchObject({ overflow: null, underArrow: false })
+    // The date and place are its last two lines, standing on the bottom margin.
+    const lines = texts(layout.layers)
+    expect(lines.slice(-2).map((layer) => layer.text)).toEqual(['Friday 18 September · 6.30pm', 'Bolands Mills, Dublin 4'])
+    expect(lines.slice(-2).every((layer) => layer.weight === STRONG.weight && layer.fill === STRONG.fill)).toBe(true)
+    expect(lines[lines.length - 1].y).toBeGreaterThan(POST_FRAME.height - PAGE_MARGIN - BODY.size)
+    expect(lines[lines.length - 1].y).toBeLessThan(POST_FRAME.height - PAGE_MARGIN)
+    // A label page starts with a tall picture on the foot of the page, the arrow on it, and its closing line a size up.
+    expect(PAGE_KINDS.label.sample).toMatchObject({ image: 'tall', position: 'bottom', arrow: true, arrowColour: 'light', pinned: false, large: true })
+    const label = layoutInside({ ...insideDefaults, ...PAGE_KINDS.label.sample }, measure, { arrow }, ink)
+    expect(label.banner).toEqual({ x: 0, y: POST_FRAME.height - IMAGE_HEIGHTS.tall, width: 1080, height: IMAGE_HEIGHTS.tall })
+    expect(label).toMatchObject({ overflow: null, underArrow: false })
+    expect(texts(label.layers).filter((layer) => layer.weight === SEMI.weight).every((layer) => layer.size === DETAILS.large)).toBe(true)
+  })
+
+  it('puts a page back to its example when asked, leaving the other kind and the label’s cut alone', () => {
+    expect(isExample(insideDefaults)).toBe(true)
+    const typed = { ...insideDefaults, title: 'My own title', image: 'none' as const, arrow: false, cut: 'torn' as const }
+    expect(isExample(typed)).toBe(false)
+    expect(backToExample(typed)).toEqual({ ...insideDefaults, cut: 'torn' })
+    // As a label page it goes back to the label page's example, and keeps the title page as it was typed.
+    const asLabel = { ...switchKind(typed, 'label'), label: 'Line-up', body: 'Names' }
+    expect(isExample(asLabel)).toBe(false)
+    const back = backToExample(asLabel)
+    expect(back).toMatchObject({ kind: 'label', ...PAGE_KINDS.label.sample, cut: 'torn' })
+    expect(isExample(back)).toBe(true)
+    expect(back.kept.title).toMatchObject({ title: 'My own title', image: 'none', arrow: false })
+    expect(switchKind(back, 'title')).toMatchObject({ title: 'My own title', image: 'none', arrow: false })
   })
 
   it('wraps a long label inside the margins', () => {
@@ -560,12 +587,12 @@ describe('inside page', () => {
   it('comes in two kinds, each with its own words and its own example', () => {
     expect(insideDefaults).toMatchObject({ kind: 'title', kept: {}, ...PAGE_KINDS.title.sample })
     expect(PAGE_KINDS.title.sample).toMatchObject({ label: '', large: false, position: 'top' })
-    expect(PAGE_KINDS.label.sample).toMatchObject({ label: 'Meet the artists', title: '', large: false, position: 'bottom' })
+    expect(PAGE_KINDS.label.sample).toMatchObject({ label: 'Meet the artists', title: '', large: true, position: 'bottom' })
     // The examples show the marks at work: two stars for bold, one for semibold.
     const weights = (kind: 'title' | 'label') => new Set(texts(layoutInside({ ...insideDefaults, ...PAGE_KINDS[kind].sample }, measure, {}, ink).layers).map((layer) => layer.weight))
     expect(weights('title')).toEqual(new Set([TITLE.weight, BODY.weight, STRONG.weight]))
     expect(weights('label')).toEqual(new Set([LABEL.weight, STRONG.weight, BODY.weight, SEMI.weight]))
-    // Each example fits its page, with a picture that fills.
+    // Each example fits its page.
     for (const kind of ['title', 'label'] as const) {
       const layout = layoutInside({ ...insideDefaults, ...PAGE_KINDS[kind].sample }, measure, {}, ink)
       expect(layout).toMatchObject({ overflow: null, empty: false })
@@ -575,7 +602,7 @@ describe('inside page', () => {
     // Switching keeps what was typed, and brings it back.
     const typed = { ...insideDefaults, title: 'My own title', body: 'My own story', cut: 'torn' as const }
     const asLabel = switchKind(typed, 'label')
-    expect(asLabel).toMatchObject({ kind: 'label', ...PAGE_KINDS.label.sample, cut: 'torn', image: 'fill' })
+    expect(asLabel).toMatchObject({ kind: 'label', ...PAGE_KINDS.label.sample, cut: 'torn' })
     expect(asLabel.kept.title).toMatchObject({ title: 'My own title', body: 'My own story', position: 'top' })
     const changed = { ...asLabel, label: 'Line-up', position: 'middle' as const }
     const back = switchKind(changed, 'title')
@@ -585,12 +612,37 @@ describe('inside page', () => {
   })
 
   it('replaces invalid stored values instead of trusting them', () => {
-    expect(sanitizeInside({ kind: 'poster', kept: 'all', label: 9, cut: 'jagged', seed: 'seven', title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes' })).toEqual(insideDefaults)
-    const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', large: true, bodyLarge: true, pinned: true, bodyTone: 'light', detailsTone: 'grey', position: 'bottom' } }
-    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', large: true, bodyLarge: true, pinned: true, bodyTone: 'light', detailsTone: 'grey', image: 'none', position: 'middle', logo: 'left', arrow: false }
+    expect(sanitizeInside({ kind: 'poster', kept: 'all', label: 9, cut: 'jagged', seed: 'seven', title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes', arrowColour: 'pink' })).toEqual(insideDefaults)
+    const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', large: true, bodyLarge: true, pinned: true, bodyTone: 'light', detailsTone: 'grey', image: 'short', position: 'bottom', arrow: true, arrowColour: 'dark' } }
+    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', large: true, bodyLarge: true, pinned: true, bodyTone: 'light', detailsTone: 'grey', image: 'none', position: 'middle', logo: 'left', arrow: false, arrowColour: 'yellow' }
     expect(sanitizeInside(chosen)).toEqual(chosen)
     // What is kept is checked too, and only for the kind the page is not.
-    expect(sanitizeInside({ ...chosen, kept: { title: kept.label, label: { label: 5, body: 'Names', large: 'yes', bodyTone: 'pink', position: 'sideways' } } }).kept).toEqual({ label: { ...PAGE_KINDS.label.sample, body: 'Names', details: '', large: false } })
+    expect(sanitizeInside({ ...chosen, kept: { title: kept.label, label: { label: 5, body: 'Names', large: 'yes', bodyTone: 'pink', position: 'sideways', image: 'short', arrow: true, arrowColour: 'dark' } } }).kept)
+      .toEqual({ label: { ...PAGE_KINDS.label.sample, body: 'Names', details: '', large: false, pinned: false, bodyTone: 'grey', detailsTone: 'light', image: 'short', arrow: true, arrowColour: 'dark' } })
+  })
+
+  it('keeps the picture’s height and the arrow a page had when both kinds shared them', () => {
+    // Saved before each kind had its own: both kinds take what the page had, and the arrow the colour it had on the cover.
+    const before = { kind: 'title', title: 'A title', body: 'A story', details: 'A date', image: 'short', position: 'top', arrow: true, kept: { label: { label: 'Line-up', title: '', body: 'Names', details: '', position: 'bottom' } } }
+    const loaded = sanitizeInside(before, 'yellow')
+    expect(loaded).toMatchObject({ image: 'short', arrow: true, arrowColour: 'yellow' })
+    expect(loaded.kept.label).toMatchObject({ image: 'short', arrow: true, arrowColour: 'yellow', position: 'bottom' })
+    // With no colour to go by, the arrow takes the example's.
+    expect(sanitizeInside(before).arrowColour).toBe(PAGE_KINDS.title.sample.arrowColour)
+    // A page with nothing of its own saved is the example, whatever the cover's arrow was.
+    expect(sanitizeInside({}, 'yellow')).toEqual(insideDefaults)
+    // A colour of its own, once chosen, is kept.
+    expect(sanitizeInside({ ...before, arrowColour: 'dark' }, 'yellow').arrowColour).toBe('dark')
+    // It is set the way pages were before they had switches, not the way the examples now are.
+    const was = { large: false, bodyLarge: false, pinned: false, bodyTone: 'grey', detailsTone: 'light' }
+    expect(loaded).toMatchObject(was)
+    expect(loaded.kept.label).toMatchObject(was)
+    expect(PAGE_KINDS.title.sample.pinned).toBe(true)
+    expect(PAGE_KINDS.label.sample.bodyTone).toBe('light')
+  })
+
+  it('reads older saved pages as they were meant', () => {
+    const chosen = { kind: 'title', title: 'A title', body: 'A story', details: 'A date', image: 'none', cut: 'torn', seed: 42 }
     // A page saved before the highlight could be set a size up has it at the text's size.
     expect(sanitizeInside({ title: 'A title', body: 'A story', details: 'A date' }).large).toBe(false)
     // A page saved before there were kinds is a label page only if a label is all it opens with.

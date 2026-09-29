@@ -62,6 +62,8 @@ import {
   drawInside,
   insideSvg,
   layoutInside,
+  backToExample,
+  isExample,
   loadInside,
   saveInside,
   switchKind,
@@ -131,6 +133,8 @@ const toneOptions: { value: TextTone; label: string }[] = [
 type Place = 'cover' | 'video' | PageKind
 /** The pictures an inside page starts with, so it reads as a page before a photo is chosen. They are never exported. */
 const SAMPLE_PICTURES: Record<PageKind, string> = { title: titleSample, label: labelSample }
+/** How each sample is framed to start with: the Culture Night screen sits to the right of its photo, the portrait's face near the top of its. */
+const SAMPLE_VIEWS: Record<PageKind, PhotoView> = { title: { ...CENTRED, x: 100 }, label: { ...CENTRED, y: 12 } }
 const cutOptions: { value: ShapeMode; label: string }[] = [
   { value: 'plain', label: 'Plain' },
   { value: 'torn', label: 'Torn' },
@@ -586,17 +590,21 @@ function App() {
   const [copied, setCopied] = useState<'svg' | 'seed' | 'type' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
-  const [inside, setInside] = useState<InsideOptions>(loadInside)
+  const [inside, setInside] = useState<InsideOptions>(() => loadInside(cover.arrowColour))
+  // Putting a page back to its example is asked twice, since it takes the words typed with it.
+  const [resetAsked, setResetAsked] = useState(false)
   // A photo goes where it was chosen and nowhere else, with its own position and its own background.
   const place: Place = cover.kind === 'video' ? 'video' : cover.page === 'inside' ? inside.kind : 'cover'
   const [photos, setPhotos] = useState<Partial<Record<Place, Photo>>>({})
   const [views, setViews] = useState<Partial<Record<Place, PhotoView>>>({})
   const [backgrounds, setBackgrounds] = useState<Partial<Record<Place, PreviewBackground>>>({})
   const photo = photos[place] ?? null
-  const view = views[place] ?? CENTRED
+  // A place with no photo of its own is showing nothing, or a sample as the sample is framed.
+  const startView = place === 'title' || place === 'label' ? SAMPLE_VIEWS[place] : CENTRED
+  const view = views[place] ?? startView
   const setView = useCallback((next: PhotoView | ((current: PhotoView) => PhotoView)) => {
-    setViews((current) => ({ ...current, [place]: typeof next === 'function' ? next(current[place] ?? CENTRED) : next }))
-  }, [place])
+    setViews((current) => ({ ...current, [place]: typeof next === 'function' ? next(current[place] ?? startView) : next }))
+  }, [place, startView])
   const previewBackground = backgrounds[place] ?? 'charcoal'
   const setPreviewBackground = useCallback((background: PreviewBackground) => {
     setBackgrounds((current) => ({ ...current, [place]: background }))
@@ -716,6 +724,8 @@ function App() {
   // How far down the page the inside page's picture starts.
   const bannerTop = isInside && page.banner ? page.banner.y : 0
 
+  // An inside page's arrow has a colour of its own, as each kind of page has its own arrow.
+  const arrowChoice = isInside ? inside.arrowColour : cover.arrowColour
   // For now the arrow takes the logo's colour whenever both are on the cover.
   const tied = !locksOff && marksLogo !== 'off' && marksArrow
   // Each mark is checked against what is behind it, so moving the photo can change its colour.
@@ -726,8 +736,8 @@ function App() {
     const groundUnder = (box?: Box) => (!box ? [] : onPhoto(box) && shownPhoto ? photoGround(shownPhoto, view, { ...box, y: box.y - bannerTop }, darken, photoFrame) : flat ? [fillLuminance(flat)] : [])
     const logo = settleColour(cover.logoColour, groundUnder(markBoxes.logo))
     // Tied, the arrow is drawn in the logo's colour and only checked against its own ground.
-    return { logo, arrow: settleColour(tied ? logo.colour : cover.arrowColour, groundUnder(markBoxes.arrow)) }
-  }, [tied, isInside, cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, view, darken, previewBackground, photoFrame, bannerTop])
+    return { logo, arrow: settleColour(tied ? logo.colour : arrowChoice, groundUnder(markBoxes.arrow)) }
+  }, [tied, isInside, cover.logoColour, arrowChoice, markBoxes, shownPhoto, view, darken, previewBackground, photoFrame, bannerTop])
   const furniture = useMemo(
     () => buildFurniture({ logo: marksLogo, arrow: marksArrow }, { logo: rulings.logo.colour, arrow: rulings.arrow.colour }, frame, markSizes),
     [marksLogo, marksArrow, rulings.logo.colour, rulings.arrow.colour, frame, markSizes],
@@ -1220,13 +1230,26 @@ function App() {
             <Panel id="cover" title="Kind of page" summary={summaries.cover} open={panels.cover} onToggle={togglePanel}>
               <div className="look-toggle" role="group" aria-label="Kind of page">
                 {PAGE_KIND_NAMES.map((kind) => (
-                  <button key={kind} aria-pressed={inside.kind === kind} className={inside.kind === kind ? 'active' : ''} onClick={() => setInside((current) => switchKind(current, kind))}>
+                  <button key={kind} aria-pressed={inside.kind === kind} className={inside.kind === kind ? 'active' : ''} onClick={() => { setInside((current) => switchKind(current, kind)); setResetAsked(false) }}>
                     <strong>{PAGE_KINDS[kind].label}</strong>
                     <small>{PAGE_KINDS[kind].description}</small>
                   </button>
                 ))}
               </div>
               <p className="panel-note">A page opens with a title or with a label, not both. Each kind keeps its own words, so switching between them loses nothing.</p>
+              <div className="photo-actions">
+                {resetAsked ? (
+                  <>
+                    <span className="panel-note">Replace this page’s words and switches with the example’s?</span>
+                    <span className="confirm-actions">
+                      <button className="text-button underlined" onClick={() => { setInside(backToExample); setResetAsked(false) }}>Yes, replace</button>
+                      <button className="text-button underlined" onClick={() => setResetAsked(false)}>Keep mine</button>
+                    </span>
+                  </>
+                ) : (
+                  <button className="text-button underlined" disabled={isExample(inside)} title={isExample(inside) ? 'This page is the example' : 'Puts this page’s words and switches back as they started. A photo you chose stays'} onClick={() => setResetAsked(true)}>Back to the example</button>
+                )}
+              </div>
             </Panel>
           )}
 
@@ -1479,13 +1502,13 @@ function App() {
             </label>
             <Segmented
               label="Arrow colour"
-              note={!marksArrow ? undefined : tied ? (rulings.arrow.reads ? 'Same as the logo' : 'Same as the logo · hard to read here') : colourNote(rulings.arrow, cover.arrowColour)}
-              value={tied ? cover.logoColour : cover.arrowColour}
+              note={!marksArrow ? undefined : tied ? (rulings.arrow.reads ? 'Same as the logo' : 'Same as the logo · hard to read here') : colourNote(rulings.arrow, arrowChoice)}
+              value={tied ? cover.logoColour : arrowChoice}
               options={colourOptions}
               disabled={!marksArrow}
               locked={() => tied}
               lockedNote={TIED_NOTE}
-              onChange={(colour) => updateCover('arrowColour', colour)}
+              onChange={(colour) => (isInside ? updateInside('arrowColour', colour) : updateCover('arrowColour', colour))}
             />
           </Panel>
 

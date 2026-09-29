@@ -5,8 +5,8 @@ import type { ShapeResult, TapeTone } from './types'
 export const FONT_FAMILY = 'Barlow'
 export const fontShorthand = (size: number, weight: number) => `${weight} ${size}px "${FONT_FAMILY}"`
 
-// Sampled from the published Alternative Dublin covers.
-export const BRAND = { yellow: '#FFE900', light: '#F1F1F1', dark: '#111111', white: '#FFFFFF' }
+// The Alternative Dublin brand colours.
+export const BRAND = { yellow: '#FFEF3A', light: '#F0F0F0', dark: '#101010', white: '#FFFFFF' }
 
 export const tones: { value: TapeTone; label: string; tape: string | null; text: string }[] = [
   { value: 'light', label: 'Light', tape: BRAND.light, text: BRAND.dark },
@@ -21,10 +21,10 @@ export const BACKGROUND_FILLS: Partial<Record<PreviewBackground, string>> = { ch
 /** How much black is laid over a photo so the words and marks read on it. */
 export const PHOTO_DARKEN = 0.15
 
-/** Where a mark drawn in its own units (the logo, the swipe prompt) sits on the artboard. */
+/** Where a mark drawn in its own units (the logo, the swipe arrow) sits on the artboard. */
 export interface Place { x: number; y: number; scale: number }
-/** Room kept clear of lettering beyond the safe margin: for the logo above, the swipe prompt below. */
-export interface Reserve { top: number; bottom: number }
+/** A part of the artboard the lettering keeps out of: a mark, with the clear space around it. */
+export interface Obstacle { left: number; top: number; right: number; bottom: number }
 
 /** One drawing list feeds the live preview, the SVG exports and the PNG exports, so they cannot drift apart. */
 export type Layer =
@@ -111,25 +111,26 @@ export function drawLayers(context: CanvasRenderingContext2D, layers: Layer[]) {
   }
 }
 
-const NO_RESERVE: Reserve = { top: 0, bottom: 0 }
+const inkOf = (shape: ShapeResult) => {
+  const { viewBox } = shape
+  return shape.inkBox ?? { left: viewBox.x, right: viewBox.x + viewBox.width, top: viewBox.y, bottom: viewBox.y + viewBox.height }
+}
 
 /**
  * How far the artwork can be moved on each axis (as a translation) while all lettering stays
- * inside the 80px safe area, and clear of any room reserved for the logo or the swipe prompt.
- * The tape and the eyebrow tag may reach into the margin.
+ * inside the 80px safe area. The tape and the eyebrow tag may reach into the margin.
  */
-export function placementRange(shape: ShapeResult, reserve: Reserve = NO_RESERVE) {
-  const { viewBox } = shape
-  const ink = shape.inkBox ?? { left: viewBox.x, right: viewBox.x + viewBox.width, top: viewBox.y, bottom: viewBox.y + viewBox.height }
-  const axis = (low: number, high: number, size: number, before = 0, after = 0) => {
-    const minimum = SAFE_MARGIN + before - low
-    const maximum = size - SAFE_MARGIN - after - high
+export function placementRange(shape: ShapeResult) {
+  const ink = inkOf(shape)
+  const axis = (low: number, high: number, size: number) => {
+    const minimum = SAFE_MARGIN - low
+    const maximum = size - SAFE_MARGIN - high
     if (minimum <= maximum) return { minimum, maximum, excess: 0 }
-    // Lettering bigger than the room it has can't move: centre it, and report by how much it overflows.
-    const centred = (size + before - after - low - high) / 2
+    // Lettering bigger than the safe area can't move: centre it, and report by how much it overflows.
+    const centred = (size - low - high) / 2
     return { minimum: centred, maximum: centred, excess: minimum - maximum }
   }
-  return { x: axis(ink.left, ink.right, ARTBOARD_WIDTH), y: axis(ink.top, ink.bottom, ARTBOARD_HEIGHT, reserve.top, reserve.bottom) }
+  return { x: axis(ink.left, ink.right, ARTBOARD_WIDTH), y: axis(ink.top, ink.bottom, ARTBOARD_HEIGHT) }
 }
 
 /**
@@ -137,14 +138,44 @@ export function placementRange(shape: ShapeResult, reserve: Reserve = NO_RESERVE
  * lettering inside the safe area, so 0 is flush with the left (or top) margin and every drag or
  * key press moves the artwork: there is no stretch where it is stuck against a clamp.
  */
-export function getPlacement(shape: ShapeResult, position: Position, reserve: Reserve = NO_RESERVE) {
-  const range = placementRange(shape, reserve)
+export function getPlacement(shape: ShapeResult, position: Position, obstacles: Obstacle[] = []) {
+  const range = placementRange(shape)
   const along = (axis: { minimum: number; maximum: number }, percent: number) =>
     axis.minimum + (axis.maximum - axis.minimum) * Math.max(0, Math.min(100, percent)) / 100
-  return {
-    x: Math.round(along(range.x, position.x) * 100) / 100,
-    y: Math.round(along(range.y, position.y) * 100) / 100,
+  const place = stepAside(inkOf(shape), { x: along(range.x, position.x), y: along(range.y, position.y) }, range, obstacles)
+  return { x: Math.round(place.x * 100) / 100, y: Math.round(place.y * 100) / 100 }
+}
+
+/**
+ * Lettering that would sit on the logo or the swipe arrow steps aside, by the shortest way that
+ * keeps it inside the safe area: a headline beside a mark stays where it was put, and one
+ * dragged into a mark stops against it.
+ */
+function stepAside(
+  ink: { left: number; right: number; top: number; bottom: number },
+  from: { x: number; y: number },
+  range: ReturnType<typeof placementRange>,
+  obstacles: Obstacle[],
+) {
+  const place = { ...from }
+  const hits = (obstacle: Obstacle) =>
+    ink.left + place.x < obstacle.right && ink.right + place.x > obstacle.left && ink.top + place.y < obstacle.bottom && ink.bottom + place.y > obstacle.top
+  // Stepping clear of one mark can land on another, so go round twice.
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (const obstacle of obstacles) {
+      if (!hits(obstacle)) continue
+      const moves = ([
+        { axis: 'x', to: obstacle.left - ink.right },
+        { axis: 'x', to: obstacle.right - ink.left },
+        { axis: 'y', to: obstacle.top - ink.bottom },
+        { axis: 'y', to: obstacle.bottom - ink.top },
+      ] as const)
+        .filter((move) => move.to >= range[move.axis].minimum - 0.01 && move.to <= range[move.axis].maximum + 0.01)
+        .sort((a, b) => Math.abs(a.to - place[a.axis]) - Math.abs(b.to - place[b.axis]))
+      if (moves.length) place[moves[0].axis] = moves[0].to
+    }
   }
+  return place
 }
 
 export interface SvgOptions {
@@ -156,13 +187,13 @@ export interface SvgOptions {
   darken?: number
   position?: Position
   fontCss?: string
-  /** The logo and swipe prompt: drawn on the artboard itself, under the artwork, and left out of cutouts. */
+  /** The logo and swipe arrow: drawn on the artboard itself, under the artwork, and left out of cutouts. */
   furniture?: Layer[]
-  reserve?: Reserve
+  obstacles?: Obstacle[]
 }
 
 export function svgMarkup(layers: Layer[], shape: ShapeResult, options: SvgOptions = {}) {
-  const { artboard = true, background = 'transparent', photo = null, darken = PHOTO_DARKEN, position = { x: 50, y: 50 }, fontCss = '', furniture = [], reserve } = options
+  const { artboard = true, background = 'transparent', photo = null, darken = PHOTO_DARKEN, position = { x: 50, y: 50 }, fontCss = '', furniture = [], obstacles } = options
   // Embedding Barlow keeps the text on its tape in browsers and viewers that don't have it installed.
   const defs = fontCss ? `<defs><style>${fontCss}</style></defs>` : ''
   if (!artboard) {
@@ -177,6 +208,6 @@ export function svgMarkup(layers: Layer[], shape: ShapeResult, options: SvgOptio
     backgroundMarkup = `<image xlink:href="${escapeAttribute(photo)}" width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}" preserveAspectRatio="xMidYMid slice"/>`
     if (darken > 0) backgroundMarkup += `<rect width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}" fill="#000" opacity="${darken}"/>`
   }
-  const placement = getPlacement(shape, position, reserve)
+  const placement = getPlacement(shape, position, obstacles)
   return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${ARTBOARD_WIDTH} ${ARTBOARD_HEIGHT}" width="${ARTBOARD_WIDTH}" height="${ARTBOARD_HEIGHT}">${defs}${backgroundMarkup}${layersToSvg(furniture)}<g transform="translate(${placement.x} ${placement.y})">${layersToSvg(layers)}</g></svg>`
 }

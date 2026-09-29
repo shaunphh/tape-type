@@ -50,16 +50,12 @@ The tool makes the whole cover, not only the headline:
 - **Photo**: choose a photo, then drag it on the cover to reposition it (a press on the words moves the words; anywhere else moves the photo). The Photo group has Zoom (100–300%), Left – right and Up – down sliders, and Reset position. On phones a sideways swipe moves the photo and the sliders do the rest, because vertical swipes scroll the page.
 - **Darken photo** lays 15% black over the photo so the words and marks read. It is on by default and can be switched off.
 - **Logo**: Off, Left or Right. The Alternative Dublin logo sits in a top corner of the safe area, 250px wide, with DUBLIN lined up on that side.
-- **Swipe for more**: the prompt and painted arrow sit in the bottom right corner of the safe area, the words standing on its bottom line.
+- **Swipe arrow**: the painted arrow sits in the bottom right corner of the safe area, at the size it was drawn (137 × 119px).
+- **Colour**, for each mark: Auto, Yellow, Light or Dark. On Auto the tool looks at what is behind the mark (the photo as the cover shows it, darkening included) and picks yellow on dark ground, light on mid tones such as a blue sky, and dark on bright ground. It goes by most of the ground under the mark, so moving or zooming the photo can change the pick. With a see-through background it is yellow.
 
-The logo and prompt are yellow (black on the Yellow background). The headline's lettering keeps clear of both: Top starts under the logo and Bottom stops above the prompt. They are part of the PNG and full SVG exports, and left out of the cutout SVG.
+The headline's lettering keeps clear of both marks. A headline beside a mark stays where it was put; one that would sit on a mark steps aside by the shortest way that stays inside the safe area, so a full-width headline starts under the logo at Top and stops above the arrow at Bottom. The marks are part of the PNG and full SVG exports, and left out of the cutout SVG.
 
-The marks are outlines, read from the SVG files in `src/assets`:
-
-- `node scripts/prepare-mark.mjs <exported.svg> src/assets/<name>.svg` crops a mark exported from a design tool to its artwork. The logo and arrow were made this way.
-- `node scripts/outline-text.mjs "SWIPE FOR MORE" barlow-condensed 800 40 src/assets/swipe-for-more.svg` draws the prompt's words as outlines (Barlow Condensed ExtraBold at 40px, kerning included), so they need no font in any export.
-
-Sizes and spacing are set at the top of `src/furniture.ts`.
+The marks are outlines, read from the SVG files in `src/assets`. `node scripts/prepare-mark.mjs <exported.svg> src/assets/<name>.svg` crops a mark exported from a design tool to its artwork. Sizes, spacing and the lightness at which Auto changes colour are set in `src/furniture.ts`.
 
 ### Locked choices
 
@@ -76,7 +72,7 @@ Two house styles, each a preset that can be adjusted afterwards (**Reset style**
 
 Each style remembers how it was last set up during a session, so switching to Feature and back keeps your Headline choices.
 
-Tape colours come from the published covers: Light `#F1F1F1`, Dark `#111111` (white text), Yellow `#FFE900`, or None (white text straight on the photo). The Dark background is the same brand black.
+Tape colours are the brand's: Light `#F0F0F0`, Dark `#101010` (white text), Yellow `#FFEF3A`, or None (white text straight on the photo). The Dark background is the same brand black.
 
 An optional **eyebrow** label (Breaking, News, Exclusive, The Big Read, or any text such as a date range) sits on the first line in capitals at about 40px, like the published tags. It is yellow, or white on yellow tape or a yellow background. A long label shrinks to fit the safe area, and export is blocked if it still can't.
 
@@ -99,7 +95,7 @@ An optional **eyebrow** label (Breaking, News, Exclusive, The Big Read, or any t
 - Cut style: Plain, Torn, Clean cut, Tape, Cling, Rough cut (Randomise is off for Plain and for no tape, where there is no cut to vary)
 - Alignment, Top / Middle / Bottom position, column width, regular or series format, automatic or manual size
 - Drag (or arrow keys, Shift for bigger steps) to position the artwork. All lettering stays inside the 80px safe area; the tape and eyebrow tag may reach into the margin. On phones, vertical swipes scroll the page and height is set with Top / Middle / Bottom.
-- Photo position, zoom and darkening; logo side; swipe prompt (see Finished covers)
+- Photo position, zoom and darkening; logo side and colour; swipe arrow and its colour (see Finished covers)
 
 The preview, SVG exports and PNG exports are all drawn from the same layer list, so they match. Backgrounds render before all text layers so tucked or overlapping strips remain legible. On desktop the preview stays in view while the controls scroll.
 

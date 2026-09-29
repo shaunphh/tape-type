@@ -30,11 +30,20 @@ import {
   type Layer,
   type Position,
   type PreviewBackground,
-  type Reserve,
 } from './artwork'
 import { loadCover, saveCover, type CoverOptions } from './cover'
 import { embeddedFontCss, embeddedFontCssNow, preloadEmbeddedFonts } from './fonts'
-import { buildFurniture, furnitureReserve, type LogoSide } from './furniture'
+import {
+  buildFurniture,
+  furnitureBoxes,
+  furnitureObstacles,
+  lightnessOf,
+  pickMarkColour,
+  type Box,
+  type ColourChoice,
+  type LogoSide,
+  type MarkColour,
+} from './furniture'
 import { buildShape, nextSeed } from './geometry'
 import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type HeadlineLayout, type Measure } from './layout'
 import { applyLocks, isLocked, unlocked } from './locks'
@@ -84,6 +93,12 @@ const logoOptions: { value: LogoSide; label: string }[] = [
   { value: 'off', label: 'Off' },
   { value: 'left', label: 'Left' },
   { value: 'right', label: 'Right' },
+]
+const colourOptions: { value: ColourChoice; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'yellow', label: 'Yellow' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
 ]
 const LOCKED_NOTE = 'Switched off for now'
 
@@ -287,6 +302,32 @@ async function cropPhoto(photo: Photo, view: PhotoView) {
   }
 }
 
+const SAMPLE = { width: 24, height: 12 }
+let sampler: CanvasRenderingContext2D | null | undefined
+
+/** How light the photo is under a mark, as the cover shows it: one L* value per sample, for picking the mark's colour. */
+function photoGround(photo: Photo, view: PhotoView, box: Box, darken: number) {
+  if (sampler === undefined) {
+    const canvas = document.createElement('canvas')
+    canvas.width = SAMPLE.width
+    canvas.height = SAMPLE.height
+    sampler = canvas.getContext('2d', { willReadFrequently: true })
+  }
+  if (!sampler) return []
+  const rect = photoRect(photo.width, photo.height, view)
+  try {
+    sampler.drawImage(photo.image, (box.x - rect.x) / rect.scale, (box.y - rect.y) / rect.scale, box.width / rect.scale, box.height / rect.scale, 0, 0, SAMPLE.width, SAMPLE.height)
+    const { data } = sampler.getImageData(0, 0, SAMPLE.width, SAMPLE.height)
+    const ground: number[] = []
+    for (let index = 0; index < data.length; index += 4) ground.push(lightnessOf(data[index], data[index + 1], data[index + 2], darken))
+    return ground
+  } catch {
+    return []
+  }
+}
+
+const fillLightness = (fill: string) => lightnessOf(parseInt(fill.slice(1, 3), 16), parseInt(fill.slice(3, 5), 16), parseInt(fill.slice(5, 7), 16))
+
 function RangeField({ label, value, min, max, step = 1, suffix = '', disabled = false, format, onChange }: {
   label: string
   value: number
@@ -368,8 +409,10 @@ function Panel({ id, title, summary, open, onToggle, children }: {
   )
 }
 
-function Segmented<T extends string>({ label, value, options, disabled = false, locked, onChange }: {
+function Segmented<T extends string>({ label, note, value, options, disabled = false, locked, onChange }: {
   label: string
+  /** A few words beside the label, such as what Auto settled on. */
+  note?: string
   value: T | null
   options: { value: T; label: string }[]
   disabled?: boolean
@@ -379,7 +422,7 @@ function Segmented<T extends string>({ label, value, options, disabled = false, 
 }) {
   return (
     <div className="position-field">
-      <span>{label}</span>
+      <span>{label}{note && <em>{note}</em>}</span>
       <div className="piece-toggle compact" role="group" aria-label={label} style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}>
         {options.map((option) => {
           const off = locked?.(option.value) ?? false
@@ -457,21 +500,32 @@ function App() {
     [shape, settings.tone, previewBackground, layout.weight, layout.fontSize],
   )
   const runs = useMemo(() => textRuns(layers), [layers])
-  const furniture = useMemo(
-    () => buildFurniture({ logo: cover.logo, swipe: cover.swipe }, previewBackground),
-    [cover.logo, cover.swipe, previewBackground],
-  )
-  const reserve = useMemo<Reserve>(() => furnitureReserve({ logo: cover.logo, swipe: cover.swipe }), [cover.logo, cover.swipe])
-  const range = useMemo(() => placementRange(shape, reserve), [shape, reserve])
+  const range = useMemo(() => placementRange(shape), [shape])
   const shownPhoto = previewBackground === 'photo' ? photo : null
   const darken = cover.darken ? PHOTO_DARKEN : 0
+  const markBoxes = useMemo(() => furnitureBoxes({ logo: cover.logo, arrow: cover.arrow }), [cover.logo, cover.arrow])
+  const obstacles = useMemo(() => furnitureObstacles({ logo: cover.logo, arrow: cover.arrow }), [cover.logo, cover.arrow])
+  // On Auto, each mark takes the colour that reads on what is behind it, so moving the photo can change it.
+  const markColours = useMemo(() => {
+    const flat = BACKGROUND_FILLS[previewBackground]
+    const settle = (choice: ColourChoice, box?: Box): MarkColour => {
+      if (choice !== 'auto') return choice
+      if (!box) return 'yellow'
+      return pickMarkColour(shownPhoto ? photoGround(shownPhoto, photoView, box, darken) : flat ? [fillLightness(flat)] : [])
+    }
+    return { logo: settle(cover.logoColour, markBoxes.logo), arrow: settle(cover.arrowColour, markBoxes.arrow) }
+  }, [cover.logoColour, cover.arrowColour, markBoxes, shownPhoto, photoView, darken, previewBackground])
+  const furniture = useMemo(
+    () => buildFurniture({ logo: cover.logo, arrow: cover.arrow }, { logo: markColours.logo, arrow: markColours.arrow }),
+    [cover.logo, cover.arrow, markColours.logo, markColours.arrow],
+  )
   // Rotation or a wide eyebrow can make the lettering bigger than the safe area even when every line fits its column.
   const lettersTooBig = range.x.excess > 4 || range.y.excess > 4
   const blockedReason = layout.empty
     ? 'Type a headline to export.'
     : layout.overflow
       ? overflowMessage(layout, settings)
-      : lettersTooBig ? `The lettering is bigger than the ${reserve.top || reserve.bottom ? 'room between the logo and the swipe prompt' : 'safe area'}. Try a narrower column, less rotation or a shorter eyebrow.` : null
+      : lettersTooBig ? 'The lettering is bigger than the safe area. Try a narrower column, less rotation or a shorter eyebrow.' : null
   const exportDisabled = Boolean(blockedReason) || fonts.loading
 
   useEffect(() => { preloadEmbeddedFonts(runs) }, [runs])
@@ -559,7 +613,7 @@ function App() {
   }
 
   const svgFor = (artboard: boolean, fontCss: string, crop: string | null) =>
-    svgMarkup(layers, shape, { artboard, background: previewBackground, photo: crop, darken, position, fontCss, furniture, reserve })
+    svgMarkup(layers, shape, { artboard, background: previewBackground, photo: crop, darken, position, fontCss, furniture, obstacles })
 
   /** The photo as the cover shows it, for SVG exports. Made once per photo position, when first asked for. */
   const photoCrop = (): Promise<string | null> => {
@@ -615,7 +669,7 @@ function App() {
     if (exporting) return
     setExporting(true)
     // Snapshot everything now, so edits made while the export runs cannot mix into this file.
-    const snapshot = { layers, furniture, reserve, shape, position, background: previewBackground, photo: shownPhoto, view: photoView, darken }
+    const snapshot = { layers, furniture, obstacles, shape, position, background: previewBackground, photo: shownPhoto, view: photoView, darken }
     const canvas = document.createElement('canvas')
     try {
       const allText = snapshot.layers.map((layer) => layer.kind === 'text' ? layer.text : '').join(' ')
@@ -640,7 +694,7 @@ function App() {
         }
       }
       drawLayers(context, snapshot.furniture)
-      const placement = getPlacement(snapshot.shape, snapshot.position, snapshot.reserve)
+      const placement = getPlacement(snapshot.shape, snapshot.position, snapshot.obstacles)
       context.translate(placement.x, placement.y)
       drawLayers(context, snapshot.layers)
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
@@ -758,7 +812,7 @@ function App() {
     }))
   }
 
-  const placement = getPlacement(shape, position, reserve)
+  const placement = getPlacement(shape, position, obstacles)
   const photoPlace = shownPhoto ? photoRect(shownPhoto.width, shownPhoto.height, photoView) : null
   const slack = shownPhoto ? photoSlack(shownPhoto.width, shownPhoto.height, photoView) : { x: 0, y: 0 }
   const photoMoved = photoView.x !== CENTRED.x || photoView.y !== CENTRED.y || photoView.zoom !== CENTRED.zoom
@@ -796,7 +850,7 @@ function App() {
     photo: !photo
       ? 'No photo yet'
       : [shownPhoto ? (photoMoved ? `Zoom ${Math.round(photoView.zoom * 100)}%` : 'Centred') : 'Hidden', cover.darken ? 'Darkened' : 'As shot'].join(' · '),
-    marks: [cover.logo === 'off' ? 'No logo' : `Logo ${cover.logo}`, cover.swipe ? 'Swipe prompt' : 'No swipe prompt'].join(' · '),
+    marks: [cover.logo === 'off' ? 'No logo' : `Logo ${cover.logo}, ${markColours.logo}`, cover.arrow ? `Arrow, ${markColours.arrow}` : 'No arrow'].join(' · '),
     style: `${isFeature ? 'Feature' : 'Headline'} · Barlow ${isFeature ? 'Black' : 'Bold'}`,
     tape: noTape ? 'No tape' : `${toneLabel} · ${settings.perLine ? 'Strips' : 'Block'} · ${modeLabel}`,
     layout: [
@@ -926,13 +980,29 @@ function App() {
             </label>
           </Panel>
 
-          <Panel id="marks" title="Logo & swipe" summary={summaries.marks} open={panels.marks} onToggle={togglePanel}>
-            <Segmented label="Logo" value={cover.logo} options={logoOptions} onChange={(logo) => updateCover('logo', logo)} />
+          <Panel id="marks" title="Logo & arrow" summary={summaries.marks} open={panels.marks} onToggle={togglePanel}>
+            <Segmented label="Logo" note="Top corner" value={cover.logo} options={logoOptions} onChange={(logo) => updateCover('logo', logo)} />
+            <Segmented
+              label="Logo colour"
+              note={cover.logo !== 'off' && cover.logoColour === 'auto' ? `Picked ${markColours.logo}` : undefined}
+              value={cover.logoColour}
+              options={colourOptions}
+              disabled={cover.logo === 'off'}
+              onChange={(colour) => updateCover('logoColour', colour)}
+            />
             <label className="toggle-row spread">
-              <span>Swipe for more <small>Prompt and arrow, bottom right</small></span>
-              <input type="checkbox" checked={cover.swipe} onChange={(event) => updateCover('swipe', event.target.checked)} />
+              <span>Swipe arrow <small>Bottom right corner</small></span>
+              <input type="checkbox" checked={cover.arrow} onChange={(event) => updateCover('arrow', event.target.checked)} />
               <span className="switch" />
             </label>
+            <Segmented
+              label="Arrow colour"
+              note={cover.arrow && cover.arrowColour === 'auto' ? `Picked ${markColours.arrow}` : undefined}
+              value={cover.arrowColour}
+              options={colourOptions}
+              disabled={!cover.arrow}
+              onChange={(colour) => updateCover('arrowColour', colour)}
+            />
           </Panel>
 
           <Panel id="style" title="Style" summary={summaries.style} open={panels.style} onToggle={togglePanel}>

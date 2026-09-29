@@ -58,21 +58,6 @@ describe('placement', () => {
     expect(getPlacement(wide, { x: 0, y: 50 }).x).toBe(getPlacement(wide, { x: 100, y: 50 }).x)
   })
 
-  it('keeps lettering out of the room reserved for the logo and the swipe prompt', () => {
-    const reserve = { top: 160, bottom: 118 }
-    const shape = buildShape({ ...settings, fontSize: 80 }, labels, widths, [], bounds, { eyebrow })
-    const ink = shape.inkBox!
-    expect(ink.top + getPlacement(shape, { x: 0, y: 0 }, reserve).y).toBeCloseTo(SAFE_MARGIN + reserve.top, 1)
-    expect(ink.bottom + getPlacement(shape, { x: 0, y: 100 }, reserve).y).toBeCloseTo(ARTBOARD_HEIGHT - SAFE_MARGIN - reserve.bottom, 1)
-    // Sideways nothing changes, and with nothing reserved the whole safe area is open as before.
-    expect(getPlacement(shape, { x: 100, y: 50 }, reserve).x).toBe(getPlacement(shape, { x: 100, y: 50 }).x)
-    expect(placementRange(shape, { top: 0, bottom: 0 })).toEqual(placementRange(shape))
-    // Lettering taller than the room left is centred in it, and says by how much it overflows.
-    const tight = placementRange(shape, { top: 600, bottom: 500 })
-    expect(tight.y.excess).toBeGreaterThan(0)
-    expect((ink.top + ink.bottom) / 2 + tight.y.minimum).toBeCloseTo((SAFE_MARGIN + 600 + ARTBOARD_HEIGHT - SAFE_MARGIN - 500) / 2, 5)
-  })
-
   it('lets the tape and tag reach into the margin while the lettering sits on the safe line', () => {
     const shape = buildShape({ ...settings, fontSize: 80 }, labels, widths, [], bounds, { eyebrow })
     const { x } = getPlacement(shape, { x: 0, y: 50 })
@@ -140,17 +125,30 @@ describe('layers and SVG', () => {
     expect(svgMarkup(layers, shape, { background: 'photo', photo, darken: 0 })).not.toContain('opacity=')
   })
 
-  it('draws the logo and swipe prompt on the artboard, under the artwork, and leaves them out of cutouts', () => {
+  it('draws the logo and swipe arrow on the artboard, under the artwork, and leaves them out of cutouts', () => {
     const shape = buildShape(settings, labels, widths, [], bounds)
     const layers = buildLayers(shape, options({ background: 'photo' }), 80)
     const furniture: Layer[] = [{ kind: 'path', d: 'M0 0H10V10Z', fill: BRAND.yellow, angle: 0, cx: 0, cy: 0, place: { x: 750, y: 80, scale: 0.165 } }]
     const svg = svgMarkup(layers, shape, { background: 'photo', photo: 'data:image/jpeg;base64,AAA', furniture })
-    const mark = '<path d="M0 0H10V10Z" fill="#FFE900" transform="translate(750 80) scale(0.165)"/>'
+    const mark = `<path d="M0 0H10V10Z" fill="${BRAND.yellow}" transform="translate(750 80) scale(0.165)"/>`
     expect(svg).toContain(mark)
     expect(svg.indexOf('<image')).toBeLessThan(svg.indexOf(mark))
     expect(svg.indexOf('opacity=')).toBeLessThan(svg.indexOf(mark))
     expect(svg.indexOf(mark)).toBeLessThan(svg.indexOf('<g transform="translate('))
     expect(svgMarkup(layers, shape, { artboard: false, furniture })).not.toContain('scale(')
+  })
+
+  it('places the artwork in exports where the preview does, marks taken into account', () => {
+    const shape = buildShape({ ...settings, column: 'wide', fontSize: 80 }, ['A Line That Fills the Whole Width'], [900], [], bounds)
+    const layers = buildLayers(shape, options(), 80)
+    const obstacles = [{ left: 694, top: 24, right: 1056, bottom: 240 }]
+    const placed = getPlacement(shape, { x: 0, y: 0 }, obstacles)
+    expect(placed.y).toBeGreaterThan(getPlacement(shape, { x: 0, y: 0 }).y)
+    expect(svgMarkup(layers, shape, { position: { x: 0, y: 0 }, obstacles })).toContain(`<g transform="translate(${placed.x} ${placed.y})">`)
+  })
+
+  it('uses the brand colours', () => {
+    expect(BRAND).toMatchObject({ yellow: '#FFEF3A', light: '#F0F0F0', dark: '#101010' })
   })
 
   it('exports the Dark background as brand black', () => {

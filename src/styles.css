@@ -489,6 +489,8 @@ textarea:focus { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
 }
 
 .position-field { display: grid; gap: 6px; align-content: start; }
+.position-field > span { display: flex; justify-content: space-between; gap: 8px; }
+.position-field > span em { color: var(--ink); font-style: normal; }
 .piece-toggle.compact { grid-template-columns: repeat(3, 1fr); }
 .piece-toggle.compact button { height: 29px; padding: 0 4px; font-size: 9px; }
 /* Choices that are switched off stay on show, greyed out. */
@@ -661,8 +663,8 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
   background-size: 28px 28px;
   background-position: 0 0, 0 14px, 14px -14px, -14px 0;
 }
-.preview-stage.charcoal { background-color: #111111; }
-.preview-stage.yellow { background-color: #ffe900; }
+.preview-stage.charcoal { background-color: #101010; }
+.preview-stage.yellow { background-color: #ffef3a; }
 .preview-stage.photo { background-color: #363636; }
 .preview-stage::after {
   content: '';

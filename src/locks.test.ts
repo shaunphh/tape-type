@@ -42,13 +42,14 @@ describe('locked choices', () => {
 })
 
 describe('cover options', () => {
-  it('start with the logo, the swipe prompt and a darkened photo', () => {
-    expect(coverDefaults).toEqual({ logo: 'right', swipe: true, darken: true })
+  it('start with the logo, the swipe arrow and a darkened photo, colours picked automatically', () => {
+    expect(coverDefaults).toEqual({ logo: 'right', logoColour: 'auto', arrow: true, arrowColour: 'auto', darken: true })
   })
 
   it('replaces invalid stored values instead of trusting them', () => {
-    expect(sanitizeCover({ logo: 'middle', swipe: 'yes', darken: 0 })).toEqual(coverDefaults)
-    expect(sanitizeCover({ logo: 'left', swipe: false, darken: false })).toEqual({ logo: 'left', swipe: false, darken: false })
+    expect(sanitizeCover({ logo: 'middle', logoColour: 'pink', arrow: 'yes', arrowColour: 7, darken: 0 })).toEqual(coverDefaults)
+    const chosen = { logo: 'left', logoColour: 'light', arrow: false, arrowColour: 'dark', darken: false }
+    expect(sanitizeCover(chosen)).toEqual(chosen)
     expect(sanitizeCover({})).toEqual(coverDefaults)
   })
 })

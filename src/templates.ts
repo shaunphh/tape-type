@@ -19,7 +19,7 @@ export interface PageTemplate extends PageStart {
   name: string
   /** What it is for, in a line. */
   note: string
-  /** The picture it shows until a photo of one's own is chosen. It is never exported. None shows its kind's sample. */
+  /** The picture it shows, and exports, until a photo of one's own is chosen. None shows its kind's sample. */
   photo: string | null
   /** How its picture is framed. */
   view: PhotoView

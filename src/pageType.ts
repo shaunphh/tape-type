@@ -48,6 +48,7 @@ export function sanitizePageType(stored: Record<string, unknown>): PageType {
       large: within(text.large, TYPE_RANGE.text.size, PAGE_TYPE.text.large),
       weight: weightOf(text.weight, PAGE_TYPE.text.weight),
       lineHeight: hundredth(within(text.lineHeight, TYPE_RANGE.text.lineHeight, PAGE_TYPE.text.lineHeight, 0.01)),
+      largeLineHeight: hundredth(within(text.largeLineHeight, TYPE_RANGE.text.lineHeight, PAGE_TYPE.text.largeLineHeight, 0.01)),
     },
     details: {
       size: within(details.size, TYPE_RANGE.text.size, PAGE_TYPE.details.size),
@@ -100,7 +101,7 @@ const named = (weight: number) => `${WEIGHT_NAMES[weight] ?? ''} ${weight}`.trim
 export function describePageType(type: PageType) {
   return [
     `Title: ${type.title.largest}px down to ${type.title.smallest}px, ${named(type.title.weight)}, line height ${type.title.lineHeight}`,
-    `Text: ${type.text.size}px or ${type.text.large}px, ${named(type.text.weight)}, line height ${type.text.lineHeight}`,
+    `Text: ${type.text.size}px or ${type.text.large}px, ${named(type.text.weight)}, line height ${type.text.lineHeight}, a size up ${type.text.largeLineHeight}`,
     `Highlight: ${type.details.size}px or ${type.details.large}px, ${named(type.details.weight)}`,
     `Words in two stars: ${named(type.strong.weight)}`,
     `Words in one star: ${named(type.semi.weight)}`,

@@ -383,7 +383,7 @@ const dataUrlOf = (blob: Blob) => new Promise<string>((resolve, reject) => {
 })
 
 /**
- * A photo as a template keeps it, for its sample picture: whole, so it can still be moved, and no
+ * A photo as a template keeps it, for its picture: whole, so it can still be moved, and no
  * bigger than a page needs (1600px along its longer side, and at least the page's width across).
  */
 async function templatePicture(photo: Photo) {
@@ -811,8 +811,7 @@ function App() {
       ? 'The title runs past four lines. Shorten it.'
       : page.overflow === 'body'
         ? `The text is ${page.over} ${page.over === 1 ? 'line' : 'lines'} too long for the page. Cut it${!page.banner ? '' : inside.image === 'fill' ? ', or set the picture to None' : ', or use a shorter picture'}.`
-        : page.banner && !shownPhoto ? 'Choose a photo, or set the picture to None.'
-          : sampleShown ? 'That is a sample picture. Choose a photo of your own, or set the picture to None.' : null
+        : page.banner && !shownPhoto ? 'Choose a photo, or set the picture to None.' : null
   const blockedReason = isInside ? pageBlocked : coverBlocked
   const exportDisabled = Boolean(blockedReason) || fonts.loading
 
@@ -1529,7 +1528,7 @@ function App() {
                       <input className="text-input" aria-label="What it’s for" placeholder="What it’s for, in a line" value={templateDraft.note} maxLength={120} onChange={(event) => setTemplateDraft({ ...templateDraft, note: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter' && draftProblem === null) saveAsTemplate() }} />
                       {photo && (
                         <label className="toggle-row spread">
-                          <span>Keep your photo in it <small>As its sample picture, never exported</small></span>
+                          <span>Keep your photo in it <small>As the template’s picture, until someone chooses their own</small></span>
                           <input type="checkbox" checked={templateDraft.keepPhoto} onChange={(event) => setTemplateDraft({ ...templateDraft, keepPhoto: event.target.checked })} />
                           <span className="switch" />
                         </label>
@@ -1662,6 +1661,7 @@ function App() {
                 <RangeField label="A size up" value={pageType.text.large} min={TYPE_RANGE.text.size.min} max={TYPE_RANGE.text.size.max} suffix="px" onChange={(large) => updateType('text', { large })} />
                 <Segmented label="Weight" note={WEIGHT_NAMES[pageType.text.weight]} value={String(pageType.text.weight)} options={weightOptions} onChange={(weight) => updateType('text', { weight: Number(weight) })} />
                 <RangeField label="Line height" value={pageType.text.lineHeight} min={TYPE_RANGE.text.lineHeight.min} max={TYPE_RANGE.text.lineHeight.max} step={0.01} format={(value) => value.toFixed(2)} onChange={(lineHeight) => updateType('text', { lineHeight })} />
+                <RangeField label="Line height, a size up" value={pageType.text.largeLineHeight} min={TYPE_RANGE.text.lineHeight.min} max={TYPE_RANGE.text.lineHeight.max} step={0.01} format={(value) => value.toFixed(2)} onChange={(largeLineHeight) => updateType('text', { largeLineHeight })} />
               </div>
               <div className="sub-block range-stack">
                 <span className="field-label">Highlight</span>
@@ -1792,7 +1792,7 @@ function App() {
                 ? (page.banner ? 'Photos stay in your browser. Once one is in, drag it in its banner to reposition it.' : 'This page has no picture. Pick a height above to add one, or Fill to give it the room the words leave.')
                 : photo ? 'The photo is hidden while another background is showing.' : 'Photos stay in your browser. Once one is in, drag it on the cover to reposition it.'}</p>
             )}
-            {sampleShown && <p className="panel-note">This is a sample picture, to show the page. It is never exported: choose a photo of your own.</p>}
+            {sampleShown && <p className="panel-note">This is the template’s own picture, and it goes in the export as it is. Choose a photo of your own to replace it.</p>}
             {photoAside && (
               <div className="photo-actions">
                 <span className="panel-note">Your photo is set aside while the template’s picture shows.</span>
@@ -1995,8 +1995,8 @@ function App() {
               {shownPhoto && (
                 // In the corner of the picture: the foot of a cover, or of an inside page's banner.
                 <div className="photo-chips" style={{ top: `${(isInside && page.banner ? page.banner.y + page.banner.height : frame.height) / frame.height * 100}%` }}>
-                  <label className="photo-change" title={sampleShown ? 'This picture is a sample, and is never exported. Choose a photo of your own' : 'Choose another photo'}>
-                    <Upload size={11} aria-hidden="true" /> {sampleShown ? 'Sample · change photo' : 'Change photo'}
+                  <label className="photo-change" title={sampleShown ? 'This is the template’s picture, and it exports as it is. Choose a photo of your own to replace it' : 'Choose another photo'}>
+                    <Upload size={11} aria-hidden="true" /> {sampleShown ? 'Template photo · change' : 'Change photo'}
                     <input type="file" accept="image/*" onChange={choosePhoto} />
                   </label>
                   {photoAside && <button className="photo-change" onClick={useOwnPhoto}>Use your photo</button>}

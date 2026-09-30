@@ -489,6 +489,21 @@ describe('inside page', () => {
     expect(page({ title: '', body: '', details: 'Tickets via Eventbrite' })).toMatchObject({ empty: false, bodyLines: 1 })
   })
 
+  it('spaces lines 1.3 apart at 38px and 1.2 at 42px, in the text and the highlight alike', () => {
+    expect(BODY).toMatchObject({ size: 38, lineHeight: 1.3, large: 42, largeLineHeight: 1.2 })
+    const long = 'A story long enough to run onto a second line of the page, and then some more words after that.'
+    const gaps = (layout: ReturnType<typeof page>, fill: string) => {
+      const lines = texts(layout.layers).filter((layer) => layer.fill === fill)
+      return lines.slice(1).map((layer, index) => Math.round((layer.y - lines[index].y) * 100) / 100)
+    }
+    for (const [bodyLarge, large] of [[false, false], [true, true], [false, true], [true, false]]) {
+      const layout = page({ title: '', body: long, details: long, bodyLarge, large, image: 'none' })
+      const expected = (up: boolean) => (up ? 42 * 1.2 : 38 * 1.3)
+      expect(gaps(layout, BODY.fill).every((gap) => Math.abs(gap - expected(bodyLarge)) < 0.01), `text ${bodyLarge}`).toBe(true)
+      expect(gaps(layout, DETAILS.fill).every((gap) => Math.abs(gap - expected(large)) < 0.01), `highlight ${large}`).toBe(true)
+    }
+  })
+
   it('sets the highlight a size up when asked, and wraps it at that size', () => {
     const typed = 'Four Dublin creatives are coming together for an evening exploring their work, practice and inspiration.'
     const usual = page({ body: 'The story.', details: typed, image: 'none' })
@@ -497,7 +512,7 @@ describe('inside page', () => {
     expect(DETAILS.large).toBe(42)
     expect(lines(usual).every((layer) => layer.size === BODY.size)).toBe(true)
     expect(lines(large).every((layer) => layer.size === 42)).toBe(true)
-    expect(lines(large)[1].y - lines(large)[0].y).toBeCloseTo(42 * BODY.lineHeight, 1)
+    expect(lines(large)[1].y - lines(large)[0].y).toBeCloseTo(42 * BODY.largeLineHeight, 1)
     for (const layer of lines(large)) expect(layer.x + measure(layer.text, layer.size, layer.weight)).toBeLessThanOrEqual(PAGE_MARGIN + TEXT_WIDTH + 0.01)
     // The story keeps its size, and the larger lines take a little more of the room.
     expect(texts(large.layers).find((layer) => layer.text === 'The story.')!.size).toBe(BODY.size)
@@ -590,7 +605,7 @@ describe('inside page', () => {
 
   it('sets the page in other sizes and weights when they are being tried', () => {
     const content = { label: 'Meet the artists', title: 'The closure follows a months-long legal dispute', body: 'The story.\n**A bold line.**\n*A lighter one.*\n- A bullet', details: 'A date', image: 'none' as const }
-    const tried = { title: { largest: 80, smallest: 60, weight: 800, lineHeight: 1 }, text: { size: 30, large: 36, weight: 400, lineHeight: 1.5 }, details: { size: 26, large: 34, weight: 600 }, strong: { weight: 900 }, semi: { weight: 500 }, label: { size: 60, weight: 900 } }
+    const tried = { title: { largest: 80, smallest: 60, weight: 800, lineHeight: 1 }, text: { size: 30, large: 36, weight: 400, lineHeight: 1.5, largeLineHeight: 1.4 }, details: { size: 26, large: 34, weight: 600 }, strong: { weight: 900 }, semi: { weight: 500 }, label: { size: 60, weight: 900 } }
     const layout = layoutInside(content, measure, {}, ink, tried)
     const lines = texts(layout.layers)
     const find = (value: string) => lines.find((layer) => layer.text === value)!

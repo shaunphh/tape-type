@@ -98,7 +98,8 @@ export const INSIDE_MARKS = { margin: PAGE_MARGIN, logoWidth: 128 }
 
 // The sizes and weights below are the ones Shaun settled on in the Type panel (29 September 2026).
 export const TITLE = { weight: 700, largest: 52, smallest: 45, lineHeight: 1.07, lines: 3, mostLines: 4, fill: BRAND.light }
-export const BODY = { weight: 400, size: 38, large: 42, lineHeight: 1.2, paragraphGap: 26, bulletGap: 8, indent: 44, fill: TONES.grey }
+/** Lines of text are 1.3 of their size apart at 38px, and 1.2 at 42px: 1.2 was a bit tight at 38 (Shaun, 30 September 2026). */
+export const BODY = { weight: 400, size: 38, large: 42, lineHeight: 1.3, largeLineHeight: 1.2, paragraphGap: 26, bulletGap: 8, indent: 44, fill: TONES.grey }
 /**
  * The highlight (called the details in the code) is white, in the story's weight, at the story's
  * size or a size up. It is not bolder of itself: words in stars are.
@@ -116,9 +117,9 @@ export const LABEL = { size: 38, weight: 800 }
 /** The sizes and weights the page is set in. `pageType.ts` lets others be tried on this machine. */
 export interface PageType {
   title: { largest: number; smallest: number; weight: number; lineHeight: number }
-  /** The story, at its usual size and a size up. */
-  text: { size: number; large: number; weight: number; lineHeight: number }
-  /** The highlight, at its usual size and a size up. It takes the text's line height. */
+  /** The story, at its usual size and a size up, each with a line height of its own. */
+  text: { size: number; large: number; weight: number; lineHeight: number; largeLineHeight: number }
+  /** The highlight, at its usual size and a size up. It takes the text's line heights: the usual one, or the one a size up. */
   details: { size: number; large: number; weight: number }
   /** Words in two stars, and in one. */
   strong: { weight: number }
@@ -129,7 +130,7 @@ export interface PageType {
 /** The tool's own: what every page is set in unless others are being tried. */
 export const PAGE_TYPE: PageType = {
   title: { largest: TITLE.largest, smallest: TITLE.smallest, weight: TITLE.weight, lineHeight: TITLE.lineHeight },
-  text: { size: BODY.size, large: BODY.large, weight: BODY.weight, lineHeight: BODY.lineHeight },
+  text: { size: BODY.size, large: BODY.large, weight: BODY.weight, lineHeight: BODY.lineHeight, largeLineHeight: BODY.largeLineHeight },
   details: { size: BODY.size, large: DETAILS.large, weight: DETAILS.weight },
   strong: { weight: STRONG.weight },
   semi: { weight: SEMI.weight },
@@ -387,8 +388,10 @@ export function layoutInside(
   const story = readLines(content.body)
   const details = readLines(content.details ?? '')
   const textSize = content.bodyLarge ? type.text.large : type.text.size
+  // A box set a size up takes the line height for that size.
+  const lineHeightFor = (large: boolean | undefined) => (large ? type.text.largeLineHeight : type.text.lineHeight)
   // Lines are counted in lines of the text.
-  const pitch = textSize * type.text.lineHeight
+  const pitch = textSize * lineHeightFor(content.bodyLarge)
   // The words end on the bottom margin.
   const foot = pageHeight - PAGE_MARGIN
 
@@ -446,8 +449,8 @@ export function layoutInside(
       })
       y += titleLines.length * titlePitch
     }
-    const setText = (paragraphs: TypedLine[][], block: { size: number; weight: number }, blockFill: string) => {
-      const { lineHeight } = type.text
+    const setText = (paragraphs: TypedLine[][], block: { size: number; weight: number; lineHeight: number }, blockFill: string) => {
+      const { lineHeight } = block
       // The gaps and the bullets' indent are the text's, and grow and shrink with it.
       const scale = block.size / BODY.size
       const weightOf = (style: RunStyle) => (style.weight === 'bold' ? type.strong.weight : style.weight === 'semi' ? type.semi.weight : block.weight)
@@ -479,11 +482,11 @@ export function layoutInside(
         })
       })
     }
-    const setHighlight = () => setText(details, { size: content.large ? type.details.large : type.details.size, weight: type.details.weight }, content.detailsTone ? TONES[content.detailsTone] : DETAILS.fill)
+    const setHighlight = () => setText(details, { size: content.large ? type.details.large : type.details.size, weight: type.details.weight, lineHeight: lineHeightFor(content.large) }, content.detailsTone ? TONES[content.detailsTone] : DETAILS.fill)
 
     const blocks = [
       { has: titleLines.length > 0, gap: 0, labelGap: GAP.labelToTitle, pinned: false, set: setTitle },
-      { has: story.length > 0, gap: GAP.aboveBody, labelGap: GAP.labelToText, pinned: false, set: () => setText(story, { size: textSize, weight: type.text.weight }, content.bodyTone ? TONES[content.bodyTone] : BODY.fill) },
+      { has: story.length > 0, gap: GAP.aboveBody, labelGap: GAP.labelToText, pinned: false, set: () => setText(story, { size: textSize, weight: type.text.weight, lineHeight: lineHeightFor(content.bodyLarge) }, content.bodyTone ? TONES[content.bodyTone] : BODY.fill) },
       // A picture that fills has taken the room already, so there is no foot to stand apart on.
       { has: details.length > 0, gap: GAP.aboveDetails, labelGap: GAP.labelToText, pinned: Boolean(content.pinned) && !fills, set: setHighlight },
     ].filter((block) => block.has)

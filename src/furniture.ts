@@ -39,8 +39,8 @@ const swipeArrow = readMark(swipeArrowSvg)
 // A fifth of the cover wide: a little smaller than on the first mock-up (250), a little larger
 // than on the published posts (about 176).
 export const LOGO_WIDTH = 210
-/** The painted arrow was drawn 137px wide; it is used a little smaller. */
-export const ARROW_WIDTH = 110
+/** The painted arrow was drawn 137px wide; it is used smaller (110, then 100 on 30 September 2026). */
+export const ARROW_WIDTH = 100
 /** Clear space between a mark and the headline's lettering: room for the tape and the eyebrow tag. */
 const CLEARANCE = 56
 

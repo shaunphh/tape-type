@@ -1,0 +1,29 @@
+{
+  "name": "What you can see",
+  "note": "The highlights",
+  "words": {
+    "label": "WHAT CAN YOU SEE?",
+    "title": "",
+    "body": "Highlights include the newly restored *Poetry Ireland and Irish Heritage Trust building on Parnell Square*, private homes and landmarks including the *GPO, Kilmainham Gaol and EPIC*.\n\nThe wider programme also includes talks, workshops and exhibitions across the city.\n\n*Open House Junior* takes place on *10 & 11 October*, with family-friendly architecture workshops and tours.\n\n*All events are free*, although advance booking is required for many.",
+    "details": "",
+    "large": false,
+    "bodyLarge": false,
+    "pinned": false,
+    "bodyTone": "grey",
+    "detailsTone": "light",
+    "image": 495,
+    "position": "bottom",
+    "arrow": false,
+    "arrowColour": "light"
+  },
+  "cut": "clean",
+  "seed": 18473562,
+  "view": {
+    "x": 50,
+    "y": 50,
+    "zoom": 1
+  },
+  "photo": "what-you-can-see.jpg",
+  "saved": "2026-09-30T16:25:11.178Z",
+  "updated": "2026-09-30T16:25:11.178Z"
+}

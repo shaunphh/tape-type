@@ -1,0 +1,27 @@
+{
+  "name": "Twinkeltown Returns",
+  "note": "RETURNING / NEW THIS YEAR",
+  "words": {
+    "label": "",
+    "title": "Smithfield Returns",
+    "body": "TwinkleTown will return to Smithfield Square this Christmas, bringing back its mix of festive attractions and entertainment.\n\nVisitors can expect ice skating, a Big Wheel, vintage funfair, live music, festive food and an Irish makers’ market.",
+    "details": "**ICE RINK · BIG WHEEL · FUNFAIR** \n**LIVE MUSIC · FOOD · IRISH MAKERS** \n**AND MORE**\n\n",
+    "large": true,
+    "bodyLarge": true,
+    "pinned": false,
+    "bodyTone": "grey",
+    "detailsTone": "light",
+    "image": 564,
+    "position": "top",
+    "arrow": true,
+    "arrowColour": "yellow"
+  },
+  "view": {
+    "x": 50,
+    "y": 60.203244362416065,
+    "zoom": 1
+  },
+  "photo": "twinkeltown-returns.jpg",
+  "saved": "2026-09-30T18:15:21.580Z",
+  "updated": "2026-09-30T18:15:21.580Z"
+}

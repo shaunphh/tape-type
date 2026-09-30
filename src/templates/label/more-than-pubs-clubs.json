@@ -1,0 +1,29 @@
+{
+  "name": "More than pubs & clubs",
+  "note": "Further Details",
+  "words": {
+    "label": "MORE THAN PUBS & CLUBS",
+    "title": "",
+    "body": "Dublin’s night-time economy covers everything happening between *6pm and 6am* - including culture, transport, safety, hospitality and public space.\n\nSpeakers also called for greater support for *grassroots venues*, which play a key role in giving emerging Irish artists somewhere to develop.",
+    "details": "**6PM → 6AM**\nCulture · transport · safety · music · hospitality\n\n",
+    "large": false,
+    "bodyLarge": false,
+    "pinned": false,
+    "bodyTone": "grey",
+    "detailsTone": "grey",
+    "image": 604,
+    "position": "top",
+    "arrow": false,
+    "arrowColour": "light"
+  },
+  "cut": "clean",
+  "seed": 18473562,
+  "view": {
+    "x": 50,
+    "y": 50,
+    "zoom": 1
+  },
+  "photo": "more-than-pubs-clubs.jpg",
+  "saved": "2026-09-30T17:43:13.826Z",
+  "updated": "2026-09-30T17:43:13.826Z"
+}

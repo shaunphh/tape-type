@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { BRAND, type Layer } from './artwork'
 import { furnitureBoxes } from './furniture'
 import { wrapText } from './geometry'
-import { BODY, DETAILS, FILL_SMALLEST, TONES, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, PAGE_TYPE, SEMI, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, PAGE_KINDS, backToExample, isExample, readLines, sanitizeInside, switchKind, type MeasureInk, type MeasureWidth, type Run } from './inside'
+import { BODY, DETAILS, FILL_SMALLEST, TONES, IMAGE_HEIGHTS, INSIDE_MARKS, LABEL, PAGE_MARGIN, PAGE_TYPE, SEMI, STRONG, TEXT_WIDTH, TITLE, insideDefaults, insideSvg, layoutInside, EXAMPLE, PAGE_KINDS, pictureAt, readLines, readWords, sameWords, startFrom, sanitizeInside, switchKind, type MeasureInk, type MeasureWidth, type Run } from './inside'
 import { POST_FRAME } from './settings'
 
 // A stand-in for canvas: every character is half an em wide.
@@ -196,6 +196,47 @@ describe('inside page', () => {
     }
   })
 
+  it('takes a height of its own for the picture, up to the room the words leave', () => {
+    // A height of its own sets the picture as a set height does, wherever it is.
+    const own = page({ image: 480, position: 'top' })
+    expect(own.banner).toEqual({ x: 0, y: 0, width: 1080, height: 480 })
+    expect(Math.min(...texts(own.layers).map(capTop))).toBeGreaterThan(480 + 40)
+    expect(page({ image: 480, position: 'bottom' }).banner).toEqual({ x: 0, y: POST_FRAME.height - 480, width: 1080, height: 480 })
+    const pitch = BODY.size * BODY.lineHeight
+    for (const position of ['top', 'middle', 'bottom'] as const) {
+      // The tallest it can be is the height it has when it fills, whatever height it has now.
+      const fill = page({ image: 'fill', position, details: '22 September · 6.30pm' })
+      const tallest = fill.banner!.height
+      for (const image of ['short', 'medium', 'fill', 400] as const) expect(page({ image, position, details: '22 September · 6.30pm' }).tallest, `${position} ${image}`).toBe(tallest)
+      // At that height the words just fit; a line's height more and they run over by a line.
+      expect(page({ image: tallest, position, details: '22 September · 6.30pm' }).overflow).toBeNull()
+      expect(page({ image: tallest + Math.ceil(pitch), position, details: '22 September · 6.30pm' })).toMatchObject({ overflow: 'body', over: 1 })
+    }
+    // Words too long for any picture leave it the smallest; a page with none has no picture to size.
+    expect(page({ image: 'medium', body: Array(200).fill('words').join(' ') }).tallest).toBe(FILL_SMALLEST)
+    expect(page({ image: 'none' }).tallest).toBe(0)
+  })
+
+  it('snaps a dragged edge to the set heights and to Fill, and keeps it in the room there is', () => {
+    const snap = 12
+    // Near a set height it takes it; between them it is a height of its own, in whole pixels.
+    expect(pictureAt(335, 900, snap)).toBe('short')
+    expect(pictureAt(441.6, 900, snap)).toBe('medium')
+    expect(pictureAt(530, 900, snap)).toBe('tall')
+    expect(pictureAt(480.4, 900, snap)).toBe(480)
+    // It is never shorter than the smallest picture, nor taller than the room: dragged that far, it fills.
+    expect(pictureAt(100, 900, snap)).toBe(FILL_SMALLEST)
+    expect(pictureAt(2000, 900, snap)).toBe('fill')
+    expect(pictureAt(893, 900, snap)).toBe('fill')
+    // A set height taller than the room is not there to snap to; the nearer of two stops wins.
+    expect(pictureAt(545, 500, snap)).toBe('fill')
+    expect(pictureAt(538, 547, snap)).toBe('tall')
+    expect(pictureAt(544, 547, snap)).toBe('fill')
+    // With no snap it takes a set height only when it lands on it.
+    expect(pictureAt(430, 900, 0)).toBe('medium')
+    expect(pictureAt(431, 900, 0)).toBe(431)
+  })
+
   it('starts the words under the logo when the picture is not at the top', () => {
     const marks = furnitureBoxes({ logo: 'left', arrow: false }, POST_FRAME, INSIDE_MARKS)
     const logoBottom = marks.logo!.y + marks.logo!.height
@@ -295,18 +336,39 @@ describe('inside page', () => {
   })
 
   it('puts a page back to its example when asked, leaving the other kind and the label’s cut alone', () => {
-    expect(isExample(insideDefaults)).toBe(true)
+    const example = (kind: 'title' | 'label') => ({ key: EXAMPLE, kind, words: PAGE_KINDS[kind].sample })
+    expect(sameWords(insideDefaults, PAGE_KINDS.title.sample)).toBe(true)
     const typed = { ...insideDefaults, title: 'My own title', image: 'none' as const, arrow: false, cut: 'torn' as const }
-    expect(isExample(typed)).toBe(false)
-    expect(backToExample(typed)).toEqual({ ...insideDefaults, cut: 'torn' })
+    expect(sameWords(typed, PAGE_KINDS.title.sample)).toBe(false)
+    expect(startFrom(typed, example('title'))).toEqual({ ...insideDefaults, from: { title: EXAMPLE }, cut: 'torn' })
     // As a label page it goes back to the label page's example, and keeps the title page as it was typed.
     const asLabel = { ...switchKind(typed, 'label'), label: 'Line-up', body: 'Names' }
-    expect(isExample(asLabel)).toBe(false)
-    const back = backToExample(asLabel)
+    expect(sameWords(asLabel, PAGE_KINDS.label.sample)).toBe(false)
+    const back = startFrom(asLabel, example('label'))
     expect(back).toMatchObject({ kind: 'label', ...PAGE_KINDS.label.sample, cut: 'torn' })
-    expect(isExample(back)).toBe(true)
+    expect(sameWords(back, PAGE_KINDS.label.sample)).toBe(true)
     expect(back.kept.title).toMatchObject({ title: 'My own title', image: 'none', arrow: false })
     expect(switchKind(back, 'title')).toMatchObject({ title: 'My own title', image: 'none', arrow: false })
+  })
+
+  it('starts a page from a template: its kind, words, switches and label cut, keeping what was typed as the other kind', () => {
+    const words = { ...PAGE_KINDS.label.sample, label: 'However', body: '**6th overall**', details: '', bodyLarge: true, image: 'medium' as const, arrow: false }
+    const typed = { ...insideDefaults, title: 'My own title' }
+    const started = startFrom(typed, { key: 'however', kind: 'label', words, cut: 'rough', seed: 77 })
+    expect(started).toMatchObject({ kind: 'label', ...words, cut: 'rough', seed: 77, from: { label: 'however' } })
+    expect(started.kept.title).toMatchObject({ title: 'My own title' })
+    expect(sameWords(started, words)).toBe(true)
+    // Where each kind started from is its own: going back to the title page keeps both.
+    const titled = startFrom(switchKind(started, 'title'), { key: 'news-story', kind: 'title', words: { ...PAGE_KINDS.title.sample, title: 'News' } })
+    expect(titled).toMatchObject({ kind: 'title', title: 'News', from: { label: 'however', title: 'news-story' }, cut: 'rough', seed: 77 })
+    expect(switchKind(titled, 'label')).toMatchObject({ label: 'However', from: { label: 'however', title: 'news-story' } })
+  })
+
+  it('reads a template’s words against its kind’s example', () => {
+    expect(readWords({}, 'label')).toEqual(PAGE_KINDS.label.sample)
+    expect(readWords({ title: 'A title', image: 'huge', bodyTone: 'pink', large: 'yes' }, 'title')).toEqual({ ...PAGE_KINDS.title.sample, title: 'A title' })
+    // Unlike a page stored before the switches existed, a template missing one takes the example's.
+    expect(readWords({ body: 'A story' }, 'title')).toEqual({ ...PAGE_KINDS.title.sample, body: 'A story' })
   })
 
   it('wraps a long label inside the margins', () => {
@@ -612,9 +674,17 @@ describe('inside page', () => {
   })
 
   it('replaces invalid stored values instead of trusting them', () => {
-    expect(sanitizeInside({ kind: 'poster', kept: 'all', label: 9, cut: 'jagged', seed: 'seven', title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes', arrowColour: 'pink' })).toEqual(insideDefaults)
+    expect(sanitizeInside({ kind: 'poster', kept: 'all', from: 'news', label: 9, cut: 'jagged', seed: 'seven', title: 4, body: null, details: 7, image: 'huge', position: 'left', logo: 'middle', arrow: 'yes', arrowColour: 'pink' })).toEqual(insideDefaults)
+    // A picture's height of its own is kept in whole pixels, between the smallest picture and the page.
+    expect(sanitizeInside({ image: 480.6 }).image).toBe(481)
+    expect(sanitizeInside({ image: 12 }).image).toBe(FILL_SMALLEST)
+    expect(sanitizeInside({ image: 99999 }).image).toBe(POST_FRAME.height)
+    expect(sanitizeInside({ image: Number.NaN }).image).toBe(insideDefaults.image)
+    // Where each kind started is a template's key, or nothing.
+    expect(sanitizeInside({ from: { title: 'news-story', label: '../secrets', poster: 'x' } }).from).toEqual({ title: 'news-story' })
+    expect(sanitizeInside({ from: { title: 'News Story', label: 7 } }).from).toEqual({})
     const kept = { label: { label: 'Line-up', title: '', body: 'Names', details: '', large: true, bodyLarge: true, pinned: true, bodyTone: 'light', detailsTone: 'grey', image: 'short', position: 'bottom', arrow: true, arrowColour: 'dark' } }
-    const chosen = { kind: 'title', kept, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', large: true, bodyLarge: true, pinned: true, bodyTone: 'light', detailsTone: 'grey', image: 'none', position: 'middle', logo: 'left', arrow: false, arrowColour: 'yellow' }
+    const chosen = { kind: 'title', kept, from: { title: 'news-story', label: EXAMPLE }, label: 'Meet the artists', cut: 'torn', seed: 42, title: 'A title', body: 'A story', details: 'A date', large: true, bodyLarge: true, pinned: true, bodyTone: 'light', detailsTone: 'grey', image: 'none', position: 'middle', logo: 'left', arrow: false, arrowColour: 'yellow' }
     expect(sanitizeInside(chosen)).toEqual(chosen)
     // What is kept is checked too, and only for the kind the page is not.
     expect(sanitizeInside({ ...chosen, kept: { title: kept.label, label: { label: 5, body: 'Names', large: 'yes', bodyTone: 'pink', position: 'sideways', image: 'short', arrow: true, arrowColour: 'dark' } } }).kept)

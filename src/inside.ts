@@ -20,6 +20,29 @@ export const IMAGE_HEIGHTS: Record<Exclude<ImageHeight, 'fill'>, number> = { non
 export const FILL_SMALLEST = 260
 const IMAGE_CHOICES: readonly ImageHeight[] = ['none', 'short', 'medium', 'tall', 'fill']
 /**
+ * How tall a page's picture is: one of the heights above, or a height of its own in pixels, set by
+ * dragging the picture's edge. A height of its own is never less than a picture that fills.
+ */
+export type PictureHeight = ImageHeight | number
+const TALLEST_OWN = POST_FRAME.height
+/** The height a picture is measured at: a picture that fills starts at its smallest. */
+export const heightOf = (image: PictureHeight) => (typeof image === 'number' ? image : image === 'fill' ? FILL_SMALLEST : IMAGE_HEIGHTS[image])
+
+/**
+ * The height a dragged edge asks for, as the page will have it: kept between the smallest picture
+ * and the tallest the words leave room for, taking a set height or Fill when it comes within `snap`
+ * of one. Dragged all the way, the picture fills, so it goes on filling as the words change.
+ */
+export function pictureAt(wanted: number, tallest: number, snap: number): PictureHeight {
+  const most = Math.max(FILL_SMALLEST, tallest)
+  const height = Math.round(Math.min(most, Math.max(FILL_SMALLEST, wanted)))
+  const stops: [number, PictureHeight][] = [[IMAGE_HEIGHTS.short, 'short'], [IMAGE_HEIGHTS.medium, 'medium'], [IMAGE_HEIGHTS.tall, 'tall'], [most, 'fill']]
+  const near = stops
+    .filter(([at]) => at <= most && Math.abs(at - height) <= snap)
+    .sort((one, other) => Math.abs(one[0] - height) - Math.abs(other[0] - height))[0]
+  return near ? near[1] : height
+}
+/**
  * Where the picture goes. In the middle it follows the first thing on the page: the title, or
  * the story if there is no title.
  */
@@ -49,7 +72,7 @@ export interface PageWords {
   /** What the story and the highlight are set in: grey and white to start with. */
   bodyTone: TextTone
   detailsTone: TextTone
-  image: ImageHeight
+  image: PictureHeight
   position: PicturePosition
   arrow: boolean
   arrowColour: ColourChoice
@@ -59,6 +82,8 @@ export interface InsideOptions extends PageWords {
   kind: PageKind
   /** The other kind's words, kept for when the page is switched back to it. */
   kept: Partial<Record<PageKind, PageWords>>
+  /** The template each kind started from, by its key (see `templates.ts`). A kind not named started from its example. */
+  from: Partial<Record<PageKind, string>>
   /** How the label's tape is cut, and the seed of that cut. They are the label's own, not the cover's. */
   cut: ShapeMode
   seed: number
@@ -147,6 +172,8 @@ export interface InsideLayout {
   overflow: 'title' | 'body' | null
   /** How many lines too long the story and details are. */
   over: number
+  /** How tall the picture could be before the words run out of room: the height it has when it fills. 0 with none. */
+  tallest: number
   /** Words run under the arrow. It stands where it stands, so that is for the words to mend. */
   underArrow: boolean
   empty: boolean
@@ -505,9 +532,12 @@ export function layoutInside(
   }
 
   // The room is counted with the smallest picture the page may have; one that fills then takes what is left.
-  const measured = flow(fills ? FILL_SMALLEST : pictured ? IMAGE_HEIGHTS[content.image as Exclude<ImageHeight, 'fill'>] : 0)
+  const measuredAt = heightOf(content.image)
+  const measured = flow(measuredAt)
   const grows = fills && position !== 'bottom' && measured.spare >= 1
   const page = grows ? flow(FILL_SMALLEST + Math.floor(measured.spare)) : measured
+  // The room the words leave shrinks as the picture grows, a pixel for a pixel, wherever it is.
+  const tallest = pictured ? Math.max(FILL_SMALLEST, measuredAt + Math.floor(measured.spare)) : 0
 
   const { spare, bodyLines } = measured
   const over = spare < -0.5 ? Math.ceil((-spare - 0.5) / pitch) : 0
@@ -524,7 +554,7 @@ export function layoutInside(
       && layer.y + layer.size * 0.25 > arrow.y - clear && layer.y - layer.size * 0.75 < arrow.y + arrow.height + clear
   })
 
-  return { banner: page.banner, label: page.label, layers: page.layers, titleSize, titleLines: titleLines.length, bodyLines, bodyRoom, overflow, over, underArrow, empty: page.empty }
+  return { banner: page.banner, label: page.label, layers: page.layers, titleSize, titleLines: titleLines.length, bodyLines, bodyRoom, overflow, over, tallest, underArrow, empty: page.empty }
 }
 
 interface Picture {
@@ -624,14 +654,27 @@ export const PAGE_KINDS: Record<PageKind, { label: string; description: string; 
 }
 export const PAGE_KIND_NAMES = Object.keys(PAGE_KINDS) as PageKind[]
 
-const wordsOf = ({ label, title, body, details, large, bodyLarge, pinned, bodyTone, detailsTone, image, position, arrow, arrowColour }: PageWords): PageWords =>
+/** A page's words and switches, and nothing else it carries. */
+export const wordsOf = ({ label, title, body, details, large, bodyLarge, pinned, bodyTone, detailsTone, image, position, arrow, arrowColour }: PageWords): PageWords =>
   ({ label, title, body, details, large, bodyLarge, pinned, bodyTone, detailsTone, image, position, arrow, arrowColour })
 
-/** Whether the page is still the example it started as. */
-export const isExample = (inside: InsideOptions) => JSON.stringify(wordsOf(inside)) === JSON.stringify(wordsOf(PAGE_KINDS[inside.kind].sample))
+/** Whether a page's words and switches are still these: those of the template it started from, say. */
+export const sameWords = (page: PageWords, words: PageWords) => JSON.stringify(wordsOf(page)) === JSON.stringify(wordsOf(words))
 
-/** The page put back as it started: this kind's example. The other kind, and the label's cut, are left alone. */
-export const backToExample = (inside: InsideOptions): InsideOptions => ({ ...inside, ...wordsOf(PAGE_KINDS[inside.kind].sample) })
+/** Each kind's example is a template like any other, under this key, which no saved template can take. */
+export const EXAMPLE = 'example'
+/** A template's key is its file's name: small letters and numbers, joined by single dashes. */
+export const isTemplateKey = (key: unknown): key is string => typeof key === 'string' && key.length <= 40 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(key)
+
+/** What a page can be started from: its kind's example, or a template saved from the tool. */
+export interface PageStart {
+  key: string
+  kind: PageKind
+  words: PageWords
+  /** A label page's cut, and its seed. None leaves the label's cut as it is. */
+  cut?: ShapeMode
+  seed?: number
+}
 
 /** The page as the other kind: its own words are kept, and that kind's come back, or its example. */
 export function switchKind(inside: InsideOptions, kind: PageKind): InsideOptions {
@@ -640,10 +683,20 @@ export function switchKind(inside: InsideOptions, kind: PageKind): InsideOptions
   return { ...inside, ...(back ?? PAGE_KINDS[kind].sample), kind, kept: { ...others, [inside.kind]: wordsOf(inside) } }
 }
 
+/**
+ * The page started again from a template: as the template's kind, with its words and switches, and
+ * on a label page its cut. What was typed as the other kind is kept, as when switching kinds.
+ */
+export function startFrom(inside: InsideOptions, start: PageStart): InsideOptions {
+  const page = switchKind(inside, start.kind)
+  return { ...page, ...wordsOf(start.words), from: { ...page.from, [start.kind]: start.key }, cut: start.cut ?? page.cut, seed: start.seed ?? page.seed }
+}
+
 export const INSIDE_KEY = 'tape-type-inside-v1'
 export const insideDefaults: InsideOptions = {
   kind: 'title',
   kept: {},
+  from: {},
   ...PAGE_KINDS.title.sample,
   // One quiet cut, as on the labels of the Canva pages.
   cut: 'clean',
@@ -661,9 +714,15 @@ const COLOURS: readonly ColourChoice[] = ['auto', 'yellow', 'light', 'dark']
  * arrow, which both kinds once shared, what the page had before each kind had its own.
  */
 function sanitizeWords(stored: Record<string, unknown>, sample: PageWords, shared: Partial<Pick<PageWords, 'image' | 'arrow' | 'arrowColour'>> = {}): PageWords {
-  const words = (value: unknown, fallback: string) => (typeof value === 'string' ? value : fallback)
   // A page saved with words of its own, before a switch existed, was set the way every page then was.
-  const start = typeof stored.body === 'string' ? { ...sample, details: '', ...BEFORE } : sample
+  return wordsFrom(stored, sample, typeof stored.body === 'string' ? { ...sample, details: '', ...BEFORE } : sample, shared)
+}
+
+/** A template's words and switches, as untrusted as a stored page's: anything missing or wrong is its kind's example's. */
+export const readWords = (stored: Record<string, unknown>, kind: PageKind): PageWords => wordsFrom(stored, PAGE_KINDS[kind].sample, PAGE_KINDS[kind].sample)
+
+function wordsFrom(stored: Record<string, unknown>, sample: PageWords, start: PageWords, shared: Partial<Pick<PageWords, 'image' | 'arrow' | 'arrowColour'>> = {}): PageWords {
+  const words = (value: unknown, fallback: string) => (typeof value === 'string' ? value : fallback)
   return {
     label: words(stored.label, sample.label),
     title: words(stored.title, sample.title),
@@ -674,7 +733,9 @@ function sanitizeWords(stored: Record<string, unknown>, sample: PageWords, share
     pinned: typeof stored.pinned === 'boolean' ? stored.pinned : start.pinned,
     bodyTone: stored.bodyTone === 'grey' || stored.bodyTone === 'light' ? stored.bodyTone : start.bodyTone,
     detailsTone: stored.detailsTone === 'grey' || stored.detailsTone === 'light' ? stored.detailsTone : start.detailsTone,
-    image: IMAGE_CHOICES.includes(stored.image as ImageHeight) ? stored.image as ImageHeight : shared.image ?? sample.image,
+    image: IMAGE_CHOICES.includes(stored.image as ImageHeight)
+      ? stored.image as ImageHeight
+      : typeof stored.image === 'number' && Number.isFinite(stored.image) ? Math.round(Math.min(TALLEST_OWN, Math.max(FILL_SMALLEST, stored.image))) : shared.image ?? sample.image,
     position: POSITIONS.includes(stored.position as PicturePosition) ? stored.position as PicturePosition : sample.position,
     arrow: typeof stored.arrow === 'boolean' ? stored.arrow : shared.arrow ?? sample.arrow,
     arrowColour: COLOURS.includes(stored.arrowColour as ColourChoice) ? stored.arrowColour as ColourChoice : shared.arrowColour ?? sample.arrowColour,
@@ -700,9 +761,17 @@ export function sanitizeInside(stored: Record<string, unknown>, arrowWas?: Colou
     const words = storedKept[name]
     if (name !== kind && words && typeof words === 'object') kept[name] = sanitizeWords(words as Record<string, unknown>, PAGE_KINDS[name].sample, shared)
   }
+  // Which template each kind started from. One that has since gone is looked up and not found, so its example stands in.
+  const from: InsideOptions['from'] = {}
+  const storedFrom = stored.from && typeof stored.from === 'object' ? stored.from as Record<string, unknown> : {}
+  for (const name of PAGE_KIND_NAMES) {
+    const key = storedFrom[name]
+    if (isTemplateKey(key)) from[name] = key
+  }
   return {
     kind,
     kept,
+    from,
     ...own,
     cut: CUTS.includes(stored.cut as ShapeMode) ? stored.cut as ShapeMode : insideDefaults.cut,
     seed: typeof stored.seed === 'number' && Number.isFinite(stored.seed) ? Math.min(4294967295, Math.max(1, Math.floor(stored.seed))) : insideDefaults.seed,

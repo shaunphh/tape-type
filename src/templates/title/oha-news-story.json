@@ -1,0 +1,27 @@
+{
+  "name": "OHA News story",
+  "note": "The headline, the story",
+  "words": {
+    "label": "",
+    "title": "Open House Dublin to open doors to more than 200 places",
+    "body": "Open House Dublin returns from *10–18 October*, giving the public the chance to explore some of the city’s most interesting buildings, neighbourhoods and architectural spaces for free.\n\nNow in its 21st year, the festival will feature more than \n*200 tours, talks, workshops, exhibitions and events* across Dublin city and county.\n",
+    "details": "",
+    "large": true,
+    "bodyLarge": false,
+    "pinned": false,
+    "bodyTone": "grey",
+    "detailsTone": "light",
+    "image": 657,
+    "position": "top",
+    "arrow": true,
+    "arrowColour": "light"
+  },
+  "view": {
+    "x": 50,
+    "y": 50,
+    "zoom": 1
+  },
+  "photo": "oha-news-story.jpg",
+  "saved": "2026-09-30T16:24:28.532Z",
+  "updated": "2026-09-30T16:24:28.532Z"
+}

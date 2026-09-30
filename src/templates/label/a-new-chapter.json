@@ -1,0 +1,29 @@
+{
+  "name": "A New Chapter",
+  "note": "end of an era / quick comeback story",
+  "words": {
+    "label": "BACK IN TIME FOR CHRISTMAS",
+    "title": "",
+    "body": "Scott’s will relaunch upstairs at *The Deer’s Head on Lower Garfield Street* with its annual *Big Christmas Bash* across *18, 19 & 20 December*.\n\nThe move also brings the club closer to the heart of Belfast, with plans to return to its regular programme of *live jazz every Friday night*.",
+    "details": "**18 · 19 · 20 DECEMBER**\n**THE DEER’S HEAD · BELFAST**\n",
+    "large": true,
+    "bodyLarge": false,
+    "pinned": true,
+    "bodyTone": "grey",
+    "detailsTone": "light",
+    "image": 653,
+    "position": "top",
+    "arrow": false,
+    "arrowColour": "light"
+  },
+  "cut": "clean",
+  "seed": 18473562,
+  "view": {
+    "x": 50,
+    "y": 50,
+    "zoom": 1
+  },
+  "photo": "a-new-chapter.jpg",
+  "saved": "2026-09-30T19:22:14.533Z",
+  "updated": "2026-09-30T19:22:14.533Z"
+}

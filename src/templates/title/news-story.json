@@ -1,0 +1,27 @@
+{
+  "name": "News story",
+  "note": "The headline, the story, then the numbers",
+  "words": {
+    "label": "",
+    "title": "Dublin ranked 6th among world’s largest cities but scores poorly for quality of life",
+    "body": "Dublin has been ranked the sixth-best city in the world overall, according to the 2026 Global Cities Index from Oxford Economics.\n\nThe capital ranked 6th out of 1,000 cities worldwide, behind New York, London, Paris, Seattle and San Francisco.",
+    "details": "*Where Dublin*\n*Ranked Strongly*\n\n**9th**\nEnvironment\n**10th**\nGovernance",
+    "large": true,
+    "bodyLarge": false,
+    "pinned": false,
+    "bodyTone": "grey",
+    "detailsTone": "light",
+    "image": "medium",
+    "position": "top",
+    "arrow": true,
+    "arrowColour": "light"
+  },
+  "view": {
+    "x": 100,
+    "y": 50,
+    "zoom": 1
+  },
+  "photo": "news-story.jpg",
+  "saved": "2026-09-30T09:00:00.000Z",
+  "updated": "2026-09-30T15:38:32.000Z"
+}

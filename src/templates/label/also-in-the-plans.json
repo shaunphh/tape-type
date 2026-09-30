@@ -1,0 +1,29 @@
+{
+  "name": "Also in the plans",
+  "note": "More Lighthouse plans",
+  "words": {
+    "label": "ALSO IN THE PLANS",
+    "title": "",
+    "body": "A redesigned café/bar, additional toilets and upgrades to the Smithfield Square entrance, including a new canopy, lighting, signage and digital displays.",
+    "details": "The plans are currently awaiting a decision from Dublin City Council.",
+    "large": false,
+    "bodyLarge": true,
+    "pinned": false,
+    "bodyTone": "light",
+    "detailsTone": "grey",
+    "image": 715,
+    "position": "bottom",
+    "arrow": false,
+    "arrowColour": "light"
+  },
+  "cut": "clean",
+  "seed": 18473562,
+  "view": {
+    "x": 50,
+    "y": 50,
+    "zoom": 1
+  },
+  "photo": "also-in-the-plans.jpg",
+  "saved": "2026-09-30T17:08:42.971Z",
+  "updated": "2026-09-30T17:08:42.971Z"
+}

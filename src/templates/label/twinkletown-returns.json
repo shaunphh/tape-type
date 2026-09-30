@@ -1,0 +1,29 @@
+{
+  "name": "Twinkletown Returns",
+  "note": "RETURNING / NEW THIS YEAR",
+  "words": {
+    "label": "NEW THIS YEAR",
+    "title": "",
+    "body": "*A second TwinkleTown* will open in *St Patrick’s Park in the Liberties*, featuring Christmas lighting, themed carousels and choral performances.\n\nDublin’s *Winter Lights* programme will also return in December, with festive projections and installations at locations including the *GPO and City Hall*.",
+    "details": "*And this year, the lights will stay up into January.*\n\n",
+    "large": true,
+    "bodyLarge": true,
+    "pinned": false,
+    "bodyTone": "grey",
+    "detailsTone": "grey",
+    "image": 604,
+    "position": "bottom",
+    "arrow": false,
+    "arrowColour": "light"
+  },
+  "cut": "clean",
+  "seed": 18473562,
+  "view": {
+    "x": 50,
+    "y": 50,
+    "zoom": 1
+  },
+  "photo": "twinkletown-returns.jpg",
+  "saved": "2026-09-30T18:16:00.321Z",
+  "updated": "2026-09-30T18:16:00.321Z"
+}

@@ -1,0 +1,28 @@
+{
+  "name": "However",
+  "note": "A turn in the story: the numbers, then what they mean",
+  "words": {
+    "label": "However",
+    "title": "",
+    "body": "**6th overall**\n**90th for quality of life**\n\nThe city’s quality-of-life ranking was considerably lower, with Dublin placed 90th globally in this category. Housing costs were highlighted as a significant challenge affecting the city’s performance.",
+    "details": "The results highlight the contrast between Dublin’s strong economic and environmental performance and some of the challenges facing people living in the capital, particularly around housing and affordability.",
+    "large": false,
+    "bodyLarge": true,
+    "pinned": false,
+    "bodyTone": "light",
+    "detailsTone": "grey",
+    "image": "medium",
+    "position": "bottom",
+    "arrow": false,
+    "arrowColour": "light"
+  },
+  "cut": "clean",
+  "view": {
+    "x": 50,
+    "y": 50,
+    "zoom": 1
+  },
+  "photo": "however.jpg",
+  "saved": "2026-09-30T09:00:01.000Z",
+  "updated": "2026-09-30T15:38:32.000Z"
+}

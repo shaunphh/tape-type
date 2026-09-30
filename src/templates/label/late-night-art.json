@@ -1,0 +1,29 @@
+{
+  "name": "Late Night Art",
+  "note": "What's new/What's on this month",
+  "words": {
+    "label": "WHAT’S ON THIS MONTH?",
+    "title": "",
+    "body": "Expect exhibitions, workshops, installations and hands-on activities across the city.\n\nAt *Golden Thread Gallery*, visitors can make mini photo frames alongside its current exhibitions, while *Vault Artist Studios* launches _Time of the Signs: Border Crossing_, featuring work by more than 40 artists.\n\n*Bramble Studio* is also joining in, with free chances to try pottery painting, wheel throwing, rug tufting and neon painting.",
+    "details": "*A Digital Map will also be available to help plan your night across 40+ locations*\n",
+    "large": true,
+    "bodyLarge": false,
+    "pinned": false,
+    "bodyTone": "grey",
+    "detailsTone": "light",
+    "image": 490,
+    "position": "bottom",
+    "arrow": false,
+    "arrowColour": "light"
+  },
+  "cut": "clean",
+  "seed": 18473562,
+  "view": {
+    "x": 50,
+    "y": 11.929186358737567,
+    "zoom": 1
+  },
+  "photo": "late-night-art.jpg",
+  "saved": "2026-09-30T18:57:22.405Z",
+  "updated": "2026-09-30T18:57:22.405Z"
+}

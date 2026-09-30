@@ -759,27 +759,93 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
 /* The inside page’s picture sits in a banner across the page, not over the whole of it. */
 .photo-empty.banner { inset: 0 0 auto; }
 /* Changing the photo, from the corner of the picture: quiet until it is wanted, and never part of the artwork. */
-.photo-change {
-  display: inline-flex;
+.photo-chips {
+  display: flex;
   position: absolute;
   left: 0;
   z-index: 4;
+  gap: 6px;
+  margin: 0 0 0 8px;
+  transform: translateY(calc(-100% - 8px));
+}
+.photo-change {
+  display: inline-flex;
+  position: relative;
   align-items: center;
   gap: 5px;
-  margin: 0 0 0 8px;
   padding: 5px 8px 4px;
   color: rgba(255,255,255,.82);
   background: rgba(16,16,16,.46);
+  border: 0;
+  font-family: inherit;
   font-size: 8.5px;
   font-weight: 600;
   letter-spacing: .07em;
   text-transform: uppercase;
-  transform: translateY(calc(-100% - 8px));
   opacity: .78;
   cursor: pointer;
   transition: opacity .15s, background .15s;
 }
 .photo-change:hover, .photo-change:focus-within { background: rgba(16,16,16,.82); opacity: 1; }
+/* The edge of an inside page's picture that faces the words: dragged, it sets the picture's height. Never exported. */
+.picture-edge {
+  display: grid;
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  height: 18px;
+  place-items: center;
+  transform: translateY(-50%);
+  cursor: ns-resize;
+  touch-action: none;
+  outline: none;
+}
+.picture-edge::before {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--yellow);
+  content: '';
+  opacity: 0;
+  transition: opacity .15s;
+}
+.picture-grip {
+  position: relative;
+  width: 42px;
+  height: 8px;
+  background: rgba(255,255,255,.92);
+  border: 1px solid rgba(16,16,16,.5);
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+  opacity: .75;
+  transition: opacity .15s, background .15s;
+}
+.picture-edge:hover::before, .picture-edge.resizing::before, .picture-edge:focus-visible::before { opacity: .9; }
+.picture-edge:hover .picture-grip, .picture-edge.resizing .picture-grip, .picture-edge:focus-visible .picture-grip { background: var(--yellow); opacity: 1; }
+/* The height, while dragging: on the picture's side of the edge, so the words stay in view. */
+.picture-size {
+  position: absolute;
+  left: 50%;
+  padding: 4px 7px 3px;
+  color: #fff;
+  background: rgba(16,16,16,.85);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+/* While the edge moves, the change-photo corner steps out of the height's way. */
+.preview-stage:has(.picture-edge.resizing) .photo-chips { opacity: 0; }
+.picture-edge.under .picture-size { bottom: calc(50% + 10px); }
+.picture-edge.over .picture-size { top: calc(50% + 10px); }
+@media (pointer: coarse) { .picture-edge { height: 30px; } }
 .photo-change input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
 /* What is being made sits above the canvas, where it can always be seen. */
 .making-switcher { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: #dcd9d2; }
@@ -819,6 +885,32 @@ textarea.title-input { font-family: 'Barlow', Arial, sans-serif; font-size: 18px
   cursor: pointer;
 }
 .format-bar button:hover { border-color: var(--ink); }
+/* What each button puts round the words, shown on hover or keyboard focus, under the button and in from its right. */
+.format-bar button { position: relative; }
+.format-tip {
+  display: grid;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: -1px;
+  z-index: 10;
+  gap: 3px;
+  padding: 6px 8px;
+  color: #fff;
+  background: var(--ink);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.2;
+  text-align: left;
+  white-space: nowrap;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .1s, visibility .1s;
+}
+.format-tip strong { font-family: 'Barlow', Arial, sans-serif; font-weight: 700; letter-spacing: .02em; }
+.format-bar button:hover .format-tip, .format-bar button:focus-visible .format-tip { visibility: visible; opacity: 1; transition-delay: .15s; }
 .format-bar .bold { font-weight: 700; }
 .format-bar .semi, .cheatsheet .semi { font-weight: 600; }
 .format-bar .italic { font-style: italic; }
@@ -843,6 +935,46 @@ textarea.title-input { font-family: 'Barlow', Arial, sans-serif; font-size: 18px
 .cheatsheet dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 9px 0; font-family: 'Barlow', Arial, sans-serif; font-size: 12px; }
 .cheatsheet dt { color: var(--ink); font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; }
 .cheatsheet dd { margin: 0; }
+/* The templates a page can start from, numbered, and the one it started from marked. */
+.template-list { display: grid; background: #fff; border: 1px solid #d3d0c8; }
+.template-list button {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-top: 1px solid #efede8;
+  text-align: left;
+  cursor: pointer;
+}
+.template-list button:first-child { border-top: 0; }
+.template-list button:hover { background: #f4f2ec; }
+.template-list button.active { background: #f4f2ec; box-shadow: inset 3px 0 0 var(--ink); }
+.template-number { align-self: start; padding-top: 2px; color: #6f6c66; font-size: 9px; letter-spacing: .1em; }
+.template-name { display: grid; gap: 3px; min-width: 0; }
+.template-name strong { font-size: 13px; font-weight: 700; line-height: 1.1; }
+.template-name small { color: #6b6862; font-size: 10px; line-height: 1.3; }
+.template-state { color: var(--ink); font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.template-state svg { display: block; }
+.template-form { display: grid; gap: 8px; }
+.template-own { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.template-form .panel-button:disabled { opacity: .4; cursor: not-allowed; }
+.text-input {
+  display: block;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid #cbc8c0;
+  border-radius: 0;
+  outline: none;
+  font-size: 13px;
+}
+.text-input:focus { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
 /* A field the page has no use for stays on show, switched off. */
 textarea:disabled, .eyebrow-input:disabled { background: #e9e7e1; border-style: dashed; cursor: not-allowed; }
 textarea.title-input:disabled { min-height: 0; height: 36px; resize: none; }

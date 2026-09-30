@@ -9,6 +9,7 @@ import {
   Download,
   Image as ImageIcon,
   Lock,
+  Save,
   Sparkles,
   Unlock,
   Upload,
@@ -48,10 +49,10 @@ import {
 import { buildShape, nextSeed } from './geometry'
 import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type HeadlineLayout, type Measure } from './layout'
 import { LINE_HEIGHT, applyLocks, firstSinceHouseCut, isBarred, isLocked, lockedLineGap, unlocked, withHouseCut } from './locks'
-import labelSample from './assets/samples/label-page.jpg'
-import titleSample from './assets/samples/title-page.jpg'
 import {
   BODY,
+  EXAMPLE,
+  FILL_SMALLEST,
   INSIDE_MARKS,
   PAGE_KINDS,
   PAGE_KIND_NAMES,
@@ -62,11 +63,13 @@ import {
   drawInside,
   insideSvg,
   layoutInside,
-  backToExample,
-  isExample,
   loadInside,
+  pictureAt,
+  sameWords,
   saveInside,
+  startFrom,
   switchKind,
+  wordsOf,
   type ImageHeight,
   type InsideOptions,
   type MeasureInk,
@@ -77,6 +80,8 @@ import {
   type TextTone,
 } from './inside'
 import { markSelection } from './marks'
+import { NEW_KEY_URL, REPOSITORY, loadKey, storeKey } from './github'
+import { TEMPLATES, pictureOf, publishTemplate, removeTemplate, saveTemplate, slugOf, templateFor, unpublishTemplate, withPublished, type PageTemplate, type Published } from './templates'
 import { TYPE_RANGE, TYPE_WEIGHTS, WEIGHT_NAMES, describePageType, isLocal, loadPageType, sameType, savePageType } from './pageType'
 import { measureInk } from './metrics'
 import { CENTRED, MAX_ZOOM, dragPhoto, photoRect, photoSlack, visiblePart, type PhotoView } from './photo'
@@ -131,10 +136,6 @@ const toneOptions: { value: TextTone; label: string }[] = [
 ]
 /** Where a photo can be put. Each has its own: one chosen for a cover is not the inside page's too. */
 type Place = 'cover' | 'video' | PageKind
-/** The pictures an inside page starts with, so it reads as a page before a photo is chosen. They are never exported. */
-const SAMPLE_PICTURES: Record<PageKind, string> = { title: titleSample, label: labelSample }
-/** How each sample is framed to start with: the Culture Night screen sits to the right of its photo, the portrait's face near the top of its. */
-const SAMPLE_VIEWS: Record<PageKind, PhotoView> = { title: { ...CENTRED, x: 100 }, label: { ...CENTRED, y: 12 } }
 const cutOptions: { value: ShapeMode; label: string }[] = [
   { value: 'plain', label: 'Plain' },
   { value: 'torn', label: 'Torn' },
@@ -193,6 +194,8 @@ const modes: { value: ShapeMode; label: string; description: string }[] = [
   { value: 'rough', label: 'Rough cut', description: 'Sharper transitions' },
 ]
 
+/** How near, in pixels on screen, a dragged picture edge comes to a set height before it takes it. */
+const EDGE_SNAP = 6
 // The largest export is PNG 3×: photos are kept at up to the size that needs, and no larger.
 const LARGEST_EXPORT = 3
 // Phones refuse a canvas much bigger than this, and the whole photo is kept so it can be repositioned.
@@ -365,13 +368,35 @@ async function cropPhoto(photo: Photo, view: PhotoView, frame: Size) {
     if (!context) throw new Error('unreadable')
     context.imageSmoothingQuality = 'high'
     context.drawImage(photo.image, part.x, part.y, part.width, part.height, 0, 0, canvas.width, canvas.height)
-    const blob = await toJpeg(canvas, 0.88)
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result))
-      reader.onerror = () => reject(reader.error)
-      reader.readAsDataURL(blob)
-    })
+    return await dataUrlOf(await toJpeg(canvas, 0.88))
+  } finally {
+    canvas.width = 0
+    canvas.height = 0
+  }
+}
+
+const dataUrlOf = (blob: Blob) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onload = () => resolve(String(reader.result))
+  reader.onerror = () => reject(reader.error)
+  reader.readAsDataURL(blob)
+})
+
+/**
+ * A photo as a template keeps it, for its sample picture: whole, so it can still be moved, and no
+ * bigger than a page needs (1600px along its longer side, and at least the page's width across).
+ */
+async function templatePicture(photo: Photo) {
+  const scale = Math.min(1, Math.max(1600 / Math.max(photo.width, photo.height), POST_FRAME.width / photo.width))
+  const canvas = document.createElement('canvas')
+  try {
+    canvas.width = Math.max(1, Math.round(photo.width * scale))
+    canvas.height = Math.max(1, Math.round(photo.height * scale))
+    const context = canvas.getContext('2d')
+    if (!context) throw new Error('this device could not draw the photo')
+    context.imageSmoothingQuality = 'high'
+    context.drawImage(photo.image, 0, 0, canvas.width, canvas.height)
+    return await dataUrlOf(await toJpeg(canvas, 0.86))
   } finally {
     canvas.width = 0
     canvas.height = 0
@@ -568,11 +593,17 @@ function FormatBar({ label, onMark }: { label: string; onMark: (sign: string) =>
           key={format.sign}
           className={format.className}
           aria-label={format.name}
-          title={format.sign === '- ' ? 'Bullets: start a line with a dash' : `${format.name}: ${format.sign}words${format.sign}`}
           // Pressing a button must not take the box's picked words away from it.
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => onMark(format.sign)}
-        >{format.label}</button>
+        >
+          {format.label}
+          {/* Its own tip, not the browser's: that one waits, and on a Mac shows only in the window in use. */}
+          <span className="format-tip" aria-hidden="true">
+            <strong>{format.name}</strong>
+            {format.sign === '- ' ? 'a dash and a space' : `${format.sign}words${format.sign}`}
+          </span>
+        </button>
       ))}
     </div>
   )
@@ -591,16 +622,36 @@ function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [inside, setInside] = useState<InsideOptions>(() => loadInside(cover.arrowColour))
-  // Putting a page back to its example is asked twice, since it takes the words typed with it.
-  const [resetAsked, setResetAsked] = useState(false)
+  // The template the page started from, and whether its words or switches have been changed since.
+  // Templates are saved into the project where the tool runs on its dev server, and into the repository
+  // on GitHub from the published tool opened with ?unlocked. Anywhere else they are only chosen from.
+  const savingTo = useMemo<'files' | 'github' | null>(() => (import.meta.env.DEV ? 'files' : unlocked() ? 'github' : null), [])
+  const [githubKey, setGithubKey] = useState(loadKey)
+  const [keyDraft, setKeyDraft] = useState('')
+  // Saved to GitHub or taken off it in this visit: listed straight away, before the published tool is rebuilt with them.
+  const [published, setPublished] = useState<Published>({ saved: [], removed: [] })
+  const templates = useMemo(() => withPublished(TEMPLATES, published), [published])
+  const template = templateFor(inside.kind, inside.from[inside.kind], templates)
+  const changedFromTemplate = !sameWords(inside, template.words)
+  // Starting a changed page again from a template is asked first, since it takes the words typed with it.
+  const [replaceAsked, setReplaceAsked] = useState<PageTemplate | null>(null)
+  // Saving the page as a template, where the tool runs on its dev server: the name and line being typed.
+  const [templateDraft, setTemplateDraft] = useState<{ name: string; note: string; keepPhoto: boolean } | null>(null)
+  const [savingTemplate, setSavingTemplate] = useState(false)
+  const [removeAsked, setRemoveAsked] = useState(false)
+  // What was last saved or removed, said under the button until the next go.
+  const [templateNote, setTemplateNote] = useState<string | null>(null)
   // A photo goes where it was chosen and nowhere else, with its own position and its own background.
   const place: Place = cover.kind === 'video' ? 'video' : cover.page === 'inside' ? inside.kind : 'cover'
   const [photos, setPhotos] = useState<Partial<Record<Place, Photo>>>({})
   const [views, setViews] = useState<Partial<Record<Place, PhotoView>>>({})
   const [backgrounds, setBackgrounds] = useState<Partial<Record<Place, PreviewBackground>>>({})
-  const photo = photos[place] ?? null
-  // A place with no photo of its own is showing nothing, or a sample as the sample is framed.
-  const startView = place === 'title' || place === 'label' ? SAMPLE_VIEWS[place] : CENTRED
+  // A photo of one's own is set aside while a template's picture is on show, with the framing it had, to bring back.
+  const [aside, setAside] = useState<Partial<Record<Place, PhotoView>>>({})
+  const photo = aside[place] ? null : photos[place] ?? null
+  const photoAside = aside[place] ? photos[place] ?? null : null
+  // A place with no photo of its own is showing nothing, or its template's sample as the template frames it.
+  const startView = place === 'title' || place === 'label' ? template.view : CENTRED
   const view = views[place] ?? startView
   const setView = useCallback((next: PhotoView | ((current: PhotoView) => PhotoView)) => {
     setViews((current) => ({ ...current, [place]: typeof next === 'function' ? next(current[place] ?? startView) : next }))
@@ -609,7 +660,9 @@ function App() {
   const setPreviewBackground = useCallback((background: PreviewBackground) => {
     setBackgrounds((current) => ({ ...current, [place]: background }))
   }, [place])
-  const [samplePhotos, setSamplePhotos] = useState<Partial<Record<PageKind, Photo>>>({})
+  // Sample pictures, by address, as each is first shown.
+  const [samplePhotos, setSamplePhotos] = useState<Partial<Record<string, Photo>>>({})
+  const samplePicture = pictureOf(template)
   // Other sizes and weights can be tried where the tool runs on this machine; the published tool keeps its own.
   const local = useMemo(() => isLocal(), [])
   const [pageType, setPageType] = useState<PageType>(() => loadPageType())
@@ -628,6 +681,9 @@ function App() {
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const detailsRef = useRef<HTMLTextAreaElement>(null)
   const dragRef = useRef<Drag | null>(null)
+  // Dragging the edge of an inside page's picture: where the drag began, and what the picture then was.
+  const resizeRef = useRef<{ pointerId: number; startY: number; from: number; tallest: number; scale: number; grows: 1 | -1 } | null>(null)
+  const [resizing, setResizing] = useState(false)
   const noticeTimer = useRef<number | undefined>(undefined)
   const treatments = useRef<Partial<Record<CoverStyle, Treatment>>>({})
   const cropRef = useRef<{ key: string; crop: Promise<string> } | null>(null)
@@ -707,18 +763,18 @@ function App() {
   )
   const runs = useMemo(() => textRuns(isInside ? page.layers : layers), [isInside, page.layers, layers])
 
-  // An inside page starts with a sample picture, so it reads as a page before a photo is chosen.
+  // An inside page starts with its template's sample picture, so it reads as a page before a photo is chosen.
   useEffect(() => {
-    if (!isInside || samplePhotos[inside.kind]) return
+    if (!isInside || samplePhotos[samplePicture]) return
     let wanted = true
-    const kind = inside.kind
-    loadImage(SAMPLE_PICTURES[kind])
-      .then((image) => { if (wanted) setSamplePhotos((current) => ({ ...current, [kind]: { url: SAMPLE_PICTURES[kind], image, width: image.naturalWidth, height: image.naturalHeight } })) })
+    const url = samplePicture
+    loadImage(url)
+      .then((image) => { if (wanted) setSamplePhotos((current) => ({ ...current, [url]: { url, image, width: image.naturalWidth, height: image.naturalHeight } })) })
       .catch(() => undefined)
     return () => { wanted = false }
-  }, [isInside, inside.kind, samplePhotos])
+  }, [isInside, samplePicture, samplePhotos])
   // The photo in play: behind a cover, or in the inside page's banner (its sample, until one is chosen).
-  const shownPhoto = isInside ? (page.banner ? photo ?? samplePhotos[inside.kind] ?? null : null) : previewBackground === 'photo' ? photo : null
+  const shownPhoto = isInside ? (page.banner ? photo ?? samplePhotos[samplePicture] ?? null : null) : previewBackground === 'photo' ? photo : null
   const sampleShown = isInside && Boolean(shownPhoto) && !photo
   const photoFrame = isInside && page.banner ? page.banner : frame
   // How far down the page the inside page's picture starts.
@@ -806,6 +862,131 @@ function App() {
       area.focus()
       area.setSelectionRange(marked.from, marked.to)
     })
+  }
+
+  /**
+   * Starts the page again from a template, which shows its own picture, framed as it has it. A photo
+   * of one's own is set aside with its framing, and Use your photo brings it back.
+   */
+  const chooseTemplate = (next: PageTemplate) => {
+    setInside((current) => startFrom(current, next))
+    if (photos[next.kind] && !aside[next.kind]) setAside((current) => ({ ...current, [next.kind]: views[next.kind] ?? CENTRED }))
+    setViews((current) => {
+      const rest = { ...current }
+      delete rest[next.kind]
+      return rest
+    })
+    setReplaceAsked(null)
+    setTemplateNote(null)
+  }
+
+  /** Puts the photo that was set aside back on the page, as it was framed. */
+  const useOwnPhoto = () => {
+    const framed = aside[place]
+    if (!framed) return
+    setViews((current) => ({ ...current, [place]: framed }))
+    setAside((current) => {
+      const rest = { ...current }
+      delete rest[place]
+      return rest
+    })
+  }
+
+  /** A page still as its template has it takes another straight away; one that has been changed is asked first. */
+  const pickTemplate = (next: PageTemplate) => {
+    if (changedFromTemplate) setReplaceAsked(next)
+    else if (next.key !== template.key) chooseTemplate(next)
+  }
+
+  /** Saving starts a new template; saving over the one the page came from is asked for by name. */
+  const openTemplateDraft = (over: boolean) => {
+    setTemplateDraft({ name: over ? template.name : '', note: over ? template.note : '', keepPhoto: true })
+    setRemoveAsked(false)
+    setTemplateNote(null)
+  }
+
+  const keepGithubKey = () => {
+    const key = keyDraft.trim()
+    if (!key) return
+    storeKey(key)
+    setGithubKey(key)
+    setKeyDraft('')
+  }
+
+  const forgetGithubKey = () => {
+    storeKey('')
+    setGithubKey('')
+    setTemplateDraft(null)
+    setRemoveAsked(false)
+  }
+
+  const saveAsTemplate = async () => {
+    if (!templateDraft || savingTemplate) return
+    const keepOwn = Boolean(photo) && templateDraft.keepPhoto
+    setSavingTemplate(true)
+    try {
+      // Its picture: the photo on the page if that is kept, or else the sample on show if it is a template's own.
+      const picture = photo && keepOwn
+        ? await templatePicture(photo)
+        : template.photo ? await dataUrlOf(await (await fetch(template.photo)).blob()) : null
+      const draft = {
+        name: templateDraft.name,
+        note: templateDraft.note,
+        kind: inside.kind,
+        words: wordsOf(inside),
+        ...(inside.kind === 'label' ? { cut: inside.cut, seed: inside.seed } : {}),
+        // A photo that isn't kept leaves the sample framed as it was.
+        view: photo && !keepOwn ? template.view : view,
+        photo: picture,
+      }
+      let key: string
+      if (savingTo === 'github') {
+        const listed = await publishTemplate(draft, githubKey, draftReplaces)
+        key = listed.key
+        setPublished((current) => ({
+          saved: [...current.saved.filter((one) => !(one.kind === listed.kind && one.key === listed.key)), listed],
+          removed: current.removed.filter((entry) => entry !== `${listed.kind}/${listed.key}`),
+        }))
+        setTemplateNote('Saved to GitHub. Everyone has it once the tool has been rebuilt, in a minute or so.')
+      } else {
+        const saved = await saveTemplate(draft)
+        key = saved.key
+        setTemplateNote(`Saved${saved.file ? ` as ${saved.file}` : ''}. Everyone gets it with the next push.`)
+      }
+      setInside((current) => ({ ...current, from: { ...current.from, [current.kind]: key } }))
+      setTemplateDraft(null)
+    } catch (error) {
+      flash(`The template couldn’t be saved: ${error instanceof Error ? error.message : 'unknown error'}.`)
+    } finally {
+      setSavingTemplate(false)
+    }
+  }
+
+  const removeThisTemplate = async () => {
+    const gone = template
+    setRemoveAsked(false)
+    try {
+      if (savingTo === 'github') {
+        await unpublishTemplate(gone, githubKey)
+        setPublished((current) => ({
+          saved: current.saved.filter((one) => !(one.kind === gone.kind && one.key === gone.key)),
+          removed: [...current.removed, `${gone.kind}/${gone.key}`],
+        }))
+      } else {
+        await removeTemplate(gone.kind, gone.key)
+      }
+      // The page keeps its words: only the template it started from is gone.
+      setInside((current) => {
+        const from = { ...current.from }
+        delete from[gone.kind]
+        return { ...current, from }
+      })
+      setTemplateNote(savingTo === 'github'
+        ? `Removed ${gone.name} on GitHub. It goes from everyone’s tool once the tool has been rebuilt, in a minute or so.`
+        : `Removed ${gone.name}. It goes from everyone’s tool with the next push.`)
+    } catch (error) {
+      flash(`The template couldn’t be removed: ${error instanceof Error ? error.message : 'unknown error'}.`)
+    }
   }
 
   const copyType = async () => {
@@ -1030,6 +1211,12 @@ function App() {
       const prepared = await preparePhoto(file, frame)
       setPhotos((current) => ({ ...current, [chosenFor]: prepared }))
       setViews((current) => ({ ...current, [chosenFor]: CENTRED }))
+      // A new photo takes the place of one set aside there.
+      setAside((current) => {
+        const rest = { ...current }
+        delete rest[chosenFor]
+        return rest
+      })
       if (chosenFor === 'cover' || chosenFor === 'video') setBackgrounds((current) => ({ ...current, [chosenFor]: 'photo' }))
     } catch {
       flash('That file couldn’t be opened as an image. If it’s an iPhone HEIC photo, convert it to JPEG first.')
@@ -1116,6 +1303,48 @@ function App() {
     dragRef.current = null
   }
 
+  /** The edge of the picture that faces the words, and which way it moves to make the picture taller. */
+  const edgeGrows: 1 | -1 = inside.position === 'bottom' ? -1 : 1
+
+  const startResize = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !previewRef.current || !page.banner) return
+    event.preventDefault()
+    const stage = previewRef.current.getBoundingClientRect()
+    // The room the words leave is the same whatever the picture's height, so it is taken once.
+    resizeRef.current = { pointerId: event.pointerId, startY: event.clientY, from: page.banner.height, tallest: page.tallest, scale: frame.width / stage.width, grows: edgeGrows }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    setResizing(true)
+  }
+
+  const resize = (event: React.PointerEvent<HTMLDivElement>) => {
+    const start = resizeRef.current
+    if (!start || start.pointerId !== event.pointerId) return
+    const wanted = start.from + (event.clientY - start.startY) * start.scale * start.grows
+    // A set height or Fill catches the edge within a few pixels of the screen, however small the preview.
+    const next = pictureAt(wanted, start.tallest, EDGE_SNAP * start.scale)
+    setInside((current) => (current.image === next ? current : { ...current, image: next }))
+  }
+
+  const endResize = () => {
+    resizeRef.current = null
+    setResizing(false)
+  }
+
+  const resizeByKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!page.banner) return
+    const step = event.shiftKey ? 50 : 10
+    // The arrows move the edge: down makes a picture at the top taller, and one at the bottom shorter.
+    const heights: Record<string, number> = {
+      ArrowUp: page.banner.height - step * edgeGrows,
+      ArrowDown: page.banner.height + step * edgeGrows,
+      Home: FILL_SMALLEST,
+      End: page.tallest,
+    }
+    if (!(event.key in heights)) return
+    event.preventDefault()
+    updateInside('image', pictureAt(heights[event.key], page.tallest, 0))
+  }
+
   const nudge = (event: React.KeyboardEvent) => {
     if (isInside) return
     const step = event.shiftKey ? 50 : 10
@@ -1167,11 +1396,20 @@ function App() {
   const eyebrowPreview = settings.eyebrowEnabled ? settings.eyebrow.trim() : ''
   const insideTitle = inside.title.replace(/\s+/g, ' ').trim()
   const insideLabel = normaliseEyebrow(inside.label)
+  // What the picture's height is called, if it is one of the set ones.
+  const pictureName = typeof inside.image === 'number' ? null : imageOptions.find((option) => option.value === inside.image)?.label ?? null
   // A page opens with a title or a label. The other stays on show, switched off, unless it already has words in it.
   const labelOff = !locksOff && inside.kind === 'title' && !insideLabel
   const titleOff = !locksOff && inside.kind === 'label' && !insideTitle
+  // What a template being saved would be called, and whether it would save over one.
+  const draftKey = templateDraft ? slugOf(templateDraft.name) : ''
+  const draftNamesake = templates[inside.kind].find((option) => (option.key === EXAMPLE ? slugOf(option.name) : option.key) === draftKey)
+  const draftReplaces = draftNamesake && draftNamesake.key !== EXAMPLE ? draftNamesake : undefined
+  const draftProblem = !templateDraft ? null
+    : !draftKey ? 'Give it a name.'
+      : draftKey === EXAMPLE || draftNamesake?.key === EXAMPLE ? 'The example goes by that name. Choose another.' : null
   const summaries: Record<PanelId, string> = {
-    cover: isInside ? PAGE_KINDS[inside.kind].label : look.label,
+    cover: isInside ? `${PAGE_KINDS[inside.kind].label} · ${template.name}${changedFromTemplate ? ', changed' : ''}` : look.label,
     words: isInside
       ? [insideLabel, insideTitle || 'No title yet'].filter(Boolean).join(' · ')
       : headlinePreview ? (eyebrowPreview ? `${eyebrowPreview} · ${headlinePreview}` : headlinePreview) : 'No headline yet',
@@ -1230,26 +1468,103 @@ function App() {
             <Panel id="cover" title="Kind of page" summary={summaries.cover} open={panels.cover} onToggle={togglePanel}>
               <div className="look-toggle" role="group" aria-label="Kind of page">
                 {PAGE_KIND_NAMES.map((kind) => (
-                  <button key={kind} aria-pressed={inside.kind === kind} className={inside.kind === kind ? 'active' : ''} onClick={() => { setInside((current) => switchKind(current, kind)); setResetAsked(false) }}>
+                  <button key={kind} aria-pressed={inside.kind === kind} className={inside.kind === kind ? 'active' : ''} onClick={() => { setInside((current) => switchKind(current, kind)); setReplaceAsked(null); setTemplateDraft(null); setRemoveAsked(false); setTemplateNote(null) }}>
                     <strong>{PAGE_KINDS[kind].label}</strong>
                     <small>{PAGE_KINDS[kind].description}</small>
                   </button>
                 ))}
               </div>
               <p className="panel-note">A page opens with a title or with a label, not both. Each kind keeps its own words, so switching between them loses nothing.</p>
-              <div className="photo-actions">
-                {resetAsked ? (
-                  <>
-                    <span className="panel-note">Replace this page’s words and switches with the example’s?</span>
-                    <span className="confirm-actions">
-                      <button className="text-button underlined" onClick={() => { setInside(backToExample); setResetAsked(false) }}>Yes, replace</button>
-                      <button className="text-button underlined" onClick={() => setResetAsked(false)}>Keep mine</button>
-                    </span>
-                  </>
-                ) : (
-                  <button className="text-button underlined" disabled={isExample(inside)} title={isExample(inside) ? 'This page is the example' : 'Puts this page’s words and switches back as they started. A photo you chose stays'} onClick={() => setResetAsked(true)}>Back to the example</button>
-                )}
+              <div className="sub-block">
+                <div className="section-label-row">
+                  <span className="field-label">Template</span>
+                  <span className="field-hint">{changedFromTemplate ? `Changed from ${template.name}` : 'What the page starts as'}</span>
+                </div>
+                <div className="template-list" role="group" aria-label="Templates">
+                  {templates[inside.kind].map((option, index) => {
+                    const current = option.key === template.key
+                    return (
+                      <button key={option.key} aria-pressed={current} className={current ? 'active' : ''} onClick={() => pickTemplate(option)}>
+                        <span className="template-number">{String(index + 1).padStart(2, '0')}</span>
+                        <span className="template-name">
+                          <strong>{option.name}</strong>
+                          {option.note && <small>{option.note}</small>}
+                        </span>
+                        {current && <span className="template-state">{changedFromTemplate ? 'Changed' : <Check size={14} aria-label="In use" />}</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="photo-actions">
+                  {replaceAsked ? (
+                    <>
+                      <span className="panel-note">Replace this page’s words and switches with {replaceAsked.key === template.key ? 'the template’s' : `${replaceAsked.name}’s`}?{photos[inside.kind] ? ' Your photo is set aside, to bring back.' : ''}</span>
+                      <span className="confirm-actions">
+                        <button className="text-button underlined" onClick={() => chooseTemplate(replaceAsked)}>Yes, replace</button>
+                        <button className="text-button underlined" onClick={() => setReplaceAsked(null)}>Keep mine</button>
+                      </span>
+                    </>
+                  ) : (
+                    <button className="text-button underlined" disabled={!changedFromTemplate} title={changedFromTemplate ? 'Puts this page’s words and switches back as the template has them, and its picture. A photo of your own is set aside, to bring back' : 'This page is as its template has it'} onClick={() => pickTemplate(template)}>Back to the template</button>
+                  )}
+                </div>
               </div>
+              {savingTo && (
+                <div className="sub-block">
+                  <div className="section-label-row">
+                    <span className="field-label">Save as template</span>
+                    <span className="field-hint">{savingTo === 'files' ? 'This machine only' : 'Straight to GitHub'}</span>
+                  </div>
+                  {savingTo === 'github' && !githubKey ? (
+                    <div className="template-form">
+                      <p className="panel-note">Templates saved here go straight into the tool on GitHub, for everyone. That takes a GitHub key: a fine-grained token for {REPOSITORY} only, with Contents set to “Read and write”. It is kept in this browser and only ever sent to GitHub. <a href={NEW_KEY_URL} target="_blank" rel="noreferrer">Make a key on GitHub</a></p>
+                      <input className="text-input" type="password" aria-label="GitHub key" placeholder="github_pat_…" value={keyDraft} autoComplete="off" spellCheck={false} onChange={(event) => setKeyDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') keepGithubKey() }} />
+                      <div className="photo-actions">
+                        <button className="panel-button" disabled={!keyDraft.trim()} onClick={keepGithubKey}>Keep the key</button>
+                      </div>
+                    </div>
+                  ) : templateDraft ? (
+                    <div className="template-form">
+                      <input className="text-input" aria-label="Template name" placeholder="Its name, like News story" value={templateDraft.name} maxLength={60} autoFocus onChange={(event) => setTemplateDraft({ ...templateDraft, name: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter' && draftProblem === null) saveAsTemplate() }} />
+                      <input className="text-input" aria-label="What it’s for" placeholder="What it’s for, in a line" value={templateDraft.note} maxLength={120} onChange={(event) => setTemplateDraft({ ...templateDraft, note: event.target.value })} onKeyDown={(event) => { if (event.key === 'Enter' && draftProblem === null) saveAsTemplate() }} />
+                      {photo && (
+                        <label className="toggle-row spread">
+                          <span>Keep your photo in it <small>As its sample picture, never exported</small></span>
+                          <input type="checkbox" checked={templateDraft.keepPhoto} onChange={(event) => setTemplateDraft({ ...templateDraft, keepPhoto: event.target.checked })} />
+                          <span className="switch" />
+                        </label>
+                      )}
+                      <p className="panel-note">{draftProblem ?? `${draftReplaces ? `Saves over ${draftReplaces.name}, in its place in the list.` : `Saved as src/templates/${inside.kind}/${draftKey}.json.`} ${savingTo === 'github' ? 'It goes to GitHub, and everyone has it once the tool has been rebuilt, in a minute or so.' : 'Everyone gets it with the next push.'}`}</p>
+                      <div className="photo-actions">
+                        <button className="panel-button" disabled={draftProblem !== null || savingTemplate} onClick={saveAsTemplate}><Save size={14} aria-hidden="true" /> {savingTemplate ? 'Saving…' : draftReplaces ? 'Save over it' : 'Save template'}</button>
+                        <button className="text-button underlined" onClick={() => setTemplateDraft(null)}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : removeAsked ? (
+                    <div className="photo-actions">
+                      <span className="panel-note">Remove {template.name} from the templates{savingTo === 'github' ? ', for everyone' : ''}? This page keeps its words.</span>
+                      <span className="confirm-actions">
+                        <button className="text-button underlined" onClick={removeThisTemplate}>Yes, remove</button>
+                        <button className="text-button underlined" onClick={() => setRemoveAsked(false)}>Keep it</button>
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="photo-actions">
+                        <button className="panel-button" onClick={() => openTemplateDraft(false)}><Save size={14} aria-hidden="true" /> Save as new template</button>
+                      </div>
+                      {template.key !== EXAMPLE && (
+                        <div className="template-own">
+                          <button className="text-button underlined" onClick={() => openTemplateDraft(true)}>Update {template.name}</button>
+                          <button className="text-button underlined" onClick={() => { setRemoveAsked(true); setTemplateNote(null) }}>Remove {template.name}</button>
+                        </div>
+                      )}
+                      {templateNote && <p className="panel-note" role="status">{templateNote}</p>}
+                      {savingTo === 'github' && <button className="text-button underlined" onClick={forgetGithubKey}>Forget the GitHub key</button>}
+                    </>
+                  )}
+                </div>
+              )}
             </Panel>
           )}
 
@@ -1455,8 +1770,9 @@ function App() {
           </Panel>}
 
           <Panel id="photo" title="Photo" summary={summaries.photo} open={panels.photo} onToggle={togglePanel}>
-            {isInside && <Segmented label="Picture" note={!page.banner ? 'Words only' : inside.image === 'fill' ? `Fills the page · ${page.banner.height}px` : `${page.banner.height}px tall`} value={inside.image} options={imageOptions} onChange={(image) => updateInside('image', image)} />}
+            {isInside && <Segmented label="Picture" note={!page.banner ? 'Words only' : inside.image === 'fill' ? `Fills the page · ${page.banner.height}px` : typeof inside.image === 'number' ? `Its own height · ${page.banner.height}px` : `${page.banner.height}px tall`} value={typeof inside.image === 'number' ? null : inside.image} options={imageOptions} onChange={(image) => updateInside('image', image)} />}
             {isInside && <Segmented label="Position" note={page.banner ? PICTURE_NOTES[inside.position] : undefined} value={inside.position} options={pictureOptions} disabled={!page.banner} onChange={(place) => updateInside('position', place)} />}
+            {isInside && page.banner && <p className="panel-note">Or drag the picture’s edge, beside the words, for a height of its own. It stops where the words would run out of room.</p>}
             <div className="photo-actions">
               <label className="panel-button upload-button" onClick={clickPhoto}>
                 <input type="file" accept="image/*" onChange={choosePhoto} />
@@ -1477,6 +1793,12 @@ function App() {
                 : photo ? 'The photo is hidden while another background is showing.' : 'Photos stay in your browser. Once one is in, drag it on the cover to reposition it.'}</p>
             )}
             {sampleShown && <p className="panel-note">This is a sample picture, to show the page. It is never exported: choose a photo of your own.</p>}
+            {photoAside && (
+              <div className="photo-actions">
+                <span className="panel-note">Your photo is set aside while the template’s picture shows.</span>
+                <button className="text-button underlined" onClick={useOwnPhoto}>Use your photo</button>
+              </div>
+            )}
             {photo && <p className="panel-note">A photo stays where it was chosen: each page and cover has its own.</p>}
             <label className="toggle-row spread">
               <span>Darken photo <small>{Math.round(PHOTO_DARKEN * 100)}% black, so the words read</small></span>
@@ -1671,18 +1993,42 @@ function App() {
                 <label className="photo-empty"><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
               )}
               {shownPhoto && (
-                <label
-                  className="photo-change"
-                  // In the corner of the picture: the foot of a cover, or of an inside page's banner.
-                  style={{ top: `${(isInside && page.banner ? page.banner.y + page.banner.height : frame.height) / frame.height * 100}%` }}
-                  title={sampleShown ? 'This picture is a sample, and is never exported. Choose a photo of your own' : 'Choose another photo'}
-                >
-                  <Upload size={11} aria-hidden="true" /> {sampleShown ? 'Sample · change photo' : 'Change photo'}
-                  <input type="file" accept="image/*" onChange={choosePhoto} />
-                </label>
+                // In the corner of the picture: the foot of a cover, or of an inside page's banner.
+                <div className="photo-chips" style={{ top: `${(isInside && page.banner ? page.banner.y + page.banner.height : frame.height) / frame.height * 100}%` }}>
+                  <label className="photo-change" title={sampleShown ? 'This picture is a sample, and is never exported. Choose a photo of your own' : 'Choose another photo'}>
+                    <Upload size={11} aria-hidden="true" /> {sampleShown ? 'Sample · change photo' : 'Change photo'}
+                    <input type="file" accept="image/*" onChange={choosePhoto} />
+                  </label>
+                  {photoAside && <button className="photo-change" onClick={useOwnPhoto}>Use your photo</button>}
+                </div>
               )}
               {isInside && page.banner && !shownPhoto && (
                 <label className="photo-empty banner" style={{ top: `${page.banner.y / frame.height * 100}%`, height: `${page.banner.height / frame.height * 100}%` }}><Upload size={24} aria-hidden="true" /><span>Choose a photo</span><small>Stays in your browser · included in exports</small><input type="file" accept="image/*" onChange={choosePhoto} /></label>
+              )}
+              {isInside && page.banner && (
+                <div
+                  // On the edge that faces the words: under a picture at the top or in the middle, over one at the bottom.
+                  className={`picture-edge ${edgeGrows === 1 ? 'under' : 'over'}${resizing ? ' resizing' : ''}`}
+                  style={{ top: `${(edgeGrows === 1 ? page.banner.y + page.banner.height : page.banner.y) / frame.height * 100}%` }}
+                  role="slider"
+                  tabIndex={0}
+                  aria-label="Picture height"
+                  aria-orientation="vertical"
+                  aria-valuemin={FILL_SMALLEST}
+                  aria-valuemax={Math.max(FILL_SMALLEST, page.tallest)}
+                  aria-valuenow={page.banner.height}
+                  aria-valuetext={`${pictureName ? `${pictureName}, ` : ''}${page.banner.height}px`}
+                  title="Drag to change the picture’s height"
+                  onPointerDown={startResize}
+                  onPointerMove={resize}
+                  onPointerUp={endResize}
+                  onPointerCancel={endResize}
+                  onLostPointerCapture={endResize}
+                  onKeyDown={resizeByKey}
+                >
+                  <span className="picture-grip" />
+                  {resizing && <span className="picture-size">{pictureName ? `${pictureName} · ` : ''}{page.banner.height}px</span>}
+                </div>
               )}
               <div
                 className="artwork draggable"

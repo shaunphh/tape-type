@@ -1,0 +1,27 @@
+{
+  "name": "Late Night Art",
+  "note": "What's new/What's on this month",
+  "words": {
+    "label": "",
+    "title": "Late Night Art Returns",
+    "body": "Late Night Art is back across Belfast on *Thursday 1st October,* with galleries, studios and creative spaces staying open into the evening.\n\nThe monthly event takes place on the *first Thursday of each month*, giving people a chance to explore Belfast’s art scene after hours.",
+    "details": "**6PM → 9PM**\n**FREE ENTRY**\n\n",
+    "large": true,
+    "bodyLarge": false,
+    "pinned": false,
+    "bodyTone": "grey",
+    "detailsTone": "light",
+    "image": "fill",
+    "position": "top",
+    "arrow": true,
+    "arrowColour": "light"
+  },
+  "view": {
+    "x": 50,
+    "y": 53.91237662158355,
+    "zoom": 1
+  },
+  "photo": "late-night-art.jpg",
+  "saved": "2026-09-30T18:56:25.926Z",
+  "updated": "2026-09-30T18:56:25.926Z"
+}

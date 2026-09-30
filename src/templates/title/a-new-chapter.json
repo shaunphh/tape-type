@@ -1,0 +1,27 @@
+{
+  "name": "A New Chapter",
+  "note": "end of an era / quick comeback story",
+  "words": {
+    "label": "",
+    "title": "A New Chapter for Scott's",
+    "body": "After six years at Ballyhackamore Working Men’s Club, *Scott’s Jazz Club has found a new home at The Deer’s Head in Belfast city centre*.\n\nThe club had originally expected to pause shows until 2027 after leaving its East Belfast venue - but it will now return *this December*, months earlier than planned.",
+    "details": "**6 YEARS IN BALLYHACKAMORE** \n**NOW BELFAST CITY CENTRE**\n\n",
+    "large": true,
+    "bodyLarge": true,
+    "pinned": true,
+    "bodyTone": "grey",
+    "detailsTone": "light",
+    "image": "tall",
+    "position": "bottom",
+    "arrow": true,
+    "arrowColour": "yellow"
+  },
+  "view": {
+    "x": 50,
+    "y": 50,
+    "zoom": 1
+  },
+  "photo": "a-new-chapter.jpg",
+  "saved": "2026-09-30T19:21:04.151Z",
+  "updated": "2026-09-30T19:21:04.151Z"
+}

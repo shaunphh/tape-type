@@ -52,7 +52,8 @@ export function applyLocks(settings: GeneratorSettings, look: Look, open = unloc
   return next
 }
 
-export const HOUSE_CUT_KEY = 'tape-type-house-cut-v1'
+// v2: videos took the Tape cut (30 September 2026).
+export const HOUSE_CUT_KEY = 'tape-type-house-cut-v2'
 
 /**
  * Whether the tool is opening for the first time since the house cut changed. The cut is a free

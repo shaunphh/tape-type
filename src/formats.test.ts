@@ -74,6 +74,8 @@ describe('looks', () => {
     expect(VIDEO_LOOKS.feature).toMatchObject({ style: 'feature', eyebrow: null })
     expect(VIDEO_LOOKS.feature.treatment).toMatchObject({ tone: 'light', perLine: false, align: 'left', rotationVariance: 0 })
     expect(lookFor('post', 'presenter')).toBe(POST_LOOK)
+    // A post's block starts low, where it suits most photos.
+    expect(POST_LOOK.position).toEqual({ x: 0, y: 90 })
   })
 
   it('gives the eyebrow the look’s own colours, or the ones chosen', () => {

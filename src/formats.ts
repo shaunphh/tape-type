@@ -39,8 +39,14 @@ export interface Look {
 
 // The narrow column is switched off for now, so every look starts in the medium one.
 const house: Treatment = { ...stylePresets.headline, column: 'medium' }
+// Videos start in the Tape cut, its pointed ends (Shaun, 30 September 2026).
+const videoHouse: Treatment = { ...house, mode: 'tape' }
 
-/** Posts: black words on a light block of tape, rough cut, left aligned. */
+/**
+ * Posts: black words on a light block of tape, rough cut, left aligned. The block starts low, 90%
+ * of the way down the room its lettering has, where Shaun had been putting it by hand and where it
+ * suits most photos (30 September 2026).
+ */
 export const POST_LOOK: Look = {
   label: 'Post',
   description: 'Light tape · black words',
@@ -48,7 +54,7 @@ export const POST_LOOK: Look = {
   coverFormat: 'regular',
   treatment: { ...house, mode: 'rough' },
   eyebrow: 'Breaking',
-  position: { x: 0, y: 50 },
+  position: { x: 0, y: 90 },
 }
 
 /** The three kinds of video, as on the cover mock-ups. */
@@ -58,7 +64,7 @@ export const VIDEO_LOOKS: Record<VideoType, Look> = {
     description: 'Yellow tape · bottom left',
     style: 'headline',
     coverFormat: 'regular',
-    treatment: { ...house, tone: 'yellow' },
+    treatment: { ...videoHouse, tone: 'yellow' },
     tag: { tape: BRAND.dark, text: BRAND.light },
     eyebrow: 'Quick watch',
     position: { x: 0, y: 100 },
@@ -68,7 +74,7 @@ export const VIDEO_LOOKS: Record<VideoType, Look> = {
     description: 'Dark tape · top left',
     style: 'headline',
     coverFormat: 'regular',
-    treatment: { ...house, tone: 'dark' },
+    treatment: { ...videoHouse, tone: 'dark' },
     tag: { tape: BRAND.light, text: BRAND.dark },
     eyebrow: 'Quick guide',
     position: { x: 0, y: 0 },
@@ -78,7 +84,7 @@ export const VIDEO_LOOKS: Record<VideoType, Look> = {
     description: 'Capitals · light tape',
     style: 'feature',
     coverFormat: 'regular',
-    treatment: house,
+    treatment: videoHouse,
     eyebrow: null,
     position: { x: 0, y: 50 },
   },

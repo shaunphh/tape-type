@@ -27,9 +27,10 @@ describe('locked choices', () => {
     expect(applyLocks({ ...defaults, hugStrength: 0.9 }, POST_LOOK, true).hugStrength).toBe(0.9)
   })
 
-  it('gives a post the rough cut as its house cut, once, and leaves the choice open after', () => {
+  it('gives a post the rough cut and a video the tape cut as their house cuts, once, and leaves the choice open after', () => {
     expect(POST_LOOK.treatment.mode).toBe('rough')
-    expect(Object.values(VIDEO_LOOKS).map((look) => look.treatment.mode)).toEqual(['plain', 'plain', 'plain'])
+    expect(Object.values(VIDEO_LOOKS).map((look) => look.treatment.mode)).toEqual(['tape', 'tape', 'tape'])
+    expect(withHouseCut({ ...defaults, mode: 'plain' }, VIDEO_LOOKS.presenter, true).mode).toBe('tape')
     const kept = new Map<string, string>()
     const storage = { getItem: (key: string) => kept.get(key) ?? null, setItem: (key: string, value: string) => { kept.set(key, value) } }
     // A browser that remembered the old cut takes the new one the first time it opens.

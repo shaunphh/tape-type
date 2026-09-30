@@ -4,7 +4,7 @@
   "words": {
     "label": "",
     "title": "Light House Cinema plans major Smithfield expansion",
-    "body": "The Light House Cinema has applied for planning permission to add two new screens to its Smithfield venue.\n\nThe proposed screens would hold 35 and 45 people, adding 80 seats and bringing the cinema’s total capacity to 694. The new screens would be created by converting a neighbouring former retail unit.\n\n",
+    "body": "The Light House Cinema has applied for planning permission to add *two new screens* to its Smithfield venue.\n\nThe proposed screens would hold *35 and 45 people*, adding 80 seats and bringing the cinema’s total capacity to *694*. The new screens would be created by converting a neighbouring former retail unit.\n\n",
     "details": "**By The Numbers**\n**2** new screens\n**35 + 45** seats\n**694** total capacity",
     "large": false,
     "bodyLarge": true,
@@ -14,7 +14,7 @@
     "image": 444,
     "position": "top",
     "arrow": true,
-    "arrowColour": "light"
+    "arrowColour": "yellow"
   },
   "view": {
     "x": 50,
@@ -23,5 +23,5 @@
   },
   "photo": "lighthouse-cinema.jpg",
   "saved": "2026-09-30T17:07:59.525Z",
-  "updated": "2026-09-30T17:07:59.525Z"
+  "updated": "2026-09-30T21:34:06.714Z"
 }

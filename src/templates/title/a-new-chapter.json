@@ -11,7 +11,7 @@
     "pinned": true,
     "bodyTone": "grey",
     "detailsTone": "light",
-    "image": "tall",
+    "image": 496,
     "position": "bottom",
     "arrow": true,
     "arrowColour": "yellow"
@@ -23,5 +23,5 @@
   },
   "photo": "a-new-chapter.jpg",
   "saved": "2026-09-30T19:21:04.151Z",
-  "updated": "2026-09-30T19:21:04.151Z"
+  "updated": "2026-10-01T15:50:29.662Z"
 }

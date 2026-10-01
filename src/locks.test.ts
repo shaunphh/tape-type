@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { coverDefaults, sanitizeCover } from './cover'
 import { POST_LOOK, VIDEO_LOOKS } from './formats'
-import { HELD, HOUSE_CUT_KEY, applyLocks, firstSinceHouseCut, isBarred, isLocked, withHouseCut } from './locks'
+import { HELD, HOUSE_CUT_KEY, applyLocks, firstSinceHouseCut, isBarred, isLocked, withHouseCut, withLookColumn } from './locks'
 import { defaults, stylePresets } from './settings'
 import type { GeneratorSettings } from './types'
 
@@ -25,6 +25,13 @@ describe('locked choices', () => {
     expect(isLocked('hugStrength', 1.1, POST_LOOK, false)).toBe(true)
     expect(applyLocks({ ...defaults, hugStrength: 0.9 }, POST_LOOK, false).hugStrength).toBe(1)
     expect(applyLocks({ ...defaults, hugStrength: 0.9 }, POST_LOOK, true).hugStrength).toBe(0.9)
+  })
+
+  it('opens every time in the look’s medium column, whatever column was picked last time', () => {
+    for (const look of [POST_LOOK, ...Object.values(VIDEO_LOOKS)]) {
+      expect(look.treatment.column).toBe('medium')
+      expect(withLookColumn({ ...defaults, column: 'wide', headline: 'Kept' }, look)).toMatchObject({ column: 'medium', headline: 'Kept' })
+    }
   })
 
   it('gives a post the rough cut and a video the tape cut as their house cuts, once, and leaves the choice open after', () => {

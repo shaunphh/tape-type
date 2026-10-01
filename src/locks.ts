@@ -75,3 +75,9 @@ export function firstSinceHouseCut(storage: Pick<Storage, 'getItem' | 'setItem'>
 /** The settings with the look's cut, on a first opening. */
 export const withHouseCut = (settings: GeneratorSettings, look: Look, first: boolean): GeneratorSettings =>
   (first ? { ...settings, mode: look.treatment.mode } : settings)
+
+/**
+ * The settings with the look's column, the medium one, every time the tool opens: a column picked
+ * last time (Wide, say) lasts until then, and not into the next cover (Shaun, 1 October 2026).
+ */
+export const withLookColumn = (settings: GeneratorSettings, look: Look): GeneratorSettings => ({ ...settings, column: look.treatment.column })

@@ -48,7 +48,7 @@ import {
 } from './furniture'
 import { buildShape, nextSeed } from './geometry'
 import { EYEBROW_WEIGHT, layoutHeadline, weightFor, type HeadlineLayout, type Measure } from './layout'
-import { LINE_HEIGHT, applyLocks, firstSinceHouseCut, isBarred, isLocked, lockedLineGap, unlocked, withHouseCut } from './locks'
+import { LINE_HEIGHT, applyLocks, firstSinceHouseCut, isBarred, isLocked, lockedLineGap, unlocked, withHouseCut, withLookColumn } from './locks'
 import {
   BODY,
   EXAMPLE,
@@ -614,7 +614,10 @@ const FIRST_OPENING = firstSinceHouseCut()
 
 function App() {
   const [cover, setCover] = useState<CoverOptions>(loadCover)
-  const [settings, setSettings] = useState<GeneratorSettings>(() => applyLocks(withHouseCut(loadSettings(), lookFor(cover.kind, cover.video), FIRST_OPENING), lookFor(cover.kind, cover.video)))
+  const [settings, setSettings] = useState<GeneratorSettings>(() => {
+    const look = lookFor(cover.kind, cover.video)
+    return applyLocks(withLookColumn(withHouseCut(loadSettings(), look, FIRST_OPENING), look), look)
+  })
   const [history, setHistory] = useState<number[]>([settings.seed])
   const [historyIndex, setHistoryIndex] = useState(0)
   const [seedDraft, setSeedDraft] = useState<string | null>(null)

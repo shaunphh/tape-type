@@ -165,7 +165,7 @@ Each style remembers how it was last set up during a session, so switching to Fe
 
 Tape colours are the brand's: Light `#F0F0F0`, Dark `#101010` (white text), Yellow `#FFED1F`, or None (white text straight on the photo). The Dark background is the same brand black.
 
-An optional **eyebrow** label (Breaking, News, Exclusive, The Big Read, or any text such as a date range) sits on the first line in capitals at 34 to 41px: nine tenths of the published tags, which are about 40px (`EYEBROW_SCALE` in `src/layout.ts`; the inside page's label follows it). It is yellow, or white on yellow tape or a yellow background. A long label shrinks to fit the safe area, and export is blocked if it still can't.
+An optional **eyebrow** label (Breaking, News, Exclusive, The Big Read, or any text such as a date range) sits on the first line in capitals at 34 to 41px: nine tenths of the published tags, which are about 40px (`EYEBROW_SCALE` in `src/layout.ts`; the inside page's label follows it). It is set in ExtraBold on clean-cut tape, like every AD tag: the inside label's cut, seeded from the cover and fitted to the tag, on its free end, with its foot flat on the tape. It is yellow, or white on yellow tape or a yellow background. A long label shrinks to fit the safe area, and export is blocked if it still can't.
 
 ## How the shapes work
 

@@ -9,7 +9,7 @@ import { inflateSync } from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
-const WEIGHTS = [700, 900]
+const WEIGHTS = [700, 800, 900]
 const SUBSETS = ['latin', 'latin-ext', 'vietnamese']
 
 function readWoffTables(buffer) {

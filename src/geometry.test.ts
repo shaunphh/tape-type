@@ -254,6 +254,55 @@ describe('shape geometry', () => {
     }
   }, 30000)
 
+  it('cuts the eyebrow tag like a label: inside its box, lettering uncovered, the foot flat on the tape', () => {
+    const inside = (point: { x: number; y: number }, polygon: { x: number; y: number }[]) => {
+      let hit = false
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+        const a = polygon[i]
+        const b = polygon[j]
+        if ((a.y > point.y) !== (b.y > point.y) && point.x < (b.x - a.x) * (point.y - a.y) / (b.y - a.y) + a.x) hit = !hit
+      }
+      return hit
+    }
+    let cut = 0
+    let runs = 0
+    for (const eyebrow of [
+      { text: 'NEWS', fontSize: 40, width: 100, originOffset: -2, capHeight: 28 },
+      { text: 'WHAT’S ON THIS WEEK', fontSize: 36, width: 380, originOffset: -1, capHeight: 25 },
+    ]) {
+      for (const align of ['left', 'center', 'right'] as const) {
+        for (let seed = 1; seed <= 40; seed += 1) {
+          const shape = buildShape({ ...base, align, seed }, layouts[1].labels, layouts[1].widths, [], undefined, { eyebrow })
+          const { box, points } = shape.eyebrow!
+          runs += 1
+          if (points.length !== 4 || new Set(points.map((point) => point.x)).size > 2) cut += 1
+          for (const point of points) {
+            expect(point.x).toBeGreaterThanOrEqual(box.x - 0.01)
+            expect(point.x).toBeLessThanOrEqual(box.x + box.width + 0.01)
+            expect(point.y).toBeGreaterThanOrEqual(box.y - 0.01)
+            expect(point.y).toBeLessThanOrEqual(box.y + box.height + 0.01)
+          }
+          // The lettering's box stays on the tag.
+          const padX = eyebrow.fontSize * 0.45
+          const top = box.y + eyebrow.fontSize * 0.4
+          for (const y of [top, top + eyebrow.capHeight / 2, top + eyebrow.capHeight]) {
+            for (let x = box.x + padX; x <= box.x + box.width - padX; x += 6) expect(inside({ x, y }, points), `${align} ${seed} ${eyebrow.text}`).toBe(true)
+          }
+          // Most of the foot is a straight line along the bottom, where it meets the tape.
+          const foot = box.y + box.height
+          let span = 0
+          points.forEach((point, index) => {
+            const next = points[(index + 1) % points.length]
+            if (Math.abs(point.y - foot) < 0.02 && Math.abs(next.y - foot) < 0.02) span += Math.abs(next.x - point.x)
+          })
+          expect(span, `${align} ${seed} ${eyebrow.text}`).toBeGreaterThan(box.width * 0.8)
+        }
+      }
+    }
+    // A cut, not a rectangle, nearly every time.
+    expect(cut / runs).toBeGreaterThan(0.9)
+  })
+
   it('keeps the eyebrow lettering inside the headline lettering on left and right aligned covers', () => {
     const eyebrow = { text: 'NEWS', fontSize: 40, width: 100, originOffset: -2, capHeight: 28 }
     for (const style of ['headline', 'feature'] as const) {

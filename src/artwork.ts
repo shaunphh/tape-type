@@ -1,5 +1,6 @@
 import { gxCovers, nearestStatic, stemOf } from './barlow'
 import { POST_FRAME, type Frame } from './settings'
+import { EYEBROW_WEIGHT } from './layout'
 import { cleanText } from './text'
 import type { ShapeResult, TapeTone } from './types'
 
@@ -47,7 +48,7 @@ export type Layer =
 export interface LayerOptions {
   tone: TapeTone
   background: PreviewBackground
-  /** Weight of the headline lettering (the eyebrow is always Bold). */
+  /** Weight of the headline lettering (the eyebrow is always ExtraBold, like every tag). */
   weight: number
   /** The eyebrow tag's colours, where a look sets its own instead of the usual yellow tag. */
   tag?: { tape: string; text: string }
@@ -74,7 +75,7 @@ export function buildLayers(shape: ShapeResult, options: LayerOptions, fontSize:
     // A yellow label would vanish on yellow tape or a yellow background, so it turns white there.
     const fill = options.tag?.tape ?? (options.tone === 'yellow' || options.background === 'yellow' ? BRAND.white : BRAND.yellow)
     layers.push({ kind: 'path', d: eyebrow.path, fill, angle: eyebrow.angle, cx: eyebrow.centerX, cy: eyebrow.centerY })
-    texts.push({ kind: 'text', text: eyebrow.text, x: eyebrow.x, y: eyebrow.baseline, size: eyebrow.fontSize, weight: 700, fill: options.tag?.text ?? BRAND.dark, angle: eyebrow.angle, cx: eyebrow.centerX, cy: eyebrow.centerY })
+    texts.push({ kind: 'text', text: eyebrow.text, x: eyebrow.x, y: eyebrow.baseline, size: eyebrow.fontSize, weight: EYEBROW_WEIGHT, fill: options.tag?.text ?? BRAND.dark, angle: eyebrow.angle, cx: eyebrow.centerX, cy: eyebrow.centerY })
   }
   return [...layers, ...texts]
 }

@@ -79,11 +79,11 @@ describe('layers and SVG', () => {
     expect(buildLayers(shape, options({ tone: 'yellow' }), 80).find((layer) => layer.kind === 'path' && layer.d === shape.path)?.fill).toBe(BRAND.yellow)
   })
 
-  it('sets headline lettering in the style weight and the eyebrow in Bold', () => {
+  it('sets headline lettering in the style weight and the eyebrow in ExtraBold, like every tag', () => {
     const shape = buildShape(settings, labels, widths, [], bounds, { eyebrow })
     const texts = buildLayers(shape, options({ weight: 900 }), 80).filter((layer) => layer.kind === 'text')
     expect(texts.filter((layer) => layer.text !== 'BREAKING').every((layer) => layer.kind === 'text' && layer.weight === 900)).toBe(true)
-    expect(texts.find((layer) => layer.text === 'BREAKING')).toMatchObject({ weight: 700 })
+    expect(texts.find((layer) => layer.text === 'BREAKING')).toMatchObject({ weight: 800 })
   })
 
   it('paints tape before any text so strips never cover letters', () => {

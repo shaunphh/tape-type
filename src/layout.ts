@@ -8,7 +8,8 @@ import type { ColumnWidth, CoverFormat, CoverStyle, EyebrowMetrics } from './typ
 // published feature covers measured as Black: stems 0.27 of the cap height, where Bold is 0.20.)
 export const HEADLINE_WEIGHT = 700
 export const FEATURE_WEIGHT = 700
-export const EYEBROW_WEIGHT = 700
+/** Every AD tag (eyebrows, labels, date strips, time tags) is ExtraBold capitals on clean-cut tape (2 Oct 2026). */
+export const EYEBROW_WEIGHT = 800
 export const weightFor = (style: CoverStyle) => (style === 'feature' ? FEATURE_WEIGHT : HEADLINE_WEIGHT)
 
 const MIN_SIZE = 72

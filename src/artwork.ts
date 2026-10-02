@@ -6,7 +6,7 @@ export const FONT_FAMILY = 'Barlow'
 export const fontShorthand = (size: number, weight: number, italic = false) => `${italic ? 'italic ' : ''}${weight} ${size}px "${FONT_FAMILY}"`
 
 // The Alternative Dublin brand colours.
-export const BRAND = { yellow: '#FFEF3A', light: '#F0F0F0', dark: '#101010', white: '#FFFFFF' }
+export const BRAND = { yellow: '#FFED1F', light: '#F0F0F0', dark: '#101010', white: '#FFFFFF' }
 
 export const tones: { value: TapeTone; label: string; tape: string | null; text: string }[] = [
   { value: 'light', label: 'Light', tape: BRAND.light, text: BRAND.dark },

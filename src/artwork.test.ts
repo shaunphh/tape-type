@@ -148,7 +148,7 @@ describe('layers and SVG', () => {
   })
 
   it('uses the brand colours', () => {
-    expect(BRAND).toMatchObject({ yellow: '#FFEF3A', light: '#F0F0F0', dark: '#101010' })
+    expect(BRAND).toMatchObject({ yellow: '#FFED1F', light: '#F0F0F0', dark: '#101010' })
   })
 
   it('exports the Dark background as brand black', () => {

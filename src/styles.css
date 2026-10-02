@@ -690,7 +690,7 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
   background-position: 0 0, 0 14px, 14px -14px, -14px 0;
 }
 .preview-stage.charcoal { background-color: #101010; }
-.preview-stage.yellow { background-color: #ffef3a; }
+.preview-stage.yellow { background-color: #ffed1f; }
 .preview-stage.photo { background-color: #363636; }
 .preview-stage::after {
   content: '';

@@ -163,7 +163,7 @@ Every cover is set in the one weight, Barlow Bold, whatever its style or kind. (
 
 Each style remembers how it was last set up during a session, so switching to Feature and back keeps your Headline choices.
 
-Tape colours are the brand's: Light `#F0F0F0`, Dark `#101010` (white text), Yellow `#FFEF3A`, or None (white text straight on the photo). The Dark background is the same brand black.
+Tape colours are the brand's: Light `#F0F0F0`, Dark `#101010` (white text), Yellow `#FFED1F`, or None (white text straight on the photo). The Dark background is the same brand black.
 
 An optional **eyebrow** label (Breaking, News, Exclusive, The Big Read, or any text such as a date range) sits on the first line in capitals at 34 to 41px: nine tenths of the published tags, which are about 40px (`EYEBROW_SCALE` in `src/layout.ts`; the inside page's label follows it). It is yellow, or white on yellow tape or a yellow background. A long label shrinks to fit the safe area, and export is blocked if it still can't.
 

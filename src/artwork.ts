@@ -1,4 +1,4 @@
-import { gxCovers, stemOf } from './barlow'
+import { gxCovers, nearestStatic, stemOf } from './barlow'
 import { POST_FRAME, type Frame } from './settings'
 import { cleanText } from './text'
 import type { ShapeResult, TapeTone } from './types'
@@ -9,13 +9,14 @@ export const FONT_FAMILY = 'Barlow'
 export const GX_FAMILY = 'Barlow GX'
 const fromGx = (text: string, italic = false) => !italic && gxCovers(text)
 export const fontFamilyOf = (text: string, italic = false) => (fromGx(text, italic) ? GX_FAMILY : FONT_FAMILY)
-/** Weights in this code are the usual 400–900; the variable font takes them on its own scale. */
-export const fontWeightOf = (weight: number, text: string, italic = false) => (fromGx(text, italic) ? stemOf(weight) : weight)
+/** Weights in this code are the usual 400–900, or a number on the variable font's own scale (up to 188).
+ *  The variable font takes the usual ones on its scale; static Barlow takes the nearest usual one. */
+export const fontWeightOf = (weight: number, text: string, italic = false) => (fromGx(text, italic) ? stemOf(weight) : weight <= 188 ? nearestStatic(weight) : weight)
 /** The canvas font for a run. Without its text, the variable font. */
 export const fontShorthand = (size: number, weight: number, italic = false, text = '') =>
   `${italic ? 'italic ' : ''}${fontWeightOf(weight, text, italic)} ${size}px "${fontFamilyOf(text, italic)}"`
 /** Static Barlow at a usual weight, for asking the browser to load it. */
-export const staticShorthand = (size: number, weight: number, italic = false) => `${italic ? 'italic ' : ''}${weight} ${size}px "${FONT_FAMILY}"`
+export const staticShorthand = (size: number, weight: number, italic = false) => `${italic ? 'italic ' : ''}${weight <= 188 ? nearestStatic(weight) : weight} ${size}px "${FONT_FAMILY}"`
 
 // The Alternative Dublin brand colours. One white: the light (2 Oct 2026).
 export const BRAND = { yellow: '#FFED1F', light: '#F0F0F0', dark: '#101010', white: '#F0F0F0' }

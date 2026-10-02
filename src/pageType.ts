@@ -9,8 +9,9 @@ import { PAGE_TYPE, type PageType } from './inside'
 export const TYPE_KEY = 'tape-type-page-type-v1'
 
 /** The weights of Barlow the tool carries, in the page and in its exports. */
-export const TYPE_WEIGHTS = [400, 500, 600, 700, 800, 900] as const
-export const WEIGHT_NAMES: Record<number, string> = { 400: 'Regular', 500: 'Medium', 600: 'SemiBold', 700: 'Bold', 800: 'ExtraBold', 900: 'Black' }
+export const TYPE_WEIGHTS = [400, 500, 600, 700, 800, 900, 168] as const
+/** 168 is on the variable font's own scale: the story titles' weight, between ExtraBold and Black. */
+export const WEIGHT_NAMES: Record<number, string> = { 400: 'Regular', 500: 'Medium', 600: 'SemiBold', 700: 'Bold', 800: 'ExtraBold', 900: 'Black', 168: 'Variable' }
 
 /** How far each can be taken. */
 export const TYPE_RANGE = {

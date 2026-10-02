@@ -79,7 +79,7 @@ Under the two kinds, **Template** lists the pages that kind can start from: the 
 What is typed and chosen is remembered in that browser, and only there: it never changes the templates. Photos are not remembered: after a reload a page shows its template's sample again.
 
 - **Label**: a few words in capitals on light tape, over whatever comes first on the page ("Meet the artists"). Barlow ExtraBold at 38px, its lettering starting on the margin like the lines under it. Leave it empty for none. Its cut is its own: Label cut and Randomise cut, under the box, change the label and leave the cover's tape alone. It starts with the Clean cut, one quiet cut, like the labels on the Canva pages.
-- **Title**: Barlow Bold, white. It takes the largest size from 52px down to 45px that fits in three lines.
+- **Title**: in capitals, at the variable font's 168 (between ExtraBold and Black), white: the story-title style every AD tool shares since 2 October 2026. It takes the largest size from 52px down to 45px that fits in three lines.
 - **Text**: the story, in Barlow Regular at 38px (28.5 in Canva, whose sizes are points), lines 1.3 apart at 38px and 1.2 at 42px, in the grey (`#C2C2C2`).
 - **Highlight**: a closing line, or the date, place and tickets, under the story. It is the story's weight, and starts in the title's white. (The code calls it `details`.)
 - **Colour and size**: each of the two boxes has the same two switches under it. Colour sets it in the grey or in white; size sets it at 38px or a size up, 42px.

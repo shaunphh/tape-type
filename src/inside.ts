@@ -7,6 +7,7 @@ import { photoRect, type PhotoView } from './photo'
 import { POST_FRAME, defaults } from './settings'
 import { cleanText, normaliseEyebrow, normaliseHeadline } from './text'
 import type { GeneratorSettings, ShapeMode } from './types'
+import { AD_COLOR, AD_SIZE, AD_SPACE, AD_TYPE } from './adTokens'
 
 /**
  * The inside page of a post: a picture, a tape label, a title, the story, then the details
@@ -15,7 +16,7 @@ import type { GeneratorSettings, ShapeMode } from './types'
  * what matters more or less is told apart by weight alone.
  */
 export type ImageHeight = 'none' | 'short' | 'medium' | 'tall' | 'fill'
-export const IMAGE_HEIGHTS: Record<Exclude<ImageHeight, 'fill'>, number> = { none: 0, short: 340, medium: 430, tall: 540 }
+export const IMAGE_HEIGHTS: Record<Exclude<ImageHeight, 'fill'>, number> = { none: 0, short: 340, medium: 430, tall: AD_SPACE.pictureHeight }
 /** A picture that fills takes the room the words leave, and the words leave it at least this much. */
 export const FILL_SMALLEST = 260
 const IMAGE_CHOICES: readonly ImageHeight[] = ['none', 'short', 'medium', 'tall', 'fill']
@@ -53,7 +54,7 @@ export type PageKind = 'title' | 'label'
 
 /** A box of words is set in the grey, or in the title's white. */
 export type TextTone = 'grey' | 'light'
-export const TONES: Record<TextTone, string> = { grey: '#C2C2C2', light: BRAND.light }
+export const TONES: Record<TextTone, string> = { grey: AD_COLOR.greyOnDark, light: BRAND.light }
 
 /** What each kind of page keeps to itself: its words, how they are set, its picture's place and its arrow. */
 export interface PageWords {
@@ -91,16 +92,16 @@ export interface InsideOptions extends PageWords {
 }
 
 /** Inside pages keep 56px from the edges, not a cover's 80: there is more to fit. */
-export const PAGE_MARGIN = 56
+export const PAGE_MARGIN = AD_SPACE.marginInside
 export const TEXT_WIDTH = POST_FRAME.width - PAGE_MARGIN * 2
 /** The logo is small on an inside page, and the marks sit on the page's own margin. */
-export const INSIDE_MARKS = { margin: PAGE_MARGIN, logoWidth: 128 }
+export const INSIDE_MARKS = { margin: PAGE_MARGIN, logoWidth: AD_SIZE.logoInside }
 
 // The sizes and weights below are the ones Shaun settled on in the Type panel (29 September 2026).
 /** Story titles across the AD tools (2 Oct 2026): the variable font's 168 (ExtraBold to the eye). Here they keep the case they're typed in: Shaun undid the capitals the same day. */
-export const TITLE = { weight: 168, largest: 52, smallest: 45, lineHeight: 1.07, lines: 3, mostLines: 4, fill: BRAND.light }
+export const TITLE = { weight: AD_TYPE.storyTitle.weight, largest: AD_TYPE.storyTitle.size, smallest: 45, lineHeight: AD_TYPE.storyTitle.lineHeight, lines: 3, mostLines: 4, fill: BRAND.light }
 /** Lines of text are 1.3 of their size apart at 38px, and 1.2 at 42px: 1.2 was a bit tight at 38 (Shaun, 30 September 2026). */
-export const BODY = { weight: 400, size: 38, large: 42, lineHeight: 1.3, largeLineHeight: 1.2, paragraphGap: 26, bulletGap: 8, indent: 44, fill: TONES.grey }
+export const BODY = { weight: AD_TYPE.body.weight, size: AD_TYPE.body.size, large: AD_TYPE.bodyLarge.size, lineHeight: AD_TYPE.body.lineHeight, largeLineHeight: AD_TYPE.bodyLarge.lineHeight, paragraphGap: 26, bulletGap: 8, indent: 44, fill: TONES.grey }
 /**
  * The highlight (called the details in the code) is white, in the story's weight, at the story's
  * size or a size up. It is not bolder of itself: words in stars are.
@@ -113,7 +114,7 @@ export const SEMI = { weight: 600, fill: BRAND.light }
 /** Where a line under words sits, and how thick it is, as shares of the type size. */
 const UNDERLINE = { below: 0.13, thick: 0.055 }
 /** The label is a cover's tape in small: capitals on light tape, with a cut of its own. */
-export const LABEL = { size: 38, weight: 800 }
+export const LABEL = { size: AD_TYPE.label.size, weight: AD_TYPE.label.weight }
 
 /** The sizes and weights the page is set in. `pageType.ts` lets others be tried on this machine. */
 export interface PageType {

@@ -3,17 +3,18 @@ import type { InkMetrics } from './metrics'
 import { TEXT_AREA_WIDTH, columnWidth } from './settings'
 import { startsLowercase } from './text'
 import type { ColumnWidth, CoverFormat, CoverStyle, EyebrowMetrics } from './types'
+import { AD_TYPE } from './adTokens'
 
 // Every cover is set in Barlow Bold: one weight across posts, videos and both styles. (The
 // published feature covers measured as Black: stems 0.27 of the cap height, where Bold is 0.20.)
-export const HEADLINE_WEIGHT = 700
-export const FEATURE_WEIGHT = 700
+export const HEADLINE_WEIGHT = AD_TYPE.coverHeadline.weight
+export const FEATURE_WEIGHT = AD_TYPE.coverHeadline.weight
 /** Every AD tag (eyebrows, labels, date strips, time tags) is ExtraBold capitals on clean-cut tape (2 Oct 2026). */
-export const EYEBROW_WEIGHT = 800
+export const EYEBROW_WEIGHT = AD_TYPE.eyebrow.weight
 export const weightFor = (style: CoverStyle) => (style === 'feature' ? FEATURE_WEIGHT : HEADLINE_WEIGHT)
 
 const MIN_SIZE = 72
-const MAX_SIZE = 90
+const MAX_SIZE = AD_TYPE.coverHeadline.size
 const SERIES_SIZE = 172
 const EYEBROW_MIN_SIZE = 26
 /** Labels are set at nine tenths of the published ones, which are about 40px whatever the headline size. */

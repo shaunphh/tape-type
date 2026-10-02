@@ -1,5 +1,6 @@
 import type { Look } from './formats'
 import type { GeneratorSettings } from './types'
+import { AD_TYPE } from './adTokens'
 
 /**
  * The text block's choices that are held to the cover's look for now (a post's is black words on
@@ -21,7 +22,7 @@ export const isBarred = <K extends BarredSetting>(setting: K, value: GeneratorSe
   !open && (BARRED[setting] as readonly unknown[]).includes(value)
 
 /** Lines are set this far apart, baseline to baseline, as a share of the type size. */
-export const LINE_HEIGHT = 0.94
+export const LINE_HEIGHT = AD_TYPE.coverHeadline.lineHeight
 
 /**
  * The line gap that sets lines LINE_HEIGHT apart. The engine spaces lines by the height of the

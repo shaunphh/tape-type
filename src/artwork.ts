@@ -3,6 +3,7 @@ import { POST_FRAME, type Frame } from './settings'
 import { EYEBROW_WEIGHT } from './layout'
 import { cleanText } from './text'
 import type { ShapeResult, TapeTone } from './types'
+import { AD_COLOR, AD_PHOTO_DARKEN } from './adTokens'
 
 /** Static Barlow (Fontsource): italics, and any run with a letter the variable font lacks. */
 export const FONT_FAMILY = 'Barlow'
@@ -19,8 +20,8 @@ export const fontShorthand = (size: number, weight: number, italic = false, text
 /** Static Barlow at a usual weight, for asking the browser to load it. */
 export const staticShorthand = (size: number, weight: number, italic = false) => `${italic ? 'italic ' : ''}${weight <= 188 ? nearestStatic(weight) : weight} ${size}px "${FONT_FAMILY}"`
 
-// The Alternative Dublin brand colours. One white: the light (2 Oct 2026).
-export const BRAND = { yellow: '#FFED1F', light: '#F0F0F0', dark: '#101010', white: '#F0F0F0' }
+// The Alternative Dublin brand colours, from the shared tokens (ad-tokens.json). One white: the light.
+export const BRAND = { yellow: AD_COLOR.yellow, light: AD_COLOR.light, dark: AD_COLOR.dark, white: AD_COLOR.light }
 
 export const tones: { value: TapeTone; label: string; tape: string | null; text: string }[] = [
   { value: 'light', label: 'Light', tape: BRAND.light, text: BRAND.dark },
@@ -32,8 +33,8 @@ export const tones: { value: TapeTone; label: string; tape: string | null; text:
 export type PreviewBackground = 'transparent' | 'charcoal' | 'yellow' | 'photo'
 export type Position = { x: number; y: number }
 export const BACKGROUND_FILLS: Partial<Record<PreviewBackground, string>> = { charcoal: BRAND.dark, yellow: BRAND.yellow }
-/** How much black is laid over a photo so the words and marks read on it. */
-export const PHOTO_DARKEN = 0.15
+/** How much black is laid over a photo so the words and marks read on it (the tokens' photo-darken). */
+export const PHOTO_DARKEN = AD_PHOTO_DARKEN
 
 /** Where a mark drawn in its own units (the logo, the swipe arrow) sits on the artboard. */
 export interface Place { x: number; y: number; scale: number }

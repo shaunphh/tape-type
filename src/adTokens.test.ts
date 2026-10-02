@@ -5,7 +5,7 @@ import { AD_COLOR, AD_SIZE, AD_SPACE, AD_TYPE, toolWeight } from './adTokens'
 describe('the shared AD tokens', () => {
   it('hold the values decided on 2 October 2026', () => {
     expect(AD_COLOR).toEqual({ yellow: '#FFED1F', light: '#F0F0F0', dark: '#101010', greyOnDark: '#C2C2C2', greyOnLight: '#4B4A4A', meta: '#7F7C7C' })
-    expect(AD_TYPE.storyTitle).toMatchObject({ weight: 168, stem: 168, size: 52 })
+    expect(AD_TYPE.storyTitle).toMatchObject({ weight: 700, stem: 141, size: 52 })
     expect(AD_TYPE.label).toMatchObject({ weight: 800, stem: 166, size: 38 })
     expect(AD_TYPE.body).toMatchObject({ weight: 400, size: 38, lineHeight: 1.3 })
     expect(AD_TYPE.footer).toMatchObject({ weight: 700, size: 31 })

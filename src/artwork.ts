@@ -1,12 +1,24 @@
+import { gxCovers, stemOf } from './barlow'
 import { POST_FRAME, type Frame } from './settings'
 import { cleanText } from './text'
 import type { ShapeResult, TapeTone } from './types'
 
+/** Static Barlow (Fontsource): italics, and any run with a letter the variable font lacks. */
 export const FONT_FAMILY = 'Barlow'
-export const fontShorthand = (size: number, weight: number, italic = false) => `${italic ? 'italic ' : ''}${weight} ${size}px "${FONT_FAMILY}"`
+/** Barlow's variable font: every other run (2 Oct 2026, one Barlow for every AD tool; see barlow.ts). */
+export const GX_FAMILY = 'Barlow GX'
+const fromGx = (text: string, italic = false) => !italic && gxCovers(text)
+export const fontFamilyOf = (text: string, italic = false) => (fromGx(text, italic) ? GX_FAMILY : FONT_FAMILY)
+/** Weights in this code are the usual 400–900; the variable font takes them on its own scale. */
+export const fontWeightOf = (weight: number, text: string, italic = false) => (fromGx(text, italic) ? stemOf(weight) : weight)
+/** The canvas font for a run. Without its text, the variable font. */
+export const fontShorthand = (size: number, weight: number, italic = false, text = '') =>
+  `${italic ? 'italic ' : ''}${fontWeightOf(weight, text, italic)} ${size}px "${fontFamilyOf(text, italic)}"`
+/** Static Barlow at a usual weight, for asking the browser to load it. */
+export const staticShorthand = (size: number, weight: number, italic = false) => `${italic ? 'italic ' : ''}${weight} ${size}px "${FONT_FAMILY}"`
 
-// The Alternative Dublin brand colours.
-export const BRAND = { yellow: '#FFED1F', light: '#F0F0F0', dark: '#101010', white: '#FFFFFF' }
+// The Alternative Dublin brand colours. One white: the light (2 Oct 2026).
+export const BRAND = { yellow: '#FFED1F', light: '#F0F0F0', dark: '#101010', white: '#F0F0F0' }
 
 export const tones: { value: TapeTone; label: string; tape: string | null; text: string }[] = [
   { value: 'light', label: 'Light', tape: BRAND.light, text: BRAND.dark },
@@ -85,7 +97,7 @@ export function layersToSvg(layers: Layer[]) {
     const transform = placed ? ` transform="${placed}"` : ''
     if (layer.kind === 'path') return `<path d="${layer.d}" fill="${layer.fill}"${transform}/>`
     const slant = layer.italic ? ' font-style="italic"' : ''
-    return `<text x="${layer.x}" y="${layer.y}" font-family="${FONT_FAMILY}, sans-serif" font-size="${layer.size}" font-weight="${layer.weight}"${slant} fill="${layer.fill}"${transform}>${escapeText(layer.text)}</text>`
+    return `<text x="${layer.x}" y="${layer.y}" font-family="${fontFamilyOf(layer.text, layer.italic)}, sans-serif" font-size="${layer.size}" font-weight="${fontWeightOf(layer.weight, layer.text, layer.italic)}"${slant} fill="${layer.fill}"${transform}>${escapeText(layer.text)}</text>`
   }).join('')
 }
 
@@ -105,7 +117,7 @@ export function drawLayers(context: CanvasRenderingContext2D, layers: Layer[]) {
     if (layer.kind === 'path') {
       context.fill(new Path2D(layer.d))
     } else {
-      context.font = fontShorthand(layer.size, layer.weight, layer.italic)
+      context.font = fontShorthand(layer.size, layer.weight, layer.italic, layer.text)
       context.textAlign = 'start'
       context.textBaseline = 'alphabetic'
       context.fillText(layer.text, layer.x, layer.y)

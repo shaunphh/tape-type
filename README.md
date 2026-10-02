@@ -80,7 +80,7 @@ What is typed and chosen is remembered in that browser, and only there: it never
 
 - **Label**: a few words in capitals on light tape, over whatever comes first on the page ("Meet the artists"). Barlow ExtraBold at 38px, its lettering starting on the margin like the lines under it. Leave it empty for none. Its cut is its own: Label cut and Randomise cut, under the box, change the label and leave the cover's tape alone. It starts with the Clean cut, one quiet cut, like the labels on the Canva pages.
 - **Title**: Barlow Bold, white. It takes the largest size from 52px down to 45px that fits in three lines.
-- **Text**: the story, in Barlow Regular at 38px (28.5 in Canva, whose sizes are points), lines 1.2 apart, in the grey (`#C2C2C2`).
+- **Text**: the story, in Barlow Regular at 38px (28.5 in Canva, whose sizes are points), lines 1.3 apart at 38px and 1.2 at 42px, in the grey (`#C2C2C2`).
 - **Highlight**: a closing line, or the date, place and tickets, under the story. It is the story's weight, and starts in the title's white. (The code calls it `details`.)
 - **Colour and size**: each of the two boxes has the same two switches under it. Colour sets it in the grey or in white; size sets it at 38px or a size up, 42px.
 - **Highlight sits**: under the text, or at the foot of the words' room, with whatever space there is between the two. The foot is the bottom margin, or the top of a picture at the bottom. A picture that fills has taken that space already, so the switch is off with one.
@@ -201,4 +201,6 @@ The most recent controls are saved in `localStorage`, and stored values are chec
 
 Exports are blocked, with the reason and a suggested fix shown, while a headline is empty, doesn't fit, or its lettering (eyebrow and rotation included) is bigger than the safe area.
 
-SVG text stays editable and embeds the Barlow subsets it uses (latin, latin-ext, Vietnamese), so it renders correctly in browsers and viewers without Barlow installed. Design tools that ignore embedded fonts (Figma, Illustrator) use their own Barlow instead; if a font file can't be fetched the app says so, and the PNG is always exact.
+Upright text is drawn from Barlow's variable font (`src/assets/fonts/BarlowGX-Normal.ttf`, the Event Guide's width-pinned instance, weights 22–188), the one Barlow all the AD tools share since 2 October 2026; the code keeps the usual 400–900 and `src/barlow.ts` turns them into the variable font's own scale (Bold 700 = 141). There is no variable italic, so italics come from the static Fontsource files, as does any line with a letter the variable font lacks (Vietnamese, for one).
+
+SVG text stays editable and embeds what it uses: the variable font once for upright text, and the static Barlow subsets (latin, latin-ext, Vietnamese) for italics and those lines, so it renders correctly in browsers and viewers without Barlow installed. Design tools that ignore embedded fonts (Figma, Illustrator) use their own Barlow instead; if a font file can't be fetched the app says so, and the PNG is always exact.

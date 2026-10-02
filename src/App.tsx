@@ -17,11 +17,13 @@ import {
 import {
   BACKGROUND_FILLS,
   BRAND,
-  FONT_FAMILY,
+  fontFamilyOf,
+  fontWeightOf,
   PHOTO_DARKEN,
   buildLayers,
   drawLayers,
   fontShorthand,
+  staticShorthand,
   getPlacement,
   layerTransform,
   placementRange,
@@ -239,14 +241,14 @@ function useTextLayout(settings: GeneratorSettings, fontVersion: number) {
 
   // Ask for exactly the faces and subsets this text needs (e.g. latin-ext for "ő"); their loading triggers a re-measure.
   useEffect(() => {
-    document.fonts.load(fontShorthand(90, weight), text || ' ').catch(() => undefined)
-    if (eyebrow) document.fonts.load(fontShorthand(40, EYEBROW_WEIGHT), eyebrow).catch(() => undefined)
+    document.fonts.load(fontShorthand(90, weight, false, text), text || ' ').catch(() => undefined)
+    if (eyebrow) document.fonts.load(fontShorthand(40, EYEBROW_WEIGHT, false, eyebrow), eyebrow).catch(() => undefined)
   }, [text, eyebrow, weight])
 
   return useMemo(() => {
     const measure: Measure = (value, size, fontWeight) => {
       if (!context) return { width: value.length * size * 0.5, originOffset: 0, ascent: size * 0.72, descent: size * 0.2 }
-      context.font = fontShorthand(size, fontWeight)
+      context.font = fontShorthand(size, fontWeight, false, value)
       return measureInk(context, value, fontWeight, size)
     }
     const layout = layoutHeadline({
@@ -552,7 +554,7 @@ function LayerList({ layers }: { layers: Layer[] }) {
     <>
       {layers.map((layer, index) => (layer.kind === 'path'
         ? <path key={`path-${index}`} d={layer.d} fill={layer.fill} transform={layerTransform(layer)} />
-        : <text key={`text-${index}`} x={layer.x} y={layer.y} fill={layer.fill} fontFamily={FONT_FAMILY} fontWeight={layer.weight} fontStyle={layer.italic ? 'italic' : undefined} fontSize={layer.size} transform={layerTransform(layer)}>{layer.text}</text>))}
+        : <text key={`text-${index}`} x={layer.x} y={layer.y} fill={layer.fill} fontFamily={fontFamilyOf(layer.text, layer.italic)} fontWeight={fontWeightOf(layer.weight, layer.text, layer.italic)} fontStyle={layer.italic ? 'italic' : undefined} fontSize={layer.size} transform={layerTransform(layer)}>{layer.text}</text>))}
     </>
   )
 }
@@ -733,7 +735,7 @@ function App() {
     const context = document.createElement('canvas').getContext('2d')
     return (value, size, weight, italic) => {
       if (!context) return value.length * size * 0.5
-      context.font = fontShorthand(size, weight, italic)
+      context.font = fontShorthand(size, weight, italic, value)
       return context.measureText(value).width
     }
   }, [])
@@ -742,7 +744,7 @@ function App() {
     const context = document.createElement('canvas').getContext('2d')
     return (value, size, weight) => {
       if (!context) return { width: value.length * size * 0.6, originOffset: 0, ascent: size * 0.7, descent: 0 }
-      context.font = fontShorthand(size, weight)
+      context.font = fontShorthand(size, weight, false, value)
       return measureInk(context, value, weight, size)
     }
   }, [])
@@ -752,11 +754,13 @@ function App() {
     // Every weight the words could be set in, upright and slanted: asking for one that is never drawn loads nothing.
     const weights = new Set([pageType.title.weight, pageType.text.weight, pageType.details.weight, pageType.strong.weight, pageType.semi.weight])
     for (const weight of weights) {
+      // Both Barlows: lines the variable font can't draw use the static files.
       document.fonts.load(fontShorthand(BODY.size, weight), words).catch(() => undefined)
+      document.fonts.load(staticShorthand(BODY.size, weight), words).catch(() => undefined)
       if (words.includes('_')) document.fonts.load(fontShorthand(BODY.size, weight, true), words).catch(() => undefined)
     }
     const label = normaliseEyebrow(inside.label)
-    if (label) document.fonts.load(fontShorthand(pageType.label.size, pageType.label.weight), label).catch(() => undefined)
+    if (label) document.fonts.load(fontShorthand(pageType.label.size, pageType.label.weight, false, label), label).catch(() => undefined)
   }, [isInside, inside.label, inside.title, inside.body, inside.details, pageType])
   const page = useMemo(
     () => layoutInside(inside, measureWidth, { logoBottom: markBoxes.logo ? markBoxes.logo.y + markBoxes.logo.height : undefined, arrow: markBoxes.arrow }, measureLabel, pageType),
@@ -1162,7 +1166,7 @@ function App() {
     const canvas = document.createElement('canvas')
     try {
       const allText = snapshot.layers.map((layer) => layer.kind === 'text' ? layer.text : '').join(' ')
-      const faces = [...new Set(snapshot.layers.flatMap((layer) => layer.kind === 'text' ? [fontShorthand(layer.size, layer.weight)] : []))]
+      const faces = [...new Set(snapshot.layers.flatMap((layer) => layer.kind === 'text' ? [fontShorthand(layer.size, layer.weight, layer.italic, layer.text)] : []))]
       await Promise.all(faces.map((face) => document.fonts.load(face, allText)))
       canvas.width = snapshot.frame.width * scale
       canvas.height = snapshot.frame.height * scale

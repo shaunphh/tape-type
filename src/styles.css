@@ -1,3 +1,12 @@
+/* Barlow's variable font: upright artwork text at any weight (2 Oct 2026). Italics stay on Fontsource's static Barlow. */
+@font-face {
+  font-family: 'Barlow GX';
+  src: url('./assets/fonts/BarlowGX-Normal.ttf') format('truetype');
+  font-weight: 22 188;
+  font-style: normal;
+  font-display: block;
+}
+
 :root {
   font-family: 'Barlow', Arial, sans-serif;
   color: #202020;

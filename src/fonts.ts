@@ -34,7 +34,8 @@ import extraboldItalicVietnamese from '@fontsource/barlow/files/barlow-vietnames
 import blackItalic from '@fontsource/barlow/files/barlow-latin-900-italic.woff2?url'
 import blackItalicExt from '@fontsource/barlow/files/barlow-latin-ext-900-italic.woff2?url'
 import blackItalicVietnamese from '@fontsource/barlow/files/barlow-vietnamese-900-italic.woff2?url'
-import { FONT_FAMILY } from './artwork'
+import gxNormal from './assets/fonts/BarlowGX-Normal.ttf?url'
+import { FONT_FAMILY, GX_FAMILY, fontFamilyOf } from './artwork'
 
 // The same subsets and unicode ranges as the Fontsource CSS the page itself uses.
 const RANGES = {
@@ -104,14 +105,18 @@ const covers = (subset: Subset, text: string) => [...text].some((character) => {
   return parsedRanges[subset].some(([low, high]) => code >= low && code <= high)
 })
 
-/** The font files an export of these runs needs, chosen the way the browser chooses them: by unicode-range. */
+// Runs the variable font draws need its one file; the rest (italics, letters it lacks) need static faces.
+const staticRuns = (runs: TextRun[]) => runs.filter((run) => fontFamilyOf(run.text, run.italic) === FONT_FAMILY)
+const needsGx = (runs: TextRun[]) => runs.some((run) => fontFamilyOf(run.text, run.italic) === GX_FAMILY)
+
+/** The static font files an export of these runs needs, chosen the way the browser chooses them: by unicode-range. */
 export const facesFor = (runs: TextRun[]) =>
-  FACES.filter((face) => runs.some((run) => run.weight === face.weight && Boolean(run.italic) === Boolean(face.italic) && covers(face.subset, run.text)))
+  FACES.filter((face) => staticRuns(runs).some((run) => run.weight === face.weight && Boolean(run.italic) === Boolean(face.italic) && covers(face.subset, run.text)))
 
 const pending = new Map<string, Promise<string>>()
 const loaded = new Map<string, string>()
 
-function load(url: string) {
+function load(url: string, type: 'woff2' | 'ttf' = 'woff2') {
   let request = pending.get(url)
   if (!request) {
     request = fetch(url)
@@ -121,7 +126,7 @@ function load(url: string) {
       })
       .then((blob) => new Promise<string>((resolve, reject) => {
         const reader = new FileReader()
-        reader.onload = () => resolve(String(reader.result).replace(/^data:[^;,]*/, 'data:font/woff2'))
+        reader.onload = () => resolve(String(reader.result).replace(/^data:[^;,]*/, `data:font/${type}`))
         reader.onerror = () => reject(reader.error)
         reader.readAsDataURL(blob)
       }))
@@ -138,17 +143,20 @@ function load(url: string) {
 
 const fontFace = (face: (typeof FACES)[number], data: string) =>
   `@font-face{font-family:'${FONT_FAMILY}';font-style:${face.italic ? 'italic' : 'normal'};font-weight:${face.weight};src:url(${data}) format('woff2');unicode-range:${RANGES[face.subset]}}`
+/** The variable font, every weight in one file. */
+const gxFace = (data: string) => `@font-face{font-family:'${GX_FAMILY}';font-style:normal;font-weight:22 188;src:url(${data}) format('truetype')}`
 
 /** Starts fetching the files these runs need, so exports rarely have to wait. */
 export function preloadEmbeddedFonts(runs: TextRun[]) {
   for (const face of facesFor(runs)) load(face.url).catch(() => undefined)
+  if (needsGx(runs)) load(gxNormal, 'ttf').catch(() => undefined)
 }
 
 /** @font-face rules for these runs if every file they need is already loaded, otherwise null. */
 export function embeddedFontCssNow(runs: TextRun[]) {
-  const faces = facesFor(runs)
-  if (!faces.every((face) => loaded.has(face.url))) return null
-  return faces.map((face) => fontFace(face, loaded.get(face.url) as string)).join('')
+  const faces = facesFor(runs), gx = needsGx(runs)
+  if (!faces.every((face) => loaded.has(face.url)) || (gx && !loaded.has(gxNormal))) return null
+  return (gx ? gxFace(loaded.get(gxNormal) as string) : '') + faces.map((face) => fontFace(face, loaded.get(face.url) as string)).join('')
 }
 
 /**
@@ -156,11 +164,11 @@ export function embeddedFontCssNow(runs: TextRun[]) {
  * couldn't be fetched: the SVG then names Barlow without carrying it for those letters.
  */
 export async function embeddedFontCss(runs: TextRun[]) {
-  const faces = facesFor(runs)
-  const results = await Promise.allSettled(faces.map((face) => load(face.url)))
-  const css = faces.map((face, index) => {
+  const faces = facesFor(runs), gx = needsGx(runs)
+  const [gxResult, ...results] = await Promise.allSettled([gx ? load(gxNormal, 'ttf') : Promise.resolve(''), ...faces.map((face) => load(face.url))])
+  const css = (gx && gxResult.status === 'fulfilled' ? gxFace(gxResult.value) : '') + faces.map((face, index) => {
     const result = results[index]
     return result.status === 'fulfilled' ? fontFace(face, result.value) : ''
   }).join('')
-  return { css, missing: results.some((result) => result.status === 'rejected') }
+  return { css, missing: [gxResult, ...results].some((result) => result.status === 'rejected') }
 }

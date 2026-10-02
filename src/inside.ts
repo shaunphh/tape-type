@@ -98,7 +98,7 @@ export const TEXT_WIDTH = POST_FRAME.width - PAGE_MARGIN * 2
 export const INSIDE_MARKS = { margin: PAGE_MARGIN, logoWidth: AD_SIZE.logoInside }
 
 // The sizes and weights below are the ones Shaun settled on in the Type panel (29 September 2026).
-/** Inside titles: Bold, as typed (the tokens' story-title). On 2 Oct 2026 they spent a day in capitals at 168, the event guide's and Guide Studio's title weight; Shaun put them back to Bold "for now". */
+/** Story titles across the AD tools (2 Oct 2026): capitals, at the variable font's 168 (ExtraBold to the eye): the tokens' story-title. */
 export const TITLE = { weight: AD_TYPE.storyTitle.weight, largest: AD_TYPE.storyTitle.size, smallest: 45, lineHeight: AD_TYPE.storyTitle.lineHeight, lines: 3, mostLines: 4, fill: BRAND.light }
 /** Lines of text are 1.3 of their size apart at 38px, and 1.2 at 42px: 1.2 was a bit tight at 38 (Shaun, 30 September 2026). */
 export const BODY = { weight: AD_TYPE.body.weight, size: AD_TYPE.body.size, large: AD_TYPE.bodyLarge.size, lineHeight: AD_TYPE.body.lineHeight, largeLineHeight: AD_TYPE.bodyLarge.lineHeight, paragraphGap: 26, bulletGap: 8, indent: 44, fill: TONES.grey }
@@ -386,7 +386,7 @@ export function layoutInside(
   const pictured = content.image !== 'none'
   const position = pictured ? content.position ?? 'top' : 'top'
   const label = ink ? normaliseEyebrow(content.label ?? '') : ''
-  const title = normaliseHeadline(content.title)
+  const title = normaliseHeadline(content.title).toLocaleUpperCase()
   const story = readLines(content.body)
   const details = readLines(content.details ?? '')
   const textSize = content.bodyLarge ? type.text.large : type.text.size

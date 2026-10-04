@@ -142,11 +142,11 @@
           },
           {
             "name": "story-title-carousel",
-            "fontSize": "69px",
+            "fontSize": "64px",
             "lineHeight": 1.02,
             "fontWeight": 168,
             "sample": "RUBY SESSIONS",
-            "usage": "Guide Studio's story pages: 168 in capitals at 69px, zero tracking."
+            "usage": "Guide Studio's story pages: 168 in capitals at 64px, zero tracking (69px until 5 October 2026, when the stories grew to the length the team writes)."
           },
           {
             "name": "body",
@@ -209,15 +209,15 @@
       },
       {
         "name": "Footer",
-        "family": "barlow",
+        "family": "barlow-condensed",
         "styles": [
           {
             "name": "footer",
-            "fontSize": "31px",
-            "lineHeight": "35px",
+            "fontSize": "36px",
+            "lineHeight": "40px",
             "fontWeight": 141,
             "sample": "Mon 14 Sep",
-            "usage": "Every page's footer: Bold, 31px, lines 35px apart. Names and handles in ink, dates and details in `meta`, title case (Mon 14 Sep). Two handles stack, one to a line."
+            "usage": "Every page's footer: Condensed Bold, 36px, lines 40px apart, where space is at a premium (Bold at normal width, 31px, until 5 October 2026). Names and handles in ink, dates and details in `meta`, title case (Mon 14 Sep). Two handles stack, one to a line."
           }
         ]
       }
@@ -238,7 +238,12 @@
       {
         "name": "picture-height",
         "value": "540px",
-        "usage": "The picture at the top of an inside or story page. Every page has the same height, so the story keeps to the room under it."
+        "usage": "The picture at the top of Tape Type's inside pages. Every page has the same height, so the story keeps to the room under it."
+      },
+      {
+        "name": "picture-height-carousel",
+        "value": "500px",
+        "usage": "The picture at the top of Guide Studio's story pages, a little shorter than Tape Type's so a full story fits under a two-line title (540px until 5 October 2026)."
       },
       {
         "name": "grid-crop-post",

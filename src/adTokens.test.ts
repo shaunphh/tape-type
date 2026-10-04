@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import tokens from './ad-tokens.json'
-import { AD_COLOR, AD_SIZE, AD_SPACE, AD_TYPE, toolWeight } from './adTokens'
+import { AD_COLOR, AD_SIZE, AD_SPACE, AD_TYPE, adNumber, adStyle, toolWeight } from './adTokens'
 
 describe('the shared AD tokens', () => {
   it('hold the values decided on 2 October 2026', () => {
@@ -8,8 +8,14 @@ describe('the shared AD tokens', () => {
     expect(AD_TYPE.storyTitle).toMatchObject({ weight: 168, stem: 168, size: 52 })
     expect(AD_TYPE.label).toMatchObject({ weight: 800, stem: 166, size: 38 })
     expect(AD_TYPE.body).toMatchObject({ weight: 400, size: 38, lineHeight: 1.3 })
-    expect(AD_TYPE.footer).toMatchObject({ weight: 700, size: 31 })
-    expect(AD_TYPE.footer.lineHeight * AD_TYPE.footer.size).toBeCloseTo(35)
+    // 5 October 2026: the footer went Condensed and up to 36px, as the team's Canva pages set it.
+    expect(AD_TYPE.footer).toMatchObject({ weight: 700, size: 36, condensed: true })
+    expect(AD_TYPE.footer.lineHeight * AD_TYPE.footer.size).toBeCloseTo(40)
+    expect(adStyle('guide-meta')).toMatchObject({ condensed: true, size: 42 })
+    expect(AD_TYPE.body.condensed).toBe(false)
+    // Guide Studio's story pages: a smaller title and picture, so the team's stories fit under two-line titles.
+    expect(adStyle('story-title-carousel')).toMatchObject({ size: 64, stem: 168 })
+    expect(adNumber('spacing', 'picture-height-carousel')).toBe(500)
     expect(AD_SPACE).toEqual({ safeCover: 80, marginInside: 56, pictureHeight: 540 })
     expect(AD_SIZE).toEqual({ logoCover: 210, logoInside: 128, arrow: 100 })
   })

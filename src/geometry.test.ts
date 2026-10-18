@@ -5,7 +5,7 @@ import type { GeneratorSettings } from './types'
 const base: GeneratorSettings = {
   headline: '', style: 'headline', titleCase: true, tone: 'light', eyebrowEnabled: false, eyebrow: '',
   coverFormat: 'regular', column: 'narrow', autoSize: true, fontSize: 76, align: 'left', autoWrap: true, perLine: false,
-  rotationVariance: 0, lineGap: 2, hugStrength: 1, preferredEdge: 'auto', mode: 'cling', seed: 1, seedLocked: false,
+  rotationVariance: 0, lineGap: 2, hugStrength: 1, preferredEdge: 'auto', mode: 'cling', seed: 1, seedLocked: false, cutOutside: false,
 }
 
 const layouts = [

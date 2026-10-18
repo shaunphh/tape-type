@@ -1196,7 +1196,7 @@ function App() {
       }
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
       if (!blob) throw new Error('this device could not create an image that large')
-      downloadBlob(blob, 'image/png', `${snapshot.fileStem}-${scale}x.png`)
+      downloadBlob(blob, 'image/png', `${snapshot.fileStem}@${scale}x.png`)
     } catch (error) {
       flash(`PNG export failed: ${error instanceof Error ? error.message : 'unknown error'}.${scale > 1 ? ' Try a smaller size.' : ''}`)
     } finally {
@@ -1446,11 +1446,11 @@ function App() {
           <span className="brand-mark"><span>T</span></span>
           <span>Tape Type</span>
         </a>
-        <h1 className="visually-hidden">Tape Type: cutout text generator</h1>
+        <h1 className="visually-hidden">Tape Type: covers, inside pages and video covers for Alternative Dublin</h1>
         <p className="topbar-tagline">Controlled tape geometry built around your headline — never a rotated rectangle.</p>
         <div className="topbar-meta">
           <span className="status-dot" />
-          Local tool
+          Nothing leaves your browser
         </div>
       </header>
 

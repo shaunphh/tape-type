@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The topbar's mark: a yellow strip of tape with a clean cut on its free end, and a T. -->
+  <polygon points="0,4 50,4 64,20 53,30 64,43.5 49.5,60 0,60" fill="#ffed1f"/>
+  <path d="M11 15h31v10H33v26H21V25H11z" fill="#101010"/>
+</svg>

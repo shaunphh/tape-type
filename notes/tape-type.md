@@ -13,7 +13,7 @@ Open the local URL printed by Vite.
 
 ## The shared AD tokens
 
-The values every Alternative Dublin tool shares live in `src/ad-tokens.json`: the palette, the type roles (sizes, line heights and weights on Barlow GX's own scale), space, marks, photo darkening and tape cuts, each with a note on where it is used. Tape Type reads them through `src/adTokens.ts`. The event guide, Guide Studio and Good Eye copy the file with their sync scripts, and it is also the tokens file of the Alternative Dublin design system page. To change a shared value, change it here, push, then run each tool's sync.
+The values every Alternative Dublin tool shares live in `src/ad-tokens.json`: the palette, the type roles (sizes, line heights and weights on Barlow GX's own scale), space, marks, photo darkening and tape cuts, each with a note on where it is used. Tape Type reads them through `src/adTokens.ts`. The event guide, Guide Studio and Good Eye copy the file with their sync scripts, and it is also the tokens file of the Alternative Dublin design system page. To change a shared value, change it here, push, then run each tool's sync. `meta.synced` is the date the file last changed; each tool records the commit it copied (the event guide's and the site's bundles carry it in their first line, Guide Studio's and Good Eye's notes name it).
 
 ## Production build
 

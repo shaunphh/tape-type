@@ -21,7 +21,7 @@ describe('trying other sizes and weights', () => {
       details: { size: 38, large: 42, weight: 400 },
       strong: { weight: 700 },
       semi: { weight: 600 },
-      label: { size: 38, weight: 800 },
+      label: { size: 44, weight: 800 },
     })
     expect(sanitizePageType({})).toEqual(PAGE_TYPE)
     expect(sameType(sanitizePageType(JSON.parse(JSON.stringify(PAGE_TYPE))), PAGE_TYPE)).toBe(true)
@@ -53,7 +53,7 @@ describe('trying other sizes and weights', () => {
       'Highlight: 38px or 42px, Regular 400',
       'Words in two stars: Bold 700',
       'Words in one star: SemiBold 600',
-      'Label: 38px, ExtraBold 800',
+      'Label: 44px, ExtraBold 800',
     ].join('\n'))
   })
 

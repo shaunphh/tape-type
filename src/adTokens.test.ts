@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import tokens from './ad-tokens.json'
-import { AD_COLOR, AD_SIZE, AD_SPACE, AD_TYPE, adNumber, adStyle, toolWeight } from './adTokens'
+import { AD_COLOR, AD_SIZE, AD_SPACE, AD_TYPE, adNumber, adStyle, nearestCssWeight, toolWeight } from './adTokens'
 
 describe('the shared AD tokens', () => {
   it('hold the values decided on 2 October 2026', () => {
-    expect(AD_COLOR).toEqual({ yellow: '#FFED1F', light: '#F0F0F0', dark: '#101010', greyOnDark: '#C2C2C2', greyOnLight: '#4B4A4A', meta: '#7F7C7C' })
+    expect(AD_COLOR).toEqual({ yellow: '#FFED1F', light: '#F0F0F0', dark: '#101010', greyOnDark: '#C2C2C2', greyOnLight: '#4B4A4A', metaOnDark: '#7F7C7C', metaOnLight: '#666363' })
     expect(AD_TYPE.storyTitle).toMatchObject({ weight: 168, stem: 168, size: 52 })
-    expect(AD_TYPE.label).toMatchObject({ weight: 800, stem: 166, size: 38 })
+    expect(AD_TYPE.label).toMatchObject({ weight: 800, stem: 166, size: 44 })
+    expect(adStyle('guide-time')).toMatchObject({ condensed: true, stem: 166, size: 38 })
     expect(AD_TYPE.body).toMatchObject({ weight: 400, size: 38, lineHeight: 1.3 })
     // 5 October 2026: the footer went Condensed SemiBold at 36px, as the team's Canva pages set it.
-    expect(AD_TYPE.footer).toMatchObject({ weight: 600, stem: 116, size: 42, condensed: true })
+    expect(AD_TYPE.footer).toMatchObject({ weight: 108, stem: 108, size: 42, condensed: true })
+    expect(nearestCssWeight(108)).toBe(600)
+    expect(nearestCssWeight(168)).toBe(800)
     expect(AD_TYPE.footer.lineHeight * AD_TYPE.footer.size).toBeCloseTo(47)
     expect(adStyle('guide-meta')).toMatchObject({ condensed: true, size: 42 })
     expect(AD_TYPE.body.condensed).toBe(false)

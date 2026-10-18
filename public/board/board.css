@@ -71,20 +71,20 @@ button, input { font: inherit; }
 .tag--dark { background: var(--ad-dark); color: var(--ad-light); }
 .tag--eyebrow { font-size: var(--ad-eyebrow-size); font-weight: var(--ad-eyebrow-weight); }
 .tag--date { font-size: var(--ad-date-strip-size); font-weight: var(--ad-date-strip-weight); }
-.tag--time { font-family: var(--cond); }
+.tag--time { font-family: var(--cond); font-size: var(--ad-guide-time-size); line-height: var(--ad-guide-time-line-height); font-weight: var(--ad-guide-time-weight); }
 
 /* Event Guide: a day's page */
 .eg { display: grid; grid-template-rows: minmax(0, 1fr) 62px; padding: var(--ad-guide-padding-sides) var(--ad-guide-padding-sides) var(--ad-guide-padding-bottom); }
 .eg__events { display: flex; flex-direction: column; gap: var(--ad-guide-event-gap); align-content: start; }
 .eg__event { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 20px; align-items: start; }
-.eg__event .tag--time { margin-top: .12em; }
+.eg__event .tag--time { margin-top: .12em; justify-self: start; } /* a grid item would stretch to the column; the guide cuts each tape to its time */
 .eg__title { margin: 0; font-size: var(--ad-guide-title-size); font-weight: var(--ad-guide-title-weight); line-height: var(--ad-guide-title-line-height); text-transform: uppercase; letter-spacing: 0; overflow-wrap: break-word; }
-.eg__meta { display: flex; flex-wrap: wrap; gap: 0 6px; margin: 6px 0 0; font-family: var(--cond); font-size: var(--ad-guide-meta-size); font-weight: var(--ad-guide-meta-weight); line-height: var(--ad-guide-meta-line-height); letter-spacing: var(--ad-guide-meta-letter-spacing); color: var(--ad-meta); }
+.eg__meta { display: flex; flex-wrap: wrap; gap: 0 6px; margin: 6px 0 0; font-family: var(--cond); font-size: var(--ad-guide-meta-size); font-weight: var(--ad-guide-meta-weight); line-height: var(--ad-guide-meta-line-height); letter-spacing: var(--ad-guide-meta-letter-spacing); color: var(--ad-meta-on-light); }
 .eg__footer { display: flex; align-items: flex-end; justify-content: space-between; }
 .eg__lockup { display: flex; align-items: center; gap: 12px; }
 .mark--dublin { position: static; width: var(--ad-dublin-mark); color: var(--ad-dark); translate: 2px 6px; }
 .eg__wordmark { font-size: var(--ad-guide-wordmark-size); font-weight: var(--ad-guide-wordmark-weight); line-height: var(--ad-guide-wordmark-line-height); letter-spacing: var(--ad-guide-wordmark-letter-spacing); text-transform: uppercase; }
-.eg__date { font-family: var(--cond); font-size: var(--ad-footer-size); font-weight: var(--ad-footer-weight); line-height: var(--ad-footer-line-height); color: var(--ad-meta); }
+.eg__date { font-family: var(--cond); font-size: var(--ad-footer-size); font-weight: var(--ad-footer-weight); line-height: var(--ad-footer-line-height); color: var(--ad-meta-on-light); }
 
 /* Guide Studio: the Picks cover */
 .gsc { background: var(--ad-dark); }
@@ -109,7 +109,7 @@ button, input { font: inherit; }
 .gss__body p { margin: 0; }
 .gss__body p + p { margin-top: calc(var(--ad-body-size) * var(--ad-body-line-height) * .5); }
 .gss__footer { position: absolute; left: var(--ad-margin-inside); right: var(--ad-margin-inside); bottom: 58px; display: flex; justify-content: space-between; align-items: baseline; font-family: var(--cond); font-size: var(--ad-footer-size); font-weight: var(--ad-footer-weight); line-height: 1; }
-.gss__details { color: var(--ad-meta); }
+.gss__details { color: var(--ad-meta-on-light); }
 
 /* Tape Type: a post cover */
 .ttc, .ttv { background: var(--ad-dark); color: var(--ad-light); }

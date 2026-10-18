@@ -255,9 +255,8 @@ describe('inside page', () => {
     expect(none.layers).toEqual(page({ image: 'none', position: 'top' }).layers)
   })
 
-  it('sets the label in ExtraBold at the text’s size', () => {
-    expect(LABEL).toEqual({ size: 38, weight: 800 })
-    expect(LABEL.size).toBe(BODY.size)
+  it('sets the label in ExtraBold at the cover-tag size', () => {
+    expect(LABEL).toEqual({ size: 44, weight: 800 })
   })
 
   it('sets the label in capitals on light tape, over whatever comes first', () => {

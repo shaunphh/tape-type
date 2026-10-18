@@ -153,7 +153,7 @@ const cuts = new Map()
 function tagCut(seed) {
   if (cuts.has(seed)) return cuts.get(seed)
   const size = 100, width = 400, capHeight = BARLOW.cap * size
-  const shape = buildShape({ ...defaults, headline: 'TAG', style: 'feature', perLine: false, align: 'left', mode: 'clean', preferredEdge: 'right', seed: seedFor(seed), fontSize: size, hugStrength: 1, rotationVariance: 0 }, ['TAG'], [width], [0], { ascent: capHeight, descent: size * .02 })
+  const shape = buildShape({ ...defaults, headline: 'TAG', style: 'feature', perLine: false, align: 'left', mode: 'clean', preferredEdge: 'right', seed: seedFor(seed), fontSize: size, hugStrength: 1, rotationVariance: 0, cutOutside: true }, ['TAG'], [width], [0], { ascent: capHeight, descent: size * .02 })
   const xs = shape.points.map((p) => p.x), ys = shape.points.map((p) => p.y)
   const left = Math.min(...xs), top = Math.min(...ys), w = Math.max(...xs) - left, h = Math.max(...ys) - top
   const em = (v) => `${round(v / size)}em`

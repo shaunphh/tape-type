@@ -352,6 +352,8 @@ function buildLabel(label: string, top: number, inkOf: MeasureInk, cut: ShapeMod
     hugStrength: 1,
     rotationVariance: 0,
     lineGap: lockedLineGap(size, bounds.ascent + bounds.descent),
+    // The cut only adds (18 Oct 2026): the tape keeps its padding whole around the capitals.
+    cutOutside: true,
   }
   const shape = buildShape(settings, lines, metrics.map((metric) => metric.width), [], bounds)
   const xs = shape.points.map((point) => point.x)

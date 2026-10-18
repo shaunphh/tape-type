@@ -254,7 +254,7 @@ describe('shape geometry', () => {
     }
   }, 30000)
 
-  it('cuts the eyebrow tag like a label: inside its box, lettering uncovered, the foot flat on the tape', () => {
+  it('cuts the eyebrow tag like a label: the tape covers its box, lettering uncovered, the foot flat on the tape', () => {
     const inside = (point: { x: number; y: number }, polygon: { x: number; y: number }[]) => {
       let hit = false
       for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
@@ -276,11 +276,16 @@ describe('shape geometry', () => {
           const { box, points } = shape.eyebrow!
           runs += 1
           if (points.length !== 4 || new Set(points.map((point) => point.x)).size > 2) cut += 1
+          // Cuts that only add (18 Oct 2026): the tape always covers the box, and a cut reaches at most a little over half an em past it.
+          const reach = eyebrow.fontSize * 0.6
+          for (const corner of [[box.x + 0.05, box.y + 0.05], [box.x + box.width - 0.05, box.y + 0.05], [box.x + box.width - 0.05, box.y + box.height - 0.05], [box.x + 0.05, box.y + box.height - 0.05]]) {
+            expect(inside({ x: corner[0], y: corner[1] }, points), `${align} ${seed} ${eyebrow.text}`).toBe(true)
+          }
           for (const point of points) {
-            expect(point.x).toBeGreaterThanOrEqual(box.x - 0.01)
-            expect(point.x).toBeLessThanOrEqual(box.x + box.width + 0.01)
-            expect(point.y).toBeGreaterThanOrEqual(box.y - 0.01)
-            expect(point.y).toBeLessThanOrEqual(box.y + box.height + 0.01)
+            expect(point.x).toBeGreaterThanOrEqual(box.x - reach)
+            expect(point.x).toBeLessThanOrEqual(box.x + box.width + reach)
+            expect(point.y).toBeGreaterThanOrEqual(box.y - reach)
+            expect(point.y).toBeLessThanOrEqual(box.y + box.height + reach)
           }
           // The lettering's box stays on the tag.
           const padX = eyebrow.fontSize * 0.45

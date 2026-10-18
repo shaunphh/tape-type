@@ -114,6 +114,21 @@ function drawHeadline(node) {
   const mode = node.dataset.mode || 'rough'
   const settings = { ...defaults, headline: lines.map((_, i) => `line ${i}`).join('\n'), style: 'headline', perLine: false, align: 'left', mode, seed: seedFor(node.dataset.seed || 'tape'), fontSize: size, hugStrength: 1, rotationVariance: 0, lineGap: step - ascent - descent }
   const widths = lines.map((l) => l.width), labels = lines.map((_, i) => `line ${i}`), bounds = { ascent, descent }
+  let svg = $('.tape__svg', node)
+  if (!svg) { svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'tape__svg'); svg.setAttribute('aria-hidden', 'true'); svg.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'path')); node.prepend(svg) }
+  if (node.dataset.stretch) {
+    // Guide Studio's cover: one block around the widest line, its cut stretched to the padded box
+    // (Picks 82 / 59 / 64, as in render.ts) and turned over so the wider strip runs under the last line.
+    const maxWidth = Math.max(...widths)
+    const shape = buildShape(settings, labels, labels.map(() => maxWidth), [], bounds)
+    const box = shape.viewBox
+    svg.setAttribute('viewBox', `${box.x} ${box.y} ${box.width} ${box.height}`)
+    svg.setAttribute('preserveAspectRatio', 'none')
+    svg.firstElementChild.setAttribute('d', shape.path)
+    svg.firstElementChild.setAttribute('transform', node.dataset.flip ? `translate(0 ${2 * box.y + box.height}) scale(1 -1)` : '')
+    node.classList.add('tape--drawn')
+    return
+  }
   let points, anchorX, anchorBaseline
   if (node.dataset.flip) {
     const shape = buildShape(settings, [...labels].reverse(), [...widths].reverse(), widths.map(() => 0), bounds)
@@ -127,8 +142,7 @@ function drawHeadline(node) {
   }
   const dx = lines[0].left - anchorX, dy = lines[0].baseline - anchorBaseline
   const d = points.map((p, i) => `${i ? 'L' : 'M'}${(p.x + dx).toFixed(1)} ${(p.y + dy).toFixed(1)}`).join(' ') + 'Z'
-  let svg = $('.tape__svg', node)
-  if (!svg) { svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'tape__svg'); svg.setAttribute('aria-hidden', 'true'); svg.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'path')); node.prepend(svg) }
+  svg.removeAttribute('viewBox'); svg.removeAttribute('preserveAspectRatio'); svg.firstElementChild.removeAttribute('transform')
   svg.firstElementChild.setAttribute('d', d)
   node.classList.add('tape--drawn')
 }

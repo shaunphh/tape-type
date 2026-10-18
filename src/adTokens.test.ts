@@ -9,8 +9,8 @@ describe('the shared AD tokens', () => {
     expect(AD_TYPE.label).toMatchObject({ weight: 800, stem: 166, size: 38 })
     expect(AD_TYPE.body).toMatchObject({ weight: 400, size: 38, lineHeight: 1.3 })
     // 5 October 2026: the footer went Condensed SemiBold at 36px, as the team's Canva pages set it.
-    expect(AD_TYPE.footer).toMatchObject({ weight: 600, stem: 116, size: 36, condensed: true })
-    expect(AD_TYPE.footer.lineHeight * AD_TYPE.footer.size).toBeCloseTo(40)
+    expect(AD_TYPE.footer).toMatchObject({ weight: 600, stem: 116, size: 42, condensed: true })
+    expect(AD_TYPE.footer.lineHeight * AD_TYPE.footer.size).toBeCloseTo(47)
     expect(adStyle('guide-meta')).toMatchObject({ condensed: true, size: 42 })
     expect(AD_TYPE.body.condensed).toBe(false)
     // Guide Studio's story pages: a smaller title and picture, so the team's stories fit under two-line titles.

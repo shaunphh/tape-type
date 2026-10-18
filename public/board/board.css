@@ -81,8 +81,8 @@ button, input { font: inherit; }
 .eg__title { margin: 0; font-size: var(--ad-guide-title-size); font-weight: var(--ad-guide-title-weight); line-height: var(--ad-guide-title-line-height); text-transform: uppercase; letter-spacing: 0; overflow-wrap: break-word; }
 .eg__meta { display: flex; flex-wrap: wrap; gap: 0 6px; margin: 6px 0 0; font-family: var(--cond); font-size: var(--ad-guide-meta-size); font-weight: var(--ad-guide-meta-weight); line-height: var(--ad-guide-meta-line-height); letter-spacing: var(--ad-guide-meta-letter-spacing); color: var(--ad-meta); }
 .eg__footer { display: flex; align-items: flex-end; justify-content: space-between; }
-.eg__lockup { display: flex; align-items: center; gap: 24px; }
-.mark--dublin { position: static; width: var(--ad-dublin-mark); color: var(--ad-dark); }
+.eg__lockup { display: flex; align-items: center; gap: 12px; }
+.mark--dublin { position: static; width: var(--ad-dublin-mark); color: var(--ad-dark); translate: 2px 6px; }
 .eg__wordmark { font-size: var(--ad-guide-wordmark-size); font-weight: var(--ad-guide-wordmark-weight); line-height: var(--ad-guide-wordmark-line-height); letter-spacing: var(--ad-guide-wordmark-letter-spacing); text-transform: uppercase; }
 .eg__date { font-family: var(--cond); font-size: var(--ad-footer-size); font-weight: var(--ad-footer-weight); line-height: var(--ad-footer-line-height); color: var(--ad-meta); }
 

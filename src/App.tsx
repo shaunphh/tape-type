@@ -625,6 +625,7 @@ function App() {
   const [seedDraft, setSeedDraft] = useState<string | null>(null)
   const [copied, setCopied] = useState<'svg' | 'seed' | 'type' | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [dropping, setDropping] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [inside, setInside] = useState<InsideOptions>(() => loadInside(cover.arrowColour))
   // The template the page started from, and whether its words or switches have been changed since.
@@ -1207,10 +1208,8 @@ function App() {
     }
   }
 
-  const choosePhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
+  /** A photo for the page on show, from the chooser, a drop on the stage or a paste (18 Oct 2026). */
+  const takePhoto = async (file: File) => {
     // Where it was chosen is where it goes, even if something else is on show by the time it is ready.
     const chosenFor = place
     try {
@@ -1228,6 +1227,52 @@ function App() {
       flash('That file couldn’t be opened as an image. If it’s an iPhone HEIC photo, convert it to JPEG first.')
     }
   }
+  const takePhotoRef = useRef(takePhoto)
+  takePhotoRef.current = takePhoto
+
+  const choosePhoto = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file) await takePhoto(file)
+  }
+
+  /** What a drag carries that could be a photo: a file, or an image from a website (its address). */
+  const transferHasImage = (transfer: DataTransfer | null) => !!transfer && Array.from(transfer.types).some((type) => type === 'Files' || type === 'text/uri-list')
+
+  /** A dropped file is taken as it is. An image dragged from a website is fetched; when its site won't allow that, the notice says to copy and paste it. */
+  const dropPhoto = async (transfer: DataTransfer) => {
+    const file = Array.from(transfer.files).find((candidate) => candidate.type.startsWith('image/'))
+    if (file) return takePhoto(file)
+    const url = transfer.getData('text/uri-list').split('\n').map((line) => line.trim()).find((line) => line && !line.startsWith('#')) || /src="([^"]+)"/.exec(transfer.getData('text/html'))?.[1]
+    if (!url) return
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      if (!response.ok || !blob.type.startsWith('image/')) throw new Error('unreadable')
+      await takePhoto(new File([blob], 'dropped', { type: blob.type }))
+    } catch {
+      flash('That image can’t be read from its site. Copy the image (right-click → Copy image) and paste it here instead.')
+    }
+  }
+
+  // A pasted image (⌘V) goes to the page on show; a file dropped outside the stage must not open in place of the tool.
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const file = Array.from(event.clipboardData?.items ?? []).map((item) => (item.kind === 'file' ? item.getAsFile() : null)).find((candidate) => candidate?.type.startsWith('image/'))
+      if (!file) return
+      event.preventDefault()
+      void takePhotoRef.current(file)
+    }
+    const swallow = (event: DragEvent) => { if (event.dataTransfer?.types.includes('Files')) event.preventDefault() }
+    document.addEventListener('paste', onPaste)
+    document.addEventListener('dragover', swallow)
+    document.addEventListener('drop', swallow)
+    return () => {
+      document.removeEventListener('paste', onPaste)
+      document.removeEventListener('dragover', swallow)
+      document.removeEventListener('drop', swallow)
+    }
+  }, [])
 
   const clickPhoto = (event: React.MouseEvent) => {
     // With a photo already loaded, the first click switches back to it; the next one replaces it.
@@ -1788,6 +1833,7 @@ function App() {
               </label>
               {shownPhoto && <button className="text-button underlined" disabled={!photoMoved} onClick={() => setView(CENTRED)}>Reset position</button>}
             </div>
+            <p className="panel-note">Or drop an image on the page, or paste one (⌘ or Ctrl + V) copied from a website.</p>
             {shownPhoto ? (
               <div className="range-stack">
                 <RangeField label="Zoom" value={view.zoom} min={1} max={MAX_ZOOM} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(zoom) => setView((current) => ({ ...current, zoom }))} />
@@ -1989,7 +2035,12 @@ function App() {
             </div>
           </div>
 
-          <div className="stage-wrap">
+          <div
+            className={dropping ? 'stage-wrap dropping' : 'stage-wrap'}
+            onDragOver={(event) => { if (transferHasImage(event.dataTransfer)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setDropping(true) } }}
+            onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false) }}
+            onDrop={(event) => { if (!transferHasImage(event.dataTransfer)) return; event.preventDefault(); setDropping(false); void dropPhoto(event.dataTransfer) }}
+          >
             {notice && <p className="notice" role="alert">{notice}</p>}
             <div
               ref={previewRef}

@@ -51,7 +51,7 @@ The regular `npm run build` output can also be deployed to Vercel or another sta
 
 The tool makes the whole cover, not only the headline:
 
-- **Photo**: choose a photo, then drag it on the cover to reposition it (a press on the words moves the words; anywhere else moves the photo). The Photo group has Zoom (100–300%), Left – right and Up – down sliders, and Reset position. On phones a sideways swipe moves the photo and the sliders do the rest, because vertical swipes scroll the page.
+- **Photo**: choose a photo, drop one on the page, or paste one copied from a website (⌘V), then drag it on the cover to reposition it (a press on the words moves the words; anywhere else moves the photo). The Photo group has Zoom (100–300%), Left – right and Up – down sliders, and Reset position. On phones a sideways swipe moves the photo and the sliders do the rest, because vertical swipes scroll the page.
 - **A photo stays where it was chosen.** The cover, the video cover and each kind of inside page has its own photo, with its own position, so choosing one for a page changes no other. A quiet **Change photo** sits in the corner of the picture on the canvas; it is not part of the artwork.
 - **Darken photo** lays 15% black over the photo so the words and marks read. It is on by default and can be switched off.
 - **Logo**: Off, Left or Right. The Alternative Dublin logo sits in a top corner of the safe area, 210px wide, with DUBLIN lined up on that side.

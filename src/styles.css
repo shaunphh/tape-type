@@ -681,6 +681,9 @@ input[type='range']::-moz-range-thumb { width: 9px; height: 9px; background: var
   container-type: size;
 }
 
+/* A photo being dragged over the stage (18 Oct 2026). */
+.stage-wrap.dropping .preview-stage { outline: 3px dashed var(--yellow); outline-offset: 6px; }
+
 .preview-stage {
   position: relative;
   display: grid;

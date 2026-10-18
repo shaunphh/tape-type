@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:pages": "tsc -b && vite build --mode github-pages",
+    "build": "node scripts/board-sync.mjs && tsc -b && vite build",
+    "build:pages": "node scripts/board-sync.mjs && tsc -b && vite build --mode github-pages",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "board": "node scripts/board-sync.mjs"
   },
   "dependencies": {
     "@fontsource/barlow": "^5.2.6",

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101010" />
+    <meta name="description" content="Every kind of page the Alternative Dublin tools make, drawn from the shared tokens, side by side: tweak the tokens, switch the safe zones on, export the pages." />
+    <title>Family board — Alternative Dublin</title>
+    <link rel="icon" href="../favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="board.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="top__brand"><span class="top__mark">a/d</span><span><strong>Family board</strong><small id="synced">Every page kind, from ad-tokens.json</small></span></div>
+      <div class="top__skins" role="group" aria-label="Safe zones">
+        <span class="top__label">Safe zones</span>
+        <label><input type="checkbox" data-skin="safe"> Cover safe area</label>
+        <label><input type="checkbox" data-skin="grid"> Grid crop</label>
+        <label><input type="checkbox" data-skin="margin"> Page margin</label>
+        <label><input type="checkbox" data-skin="guide"> Guide margins</label>
+        <label><input type="checkbox" data-skin="picture"> Picture height</label>
+      </div>
+      <div class="top__scale">
+        <label for="scale">Scale</label>
+        <input id="scale" type="range" min="0.18" max="0.6" step="0.01" value="0.3">
+      </div>
+      <div class="top__actions">
+        <button id="reset-all" class="quiet" type="button">Reset tokens</button>
+        <button id="copy-css" class="quiet" type="button">Copy CSS</button>
+        <button id="download-tokens" class="quiet" type="button">Download tokens</button>
+        <button id="export-pages" class="primary" type="button">Export pages</button>
+      </div>
+    </header>
+
+    <main class="board">
+      <section class="pages" id="pages">
+
+        <figure class="sheet" data-name="event-guide" data-kind="guide">
+          <figcaption><strong>Event Guide</strong> · a day's page · 1080 × 1350</figcaption>
+          <div class="wrap"><div class="page eg">
+            <div class="eg__events">
+              <article class="eg__event"><span class="tag tag--time" data-seed="11:00">11:00</span><div><h3 class="eg__title">Fresh Pasta Making Workshop</h3><p class="eg__meta"><span>Coopers Cross</span> <span>@theitalian_pastaproject</span></p></div></article>
+              <article class="eg__event"><span class="tag tag--time" data-seed="11:30">11:30</span><div><h3 class="eg__title">Tour Temple Bar, Historia de los Pubs Irlandeses</h3><p class="eg__meta"><span>2 Dame Street</span> <span>@paseandoporeuropa</span></p></div></article>
+              <article class="eg__event"><span class="tag tag--time" data-seed="12:00">12:00</span><div><h3 class="eg__title">Irish Famine Exhibition Dublin</h3><p class="eg__meta"><span>Stephen’s Green Shopping Centre</span> <span>@irish_famine_exhibition_dublin</span></p></div></article>
+              <article class="eg__event"><span class="tag tag--time" data-seed="12:30">12:30</span><div><h3 class="eg__title">Guided Tour of the Remains of St. Mary’s Abbey</h3><p class="eg__meta"><span>Meetinghouse Lane</span> <span>@cd_heritage</span></p></div></article>
+              <article class="eg__event"><span class="tag tag--time" data-seed="14:00">14:00</span><div><h3 class="eg__title">Wit as a Weapon: Satirical Cartoons of the French Revolution</h3><p class="eg__meta"><span>Charleville Mall Library</span> <span>@dublincitycouncil</span></p></div></article>
+            </div>
+            <footer class="eg__footer"><div class="eg__lockup"><span class="mark mark--dublin" data-mark="dublin"></span><span class="eg__wordmark">Event Guide</span></div><time class="eg__date">Mon 20 Oct</time></footer>
+            <div class="skin skin--guide"></div><div class="skin skin--guard"></div>
+          </div></div>
+        </figure>
+
+        <figure class="sheet" data-name="guide-studio-cover" data-kind="cover">
+          <figcaption><strong>Guide Studio</strong> · Picks cover · 1080 × 1350</figcaption>
+          <div class="wrap"><div class="page gsc">
+            <div class="gsc__photos"><img src="photos/pub.jpg" alt=""><img src="photos/cinema.jpg" alt=""></div>
+            <div class="gsc__scrim"></div>
+            <span class="mark mark--logo mark--yellow" data-mark="logo-right"></span>
+            <span class="mark mark--arrow mark--yellow" data-mark="swipe-arrow"></span>
+            <div class="gsc__block">
+              <div class="tape tape--light gsc__tape" data-seed="18473562" data-mode="rough" data-flip="1"><span class="tape__text">Event<br>Guide<br>Picks</span></div>
+              <span class="tag tag--date" data-seed="18473562">5 Oct – 11 Oct</span>
+            </div>
+            <div class="skin skin--safe"></div><div class="skin skin--grid"></div>
+          </div></div>
+        </figure>
+
+        <figure class="sheet" data-name="guide-studio-story" data-kind="story">
+          <figcaption><strong>Guide Studio</strong> · story page · 1080 × 1350</figcaption>
+          <div class="wrap"><div class="page gss">
+            <div class="gss__picture"><img src="photos/music.jpg" alt=""></div>
+            <span class="tag tag--number" data-seed="02">02</span>
+            <h2 class="gss__title">Ruby Sessions</h2>
+            <div class="gss__body"><p>You’re in Dublin on a Tuesday and want music without the shouting? The Ruby Sessions upstairs in Doyle’s is three acoustic acts a night, candles on the tables and a room that actually listens.</p><p>Twenty-five years in, the format hasn’t changed: nobody is announced, the door is a tenner, and the money goes to the Simon Community. Doors at eight; the seats go first, so come early and stay for all three.</p></div>
+            <footer class="gss__footer"><span class="gss__handle">@therubysessions</span><span class="gss__details">20 Oct · 8:30pm · Doyle’s Bar</span></footer>
+            <div class="skin skin--margin"></div><div class="skin skin--picture skin--picture-carousel"></div>
+          </div></div>
+        </figure>
+
+        <figure class="sheet" data-name="tape-type-cover" data-kind="cover">
+          <figcaption><strong>Tape Type</strong> · post cover · 1080 × 1350</figcaption>
+          <div class="wrap"><div class="page ttc">
+            <img class="ttc__photo" src="photos/art.jpg" alt="">
+            <div class="darken"></div>
+            <span class="mark mark--logo mark--yellow" data-mark="logo-right"></span>
+            <span class="mark mark--arrow mark--yellow" data-mark="swipe-arrow"></span>
+            <div class="ttc__block">
+              <span class="tag tag--eyebrow" data-seed="breaking">Breaking</span>
+              <div class="tape tape--light ttc__tape" data-seed="18473562" data-mode="rough"><span class="tape__text">How to Make the Most of a Weekend Visit to Dublin</span></div>
+            </div>
+            <div class="skin skin--safe"></div><div class="skin skin--grid"></div>
+          </div></div>
+        </figure>
+
+        <figure class="sheet" data-name="tape-type-inside" data-kind="inside">
+          <figcaption><strong>Tape Type</strong> · inside page · 1080 × 1350</figcaption>
+          <div class="wrap"><div class="page tti">
+            <div class="tti__picture"><img src="photos/cinema.jpg" alt=""></div>
+            <h2 class="tti__title">Bolands Mills is set to come alive this Culture Night</h2>
+            <div class="tti__body"><p>A free evening of live music, art, storytelling and movement, with performances from AE MAK, Sorcha Richardson and Zaska on the Factory Main Stage.</p><p>The Factory Main Stage will host performances from AE MAK, Sorcha Richardson and Zaska, while DJ and chef Marcus O’Laoire brings a relaxed vinyl listening session to Grindstone Coffee.</p></div>
+            <p class="tti__details"><strong>Friday 18 September · 6.30pm</strong><br>Bolands Mills, Dublin 4</p>
+            <span class="mark mark--arrow mark--arrow-inside mark--light" data-mark="swipe-arrow"></span>
+            <div class="skin skin--margin"></div><div class="skin skin--picture skin--picture-inside"></div>
+          </div></div>
+        </figure>
+
+        <figure class="sheet sheet--video" data-name="tape-type-video" data-kind="video">
+          <figcaption><strong>Tape Type</strong> · video cover · 1080 × 1920</figcaption>
+          <div class="wrap wrap--video"><div class="page ttv">
+            <img class="ttv__photo" src="photos/music.jpg" alt="">
+            <div class="darken"></div>
+            <span class="mark mark--logo mark--yellow" data-mark="logo-right"></span>
+            <span class="mark mark--arrow mark--yellow" data-mark="swipe-arrow"></span>
+            <div class="ttv__block">
+              <span class="tag tag--eyebrow tag--dark" data-seed="quick watch">Quick watch</span>
+              <div class="tape tape--yellow ttv__tape" data-seed="18473562" data-mode="tape"><span class="tape__text">Inside the Last Night at the Bernard Shaw</span></div>
+            </div>
+            <div class="skin skin--safe skin--safe-video"></div><div class="skin skin--grid skin--grid-video"></div>
+          </div></div>
+        </figure>
+
+      </section>
+
+      <aside class="panel" id="panel" aria-label="Tokens">
+        <div class="panel__head"><span class="eyebrow">Tokens</span><h2>Tweak the system</h2><p>Every control is a value in <code>ad-tokens.json</code>. Pages follow as you drag. Download the file to keep a set.</p></div>
+        <div id="controls"></div>
+      </aside>
+    </main>
+
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+    <script src="https://unpkg.com/html-to-image@1.11.11/dist/html-to-image.js"></script>
+    <script type="module" src="board.js"></script>
+  </body>
+</html>

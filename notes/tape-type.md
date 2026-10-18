@@ -15,6 +15,12 @@ Open the local URL printed by Vite.
 
 The values every Alternative Dublin tool shares live in `src/ad-tokens.json`: the palette, the type roles (sizes, line heights and weights on Barlow GX's own scale), space, marks, photo darkening and tape cuts, each with a note on where it is used. Tape Type reads them through `src/adTokens.ts`. The event guide, Guide Studio and Good Eye copy the file with their sync scripts, and it is also the tokens file of the Alternative Dublin design system page. To change a shared value, change it here, push, then run each tool's sync. `meta.synced` is the date the file last changed; each tool records the commit it copied (the event guide's and the site's bundles carry it in their first line, Guide Studio's and Good Eye's notes name it).
 
+## The family board
+
+`public/board/` is a page of its own, at `/board/` on the dev server and at <https://shaunphh.github.io/tape-type/board/> once pushed: every kind of page the AD tools make, drawn side by side from `src/ad-tokens.json` (18 Oct 2026). An event guide day page, Guide Studio's Picks cover and a story page, and Tape Type's post cover, inside page and video cover, each at its real size and scaled to fit. The tape and the tags are cut by this repo's own geometry, bundled into `public/board/tape.js` by `scripts/board-sync.mjs`, which also copies the tokens, the two Barlow GX instances, the marks and Guide Studio's sample photos (the ones from the other repos are kept in the folder when those repos aren't present, so the board always builds). The script runs before every build; `npm run board` runs it alone.
+
+The panel on the right has a control for every value in the token file, grouped as the file is; the pages follow as you drag. **Download tokens** gives the file back with the sliders' values in it, to diff against `src/ad-tokens.json` and commit; **Copy CSS** puts the same values on the clipboard as `--ad-*` variables; **Reset tokens** returns to the file. The safe zones at the top switch on overlays: the covers' 80px safe area, the profile grid's crop (34px off the sides of a post, 240px off the top and bottom of a video), the inside pages' 56px margin, the event guide's margins and footer guard, and the picture heights. **Export pages** downloads each page as a PNG at 1080 wide, drawn by the browser (html-to-image), so Chrome is the browser to export from; the pages are a likeness of each tool's output for judging the system together, not the tools' own renderers, so the tools' exports stay the ones that go out.
+
 ## Production build
 
 ```bash

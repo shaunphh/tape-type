@@ -119,8 +119,9 @@ function drawHeadline(node) {
   if (node.dataset.stretch) {
     // Guide Studio's cover: one block around the widest line, its cut stretched to the padded box
     // (Picks 82 / 59 / 64, as in render.ts) and turned over so the wider strip runs under the last line.
+    // Exactly Guide Studio's call (render.ts drawCover), so the cut lands where it does there.
     const maxWidth = Math.max(...widths)
-    const shape = buildShape(settings, labels, labels.map(() => maxWidth), [], bounds)
+    const shape = buildShape({ ...defaults, fontSize: size, align: 'left', mode: 'rough', lineGap: step - ascent - descent, hugStrength: 1, seed: 18473562 }, labels, labels.map(() => maxWidth), [], bounds)
     const box = shape.viewBox
     svg.setAttribute('viewBox', `${box.x} ${box.y} ${box.width} ${box.height}`)
     svg.setAttribute('preserveAspectRatio', 'none')
